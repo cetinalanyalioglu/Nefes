@@ -1,0 +1,13 @@
+name: fns
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - numba
+  - pyyaml
+  - matplotlib
+  - pytest
+  - flake8
+  - black

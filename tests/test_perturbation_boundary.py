@@ -25,8 +25,9 @@ from fns.elements import catalog as cat
 from fns.elements.ids import WALL
 from fns.io import load_case
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_U, ES_C, ES_RHO
+from fns.derive import ES_U, ES_C, ES_RHO, ES_P
 from fns.perturbation import PerturbationBC, boundary_response
+from fns.perturbation.characteristics import char_to_dq
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 
@@ -136,6 +137,30 @@ def test_excitation_pins_incoming_wave_and_propagates():
     assert np.allclose(fr.waves(1)[:, 0], amp * np.exp(-1j * OMEGAS * (LDUCT / (u + c))), atol=1e-9)
 
 
+@pytest.mark.parametrize(
+    "inlet_bc",
+    [
+        PerturbationBC.excitation(0.6 - 0.2j, family="entropy"),  # entropy-family excitation seat
+        PerturbationBC.anechoic(entropy_in=0.6 - 0.2j),  # incoming entropy on a non-forcing BC
+    ],
+)
+def test_entropy_seat_convects_through_flowing_duct(inlet_bc):
+    # Seat an incoming entropy wave at the (flowing) inlet and read it at the outlet.
+    # Both entropy paths -- the entropy-family excitation and the entropy_in carrier --
+    # land on the inlet edge's transport row with an acoustically anechoic closure
+    # (R = 0). With no area change entropy stays decoupled from sound and convects at
+    # the mean speed u, so h_outlet = h_inlet * exp(-i w L/u); f and g vanish.
+    amp = 0.6 - 0.2j
+    _, sol = _duct_case(inlet_bc, PerturbationBC.anechoic(), pt_in=115000.0)
+    u, c = _uc(sol)
+    assert u > 1.0  # genuinely flowing, so the entropy wave convects
+    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    assert np.allclose(fr.waves(0)[:, 2], amp, atol=1e-9)  # entropy seated at the inlet edge
+    assert np.allclose(fr.waves(1)[:, 2], amp * np.exp(-1j * OMEGAS * (LDUCT / u)), atol=1e-9)  # convected out
+    assert np.allclose(fr.waves(0)[:, 0], 0.0, atol=1e-9)  # no incoming acoustic f at the inlet
+    assert np.allclose(fr.waves(1)[:, 1], 0.0, atol=1e-9)  # anechoic outlet: no returning g
+
+
 def test_inherited_pressure_outlet_is_pressure_release():
     # An outlet left at 'inherit' keeps its linearized mean BC; for a subsonic
     # pressure outlet that is p' = 0 -- the ideal open end R = -1 (theory.md s12.4,
@@ -144,6 +169,87 @@ def test_inherited_pressure_outlet_is_pressure_release():
     u, c = _uc(sol)
     fr = boundary_response(sol.problem, sol.x, OMEGAS)
     assert np.allclose(fr.reflection_at(0), -1.0 * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-8)
+
+
+# --------------------------------------------------------------------------
+# 1c. Compact choked-nozzle outlet (Marble--Candel): entropy -> acoustic coupling.
+# --------------------------------------------------------------------------
+
+
+def _reduced_massflow(y):
+    """Choked reduced mass flow ``~ rho*u*sqrt(Tt)/pt`` (throat area constant)."""
+    rho, u, p = y
+    c = (GAMMA * p / rho) ** 0.5
+    M = u / c
+    D = 1.0 + 0.5 * (GAMMA - 1.0) * M * M
+    Tt = (p / (rho * R_AIR)) * D
+    pt = p * D ** (GAMMA / (GAMMA - 1.0))
+    return rho * u * Tt**0.5 / pt
+
+
+def _choked_reflection(rho, u, p):
+    """Independent ``(R, R_s)`` for a compact choked outlet.
+
+    Complex-steps ``delta(reduced mass flow) = 0`` and projects onto the characteristics
+    (``g = R f + R_s h``).  Shares no code with the BC implementation.
+    """
+    y = np.array([rho, u, p], dtype=complex)
+    h = 1e-30
+    Lp = np.zeros(3)
+    for k in range(3):
+        yp = y.copy()
+        yp[k] += 1j * h
+        Lp[k] = _reduced_massflow(yp).imag / h
+    c = (GAMMA * p / rho) ** 0.5
+    coef = Lp @ char_to_dq(rho, c)  # c_f f + c_g g + c_h h = 0
+    return -coef[0] / coef[1], -coef[2] / coef[1]  # g = R f + R_s h
+
+
+def test_choked_nozzle_outlet_marble_candel():
+    # Drive acoustic f and seat entropy h at the (flowing) inlet; the compact choked
+    # outlet must reflect g = R f + R_s h with the Marble--Candel coefficients.
+    inlet = PerturbationBC.excitation(0.5, family="acoustic", entropy_in=0.7 - 0.2j)
+    _, sol = _duct_case(inlet, PerturbationBC.choked_nozzle(), pt_in=135000.0)
+    est = sol.table()
+    rho, p = float(est[ES_RHO, 1]), float(est[ES_P, 1])
+    u, c = _uc(sol, 1)
+    M = u / c
+    assert 0.1 < M < 0.9  # genuinely flowing, subsonic
+    R, R_s = _choked_reflection(rho, u, p)
+    assert R == pytest.approx((2 - (GAMMA - 1) * M) / (2 + (GAMMA - 1) * M), rel=1e-6)  # literature R(M)
+    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    f1, g1, h1 = fr.waves(1)[:, 0], fr.waves(1)[:, 1], fr.waves(1)[:, 2]
+    assert np.allclose(g1, R * f1 + R_s * h1, atol=1e-7, rtol=1e-6)  # BC encodes the coupling
+    assert np.max(np.abs(R_s * h1)) > 0.05 * np.max(np.abs(g1))  # entropy noise genuinely active
+
+
+def test_choked_nozzle_coefficients_and_limits():
+    bc = PerturbationBC.choked_nozzle()
+    rho, c, K = 1.2, 340.0, GAMMA / (GAMMA - 1.0)  # K = cp/R
+    gm1 = GAMMA - 1.0
+    # M -> 0: hard wall, no entropy noise
+    assert bc.reflection_coefficient(0.0, rho, c, 0.0, K) == pytest.approx(1.0)
+    assert bc.entropy_coupling_coefficient(0.0, rho, c, 0.0, K) == pytest.approx(0.0)
+    # finite M: the Marble--Candel closed forms
+    for M in (0.2, 0.5, 0.8):
+        assert bc.reflection_coefficient(0.0, rho, c, M, K) == pytest.approx((2 - gm1 * M) / (2 + gm1 * M))
+        assert bc.entropy_coupling_coefficient(0.0, rho, c, M, K) == pytest.approx((c / rho) * M / (2 + gm1 * M))
+    # choked nozzle only terminates an outlet (entropy must be an arriving wave)
+    with pytest.raises(ValueError):
+        bc.closure(0.0, rho, c, 0.0, 0.0, K, specify=(0, 2), arriving=(1,))
+
+
+def test_generic_outlet_entropy_coupling():
+    # The generic off-diagonal carrier: g = R f + R_s h with user-set constants.
+    Rv, Rsv = 0.3 - 0.1j, 0.45 + 0.2j
+    inlet = PerturbationBC.excitation(0.5, family="acoustic", entropy_in=0.6 - 0.3j)
+    outlet = PerturbationBC.reflection(Rv, entropy_coupling=Rsv)
+    _, sol = _duct_case(inlet, outlet, pt_in=130000.0)
+    u, _ = _uc(sol, 1)
+    assert u > 1.0  # flowing, so an entropy wave reaches the outlet
+    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    f1, g1, h1 = fr.waves(1)[:, 0], fr.waves(1)[:, 1], fr.waves(1)[:, 2]
+    assert np.allclose(g1, Rv * f1 + Rsv * h1, atol=1e-9)
 
 
 # --------------------------------------------------------------------------

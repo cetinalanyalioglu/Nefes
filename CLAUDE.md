@@ -23,6 +23,8 @@ However, do not assume everything in there is theoretically flawless, always do 
 ## Development guidelines
 
 - Whenever applicable, create tests. Especially for scientific implementations.
+- During development there is no need to keep things for backward compat.
+- Development phase goes on until we have a tagged release on th repo.
 
 ## Hard constraints (don't violate without explicit reason)
 

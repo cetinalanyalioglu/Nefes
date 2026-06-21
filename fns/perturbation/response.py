@@ -495,6 +495,80 @@ class PerturbationResponse:
         ub, cb = float(self.est[ES_U, b]), float(self.est[ES_C, b])
         return mat.scattering_labels(ua, ca, ub, cb, self.n)
 
+    # -- notebook plotting (edge-aware labels) ------------------------------
+
+    def _basis_labels(self, basis):
+        """Per-variable symbols for ``basis``, trimmed to this response's dimension."""
+        from .characteristics import BASIS_LABELS
+
+        syms = BASIS_LABELS.get(basis)
+        return tuple(syms[: self.n]) if syms else None
+
+    def plot_transfer_matrix(self, a, b, freqs=None, *, basis="char", **kwargs):
+        """Plot the transfer matrix ``T_ba`` in ``basis``, with edge-subscripted labels.
+
+        Convenience wrapper that *converts* the matrix to ``basis`` (via
+        :meth:`transfer_matrix`) and labels it to match, supplying the station edges so
+        each entry reads ``var_a -> var_b`` (e.g. ``f₁ -> f₂``) instead of the
+        ambiguous ``f -> f``.  Unlike the free :func:`fns.plotting.plot_transfer_matrix`,
+        the ``basis`` here genuinely changes the matrix values, not just the labels.
+
+        Parameters
+        ----------
+        a, b : int
+            Upstream / downstream edge ids; the matrix maps the waves at ``a`` to
+            those at ``b``.
+        freqs : array_like, optional
+            x-axis values (default: ``self.omegas`` in rad/s).  Pass
+            ``self.omegas / (2*np.pi)`` to plot against frequency in Hz.
+        basis : str, optional
+            Variable flavor (``characteristics.BASIS_LABELS``; e.g. ``"char"``,
+            ``"primitive"``, ``"network"``).  Default ``"char"``.
+        **kwargs
+            Forwarded to :func:`fns.plotting.plot_transfer_matrix`.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import plot_transfer_matrix as _plot
+
+        T = self.transfer_matrix(a, b, basis=basis)
+        x = self.omegas if freqs is None else freqs
+        return _plot(T, x, labels=self._basis_labels(basis), edges=(a, b), **kwargs)
+
+    def plot_scattering_matrix(self, a, b, freqs=None, *, basis="char", **kwargs):
+        """Plot the scattering matrix between ``a`` and ``b`` with station-tagged labels.
+
+        Convenience wrapper that *converts* the matrix to ``basis`` (via
+        :meth:`scattering_matrix`) and labels it to match, supplying both the station
+        edges and the incoming/outgoing wave partition so each entry is titled by its
+        own station-subscripted waves (e.g. ``f₁ -> g₁`` for a reflection at edge ``a``).
+
+        Parameters
+        ----------
+        a, b : int
+            Upstream / downstream edge ids of the cut.
+        freqs : array_like, optional
+            x-axis values (default: ``self.omegas`` in rad/s).
+        basis : str, optional
+            Wave flavor (``"char"`` or ``"riemann"`` -- diagonal in the waves).
+            Default ``"char"``.
+        **kwargs
+            Forwarded to :func:`fns.plotting.plot_scattering_matrix`.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import plot_scattering_matrix as _plot
+
+        S = self.scattering_matrix(a, b, basis=basis)
+        x = self.omegas if freqs is None else freqs
+        return _plot(
+            S, x, labels=self._basis_labels(basis), edges=(a, b), partition=self.scattering_labels(a, b), **kwargs
+        )
+
     # -- acoustics-only convenience (entropy dropped) -----------------------
 
     def _acoustic_cols(self):

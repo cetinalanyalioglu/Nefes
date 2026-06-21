@@ -22,7 +22,7 @@ returns the per-edge block ``B`` with ``v_basis = B @ w`` for each named flavor,
 and ``BASIS_LABELS`` gives its per-component symbols (for plot labelling):
 
 * ``"char"``        -- ``(f, g, h)``                 the Riemann/entropy amplitudes
-* ``"primitive"``   -- ``(rho', u', p')``            primitive fluctuations
+* ``"primitive"``   -- ``(p'/rho c, u', rho' c/rho)``  velocity-normalized primitives
 * ``"network"``     -- ``(mdot', p', h_t')``         the solver's own unknowns
 * ``"riemann"``     -- ``(P+, P-, sigma)``           De Domenico (f/c, g/c, -h/rho)
 * ``"pu_entropy"``  -- ``(p'/(rho c), u', s'/cp)``   normalized acoustic + entropy
@@ -91,7 +91,7 @@ def edge_transforms(est, K):
 
 BASIS_LABELS = {
     "char": ("f", "g", "h"),
-    "primitive": ("ρ'", "u'", "p'"),
+    "primitive": ("p'/ρc", "u'", "ρ'c/ρ"),
     "network": ("ṁ'", "p'", "h_t'"),
     "riemann": ("P+", "P−", "σ"),
     "pu_entropy": ("p'/ρc", "u'", "s'/c_p"),
@@ -108,8 +108,8 @@ def basis_matrix(basis, rho, c, u, p, area, K):
     """
     if basis == "char":
         return np.eye(3)
-    if basis == "primitive":  # (rho', u', p')
-        return char_to_dq(rho, c)
+    if basis == "primitive":  # velocity-normalized (p'/(rho c), u', rho' c/rho)
+        return np.array([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [1.0, 1.0, c / rho]])
     if basis == "network":  # (d_mdot, d_p, d_h_t)
         return char_to_dx(rho, c, u, p, area, K)
     if basis == "riemann":  # (P+, P-, sigma) = (f/c, g/c, -h/rho)

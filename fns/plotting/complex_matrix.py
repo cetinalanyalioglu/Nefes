@@ -31,10 +31,56 @@ def _as_list(x):
     return list(x) if isinstance(x, (list, tuple)) else [x]
 
 
-def _entry_title(labels, i, j):
-    if labels is None:
+def _sub(sym, idx):
+    """Attach an edge/station subscript, rendered by Plotly (``f`` at edge 1 -> ``f₁``)."""
+    return f"{sym}<sub>{idx}</sub>"
+
+
+def _entry_title(row_labels, col_labels, i, j):
+    """Title of matrix entry ``(i, j)`` read causally: input (column ``j``) -> output (row ``i``).
+
+    For a transfer matrix ``v_b = T v_a`` the column is the variable at the input
+    station and the row is the variable at the output station, so entry ``(i, j)``
+    reads ``col_j -> row_i`` (e.g. ``f₁ -> f₂`` between edges 1 and 2).
+    """
+    if row_labels is None or col_labels is None:
         return f"{i + 1}{j + 1}"
-    return f"{labels[i]}→{labels[j]}"
+    return f"{col_labels[j]}→{row_labels[i]}"
+
+
+def _axis_labels(N, labels, row_labels, col_labels, edges):
+    """Resolve per-row and per-column entry labels.
+
+    Explicit ``row_labels``/``col_labels`` win.  Otherwise, with ``edges=(a, b)``
+    the column variables are subscripted by the input edge ``a`` and the row
+    variables by the output edge ``b`` (``f`` -> ``f_a`` / ``f_b``).  With neither,
+    a single ``labels`` set is shared by both axes.
+    """
+    if row_labels is not None or col_labels is not None:
+        return row_labels, col_labels
+    base = labels if labels is not None else _DEFAULT_LABELS.get(N)
+    if edges is not None:
+        a, b = edges
+        syms = base if base is not None else [str(k + 1) for k in range(N)]
+        return [_sub(s, b) for s in syms], [_sub(s, a) for s in syms]
+    return base, base
+
+
+def _resolve_mag_range(matrices, i, j, mag_range):
+    """Magnitude y-range for entry ``(i, j)``: a fixed override or per-entry auto."""
+    if mag_range is not None:
+        return [float(mag_range[0]), float(mag_range[1])]
+    return _mag_range(matrices, i, j)
+
+
+def _preset_mag_range(matrices):
+    """Shared magnitude range used by the transfer/scattering presets.
+
+    ``(0, 1)`` when no entry exceeds unity (the natural band for reflection /
+    transmission coefficients), otherwise ``(0, max |entry|)``.
+    """
+    m = max(float(np.max(np.abs(np.asarray(M)))) for M in _as_list(matrices))
+    return (0.0, 1.0) if m <= 1.0 else (0.0, m)
 
 
 def _normalize(matrices, freqs, names):
@@ -64,11 +110,15 @@ def plot_complex_matrix(
     *,
     names=None,
     labels=None,
+    row_labels=None,
+    col_labels=None,
+    edges=None,
     entries=None,
     layout="auto",
     x_title="frequency",
     phase="rad",
     unwrap=False,
+    mag_range=None,
     title=None,
     height=None,
     width=None,
@@ -84,9 +134,15 @@ def plot_complex_matrix(
     names : list of str, optional
         Legend names, one per overlaid matrix.
     labels : sequence of str, optional
-        Per-index variable symbols (e.g. ``("f", "g", "h")``); entry titles read
-        ``label_i -> label_j``.  Defaults to characteristic symbols by size, else
-        1-based indices.
+        Per-index variable symbols (e.g. ``("f", "g", "h")``) shared by both axes.
+        Defaults to characteristic symbols by size, else 1-based indices.
+    row_labels, col_labels : sequence of str, optional
+        Per-axis labels, overriding ``labels``/``edges``.  Entry ``(i, j)`` is
+        titled ``col_labels[j] -> row_labels[i]`` (input column -> output row).
+    edges : tuple of (a, b), optional
+        Subscript the column variables by the input edge ``a`` and the row
+        variables by the output edge ``b``, so a transfer-matrix entry reads
+        ``f_a -> f_b`` instead of the ambiguous ``f -> f``.
     entries : list of (i, j), optional
         Restrict to these entries (default: all ``N*N``).
     layout : {"auto", "flat", "grid"}
@@ -97,13 +153,15 @@ def plot_complex_matrix(
     unwrap : bool
         Unwrap the phase along frequency (off by default, so the wrapped phase
         sits in a fixed band).
+    mag_range : tuple of (lo, hi), optional
+        Fixed magnitude y-range applied to every entry.  Default ``None`` anchors
+        each entry at 0 and scales to its own peak.
     """
     matrices, freqs, names = _normalize(matrices, freqs, names)
     N = matrices[0].shape[1]
     if any(M.shape[1] != N for M in matrices):
         raise ValueError("all overlaid matrices must have the same size")
-    if labels is None:
-        labels = _DEFAULT_LABELS.get(N)
+    row_labels, col_labels = _axis_labels(N, labels, row_labels, col_labels, edges)
     if entries is None:
         entries = [(i, j) for i in range(N) for j in range(N)]
     if layout == "auto":
@@ -115,11 +173,11 @@ def plot_complex_matrix(
     ph_title = "∠ (deg)" if phase == "deg" else "∠ (rad)"
 
     if layout == "flat":
-        fig = _flat_axes(entries, labels, x_title, ph_title, height, width)
-        _draw_flat(fig, matrices, freqs, names, entries, ph_scale, unwrap, showlegend)
+        fig = _flat_axes(entries, row_labels, col_labels, x_title, ph_title, height, width)
+        _draw_flat(fig, matrices, freqs, names, entries, ph_scale, unwrap, showlegend, mag_range)
     elif layout == "grid":
-        fig = _grid_axes(N, entries, labels, x_title, ph_title, height, width)
-        _draw_grid(fig, matrices, freqs, names, N, entries, ph_scale, unwrap, showlegend)
+        fig = _grid_axes(N, entries, row_labels, col_labels, x_title, ph_title, height, width)
+        _draw_grid(fig, matrices, freqs, names, N, entries, ph_scale, unwrap, showlegend, mag_range)
     else:
         raise ValueError(f"unknown layout {layout!r}; choose 'auto', 'flat' or 'grid'")
 
@@ -136,11 +194,11 @@ def plot_complex_matrix(
 # -- flat layout: entries across columns, magnitude row over phase row ------
 
 
-def _flat_axes(entries, labels, x_title, ph_title, height, width):
+def _flat_axes(entries, row_labels, col_labels, x_title, ph_title, height, width):
     ncol = len(entries)
     titles = []
     for i, j in entries:
-        titles.append(_entry_title(labels, i, j))
+        titles.append(_entry_title(row_labels, col_labels, i, j))
     titles += [""] * ncol  # phase row has no per-cell title
     fig = make_subplots(
         rows=2,
@@ -158,7 +216,7 @@ def _flat_axes(entries, labels, x_title, ph_title, height, width):
     return fig
 
 
-def _draw_flat(fig, matrices, freqs, names, entries, ph_scale, unwrap, showlegend):
+def _draw_flat(fig, matrices, freqs, names, entries, ph_scale, unwrap, showlegend, mag_range=None):
     colors = cycle(COLORWAY)
     for M, fr, nm in zip(matrices, freqs, names):
         color = next(colors)
@@ -178,7 +236,7 @@ def _draw_flat(fig, matrices, freqs, names, entries, ph_scale, unwrap, showlegen
                 col=k + 1,
             )
     for k, (i, j) in enumerate(entries):
-        fig.update_yaxes(range=_mag_range(matrices, i, j), row=1, col=k + 1)
+        fig.update_yaxes(range=_resolve_mag_range(matrices, i, j, mag_range), row=1, col=k + 1)
         if not unwrap:
             fig.update_yaxes(range=_phase_range(ph_scale), row=2, col=k + 1)
 
@@ -186,11 +244,11 @@ def _draw_flat(fig, matrices, freqs, names, entries, ph_scale, unwrap, showlegen
 # -- grid layout: an N x N matrix of (magnitude-over-phase) cells -----------
 
 
-def _grid_axes(N, entries, labels, x_title, ph_title, height, width):
+def _grid_axes(N, entries, row_labels, col_labels, x_title, ph_title, height, width):
     titles = []
     for i in range(N):
         for j in range(N):  # magnitude sub-row: titled by entry
-            titles.append(_entry_title(labels, i, j) if (i, j) in entries else "")
+            titles.append(_entry_title(row_labels, col_labels, i, j) if (i, j) in entries else "")
         titles += [""] * N  # phase sub-row
     fig = make_subplots(
         rows=2 * N,
@@ -209,7 +267,7 @@ def _grid_axes(N, entries, labels, x_title, ph_title, height, width):
     return fig
 
 
-def _draw_grid(fig, matrices, freqs, names, N, entries, ph_scale, unwrap, showlegend):
+def _draw_grid(fig, matrices, freqs, names, N, entries, ph_scale, unwrap, showlegend, mag_range=None):
     colors = cycle(COLORWAY)
     first = entries[0]
     for M, fr, nm in zip(matrices, freqs, names):
@@ -232,7 +290,7 @@ def _draw_grid(fig, matrices, freqs, names, N, entries, ph_scale, unwrap, showle
                 col=j + 1,
             )
     for i, j in entries:
-        fig.update_yaxes(range=_mag_range(matrices, i, j), row=2 * i + 1, col=j + 1)
+        fig.update_yaxes(range=_resolve_mag_range(matrices, i, j, mag_range), row=2 * i + 1, col=j + 1)
         if not unwrap:
             fig.update_yaxes(range=_phase_range(ph_scale), row=2 * i + 2, col=j + 1)
 
@@ -252,23 +310,173 @@ def _phase_range(ph_scale):
 # -- presets ----------------------------------------------------------------
 
 
-def plot_transfer_matrix(matrices, freqs, *, basis="char", labels=None, **kwargs):
-    """Preset for transfer matrices: labels the entries from a variable flavor."""
-    if labels is None:
-        labels = _basis_labels(matrices, basis)
-    return plot_complex_matrix(matrices, freqs, labels=labels, **kwargs)
+_PRESET = object()  # sentinel: "apply the preset magnitude rule" (vs an explicit range)
 
 
-def plot_scattering_matrix(matrices, freqs, *, labels=None, **kwargs):
-    """Preset for scattering matrices (incoming -> outgoing wave amplitudes)."""
-    return plot_complex_matrix(matrices, freqs, labels=labels, **kwargs)
+def plot_transfer_matrix(matrices, freqs, *, labels=None, edges=None, mag_range=_PRESET, **kwargs):
+    """Plot a perturbation transfer matrix versus frequency (magnitude over phase).
+
+    A thin preset over :func:`plot_complex_matrix`: it applies the preset magnitude
+    rule and, given the two station edges, subscripts each variable by its edge so an
+    entry reads ``f₁ → f₂`` (input edge ``a`` to output edge ``b``) instead of the
+    ambiguous ``f → f``.
+
+    This is a *display* helper only -- it does not change the variables the matrix is
+    written in.  Build the matrix in the variables you want first
+    (``PerturbationResponse.transfer_matrix(a, b, basis=...)``); ``labels`` here only
+    names the axes (default: characteristic symbols ``(f, g, h)``).
+
+    Parameters
+    ----------
+    matrices : array or list of arrays
+        One ``(n_freq, N, N)`` complex transfer-matrix stack, or several to overlay.
+    freqs : array or list of arrays
+        Matching frequency axis (or one shared axis) for the x-axis.
+    labels : sequence of str, optional
+        Per-variable symbols for the axes (default: ``(f, g, h)`` by size).  Set these
+        to match the variables the matrix was built in.
+    edges : tuple of (a, b), optional
+        The two station edge ids.  Subscripts the input (column) variables by ``a``
+        and the output (row) variables by ``b``, giving the ``f_a → f_b`` reading;
+        without it the entries fall back to the bare ``f → f`` form.
+    mag_range : tuple of (lo, hi), optional
+        Fixed magnitude y-range.  By default the preset rule applies: ``(0, 1)``
+        when no entry exceeds unity, otherwise ``(0, max |entry|)``.
+    **kwargs
+        Forwarded to :func:`plot_complex_matrix` (``layout``, ``phase``, ``unwrap``,
+        ``x_title``, ``names``, ``title``, ``height``, ``width`` …).
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+
+    See Also
+    --------
+    fns.perturbation.PerturbationResponse.plot_transfer_matrix :
+        Method that converts the matrix to ``basis`` and labels it to match, supplying
+        ``edges`` automatically from the station ids.
+
+    Examples
+    --------
+    >>> T = resp.transfer_matrix(1, 2, basis="primitive")   # convert here
+    >>> plot_transfer_matrix(T, resp.omegas, edges=(1, 2),
+    ...                      labels=("p'/ρc", "u'", "ρ'c/ρ")).show()
+    """
+    if mag_range is _PRESET:
+        mag_range = _preset_mag_range(matrices)
+    return plot_complex_matrix(matrices, freqs, labels=labels, edges=edges, mag_range=mag_range, **kwargs)
 
 
-def _basis_labels(matrices, basis):
-    from ..perturbation.characteristics import BASIS_LABELS
+def plot_scattering_matrix(
+    matrices,
+    freqs,
+    *,
+    edges=None,
+    partition=None,
+    labels=None,
+    row_labels=None,
+    col_labels=None,
+    mag_range=_PRESET,
+    **kwargs,
+):
+    """Plot a perturbation scattering matrix versus frequency (magnitude over phase).
 
-    N = np.asarray(_as_list(matrices)[0]).shape[1]
-    syms = BASIS_LABELS.get(basis)
-    if syms is not None and len(syms) >= N:
-        return tuple(syms[:N])
-    return None
+    Preset over :func:`plot_complex_matrix` for an *incoming → outgoing* wave matrix.
+    Unlike a transfer matrix, the rows and columns of a scattering matrix belong to
+    *different* stations (a reflection sits at one face, a transmission crosses to the
+    other), so the labels need the wave partition, not just the station pair: pass
+    ``edges=(a, b)`` together with ``partition=(incoming, outgoing)`` and each entry is
+    titled by its own station-subscripted waves (e.g. ``f₁ → g₁`` for a reflection at
+    edge 1).
+
+    This is a *display* helper only -- it does not change the variables the matrix is
+    written in.  ``labels`` names the wave symbols (default: ``(f, g, h)``); set it to
+    match whatever variables the matrix was built in.
+
+    Parameters
+    ----------
+    matrices : array or list of arrays
+        One ``(n_freq, N, N)`` complex scattering-matrix stack, or several to overlay.
+    freqs : array or list of arrays
+        Matching frequency axis (or one shared axis) for the x-axis.
+    edges : tuple of (a, b), optional
+        The two station edge ids; station ``"a"`` → ``a``, ``"b"`` → ``b``.  Used with
+        ``partition`` to build the station-subscripted labels.
+    partition : tuple of (incoming, outgoing), optional
+        The wave partition from
+        :meth:`fns.perturbation.PerturbationResponse.scattering_labels`: two lists of
+        ``(station, char_index)`` tags ordering the matrix columns (incoming) and rows
+        (outgoing).
+    labels : sequence of str, optional
+        Per-wave symbols indexed by characteristic (default: ``(f, g, h)``).  Used to
+        build the partition labels, or as the shared axis symbols when no
+        ``partition``/``edges`` are given.
+    row_labels, col_labels : sequence of str, optional
+        Explicit axis labels (outgoing rows / incoming columns), overriding everything
+        above.
+    mag_range : tuple of (lo, hi), optional
+        Fixed magnitude y-range.  By default the preset rule applies: ``(0, 1)`` when
+        no entry exceeds unity (the natural band for reflection / transmission
+        coefficients), otherwise ``(0, max |entry|)``.
+    **kwargs
+        Forwarded to :func:`plot_complex_matrix`.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+
+    See Also
+    --------
+    fns.perturbation.PerturbationResponse.plot_scattering_matrix :
+        Method that fills in ``edges`` and ``partition`` automatically.
+
+    Examples
+    --------
+    >>> S = resp.scattering_matrix(1, 2)
+    >>> plot_scattering_matrix(S, resp.omegas, edges=(1, 2),
+    ...                        partition=resp.scattering_labels(1, 2)).show()
+    """
+    if partition is not None and edges is not None and row_labels is None and col_labels is None:
+        row_labels, col_labels = scattering_axis_labels(partition[0], partition[1], edges, labels)
+    if mag_range is _PRESET:
+        mag_range = _preset_mag_range(matrices)
+    return plot_complex_matrix(
+        matrices,
+        freqs,
+        labels=labels,
+        row_labels=row_labels,
+        col_labels=col_labels,
+        mag_range=mag_range,
+        **kwargs,
+    )
+
+
+def scattering_axis_labels(incoming, outgoing, edges, labels=None):
+    """Per-axis scattering labels from a wave partition.
+
+    Parameters
+    ----------
+    incoming, outgoing : sequence of (station, char)
+        The ``("a"/"b", char_index)`` tags from
+        ``PerturbationResponse.scattering_labels(a, b)``.  Columns of the scattering
+        matrix are the incoming waves, rows the outgoing ones.
+    edges : tuple of (a, b)
+        The two station edge ids; station ``"a"`` -> ``a``, ``"b"`` -> ``b``.
+    labels : sequence of str, optional
+        Per-wave symbols indexed by characteristic (default: ``("f", "g", "h")``).
+
+    Returns
+    -------
+    (row_labels, col_labels) : tuple of list of str
+        Station-subscripted labels, ready for ``plot_scattering_matrix`` /
+        ``plot_complex_matrix``.
+    """
+    a, b = edges
+    syms = tuple(labels) if labels is not None else ("f", "g", "h")
+
+    def lab(tag):
+        station, ci = tag
+        sym = syms[ci] if ci < len(syms) else str(ci + 1)
+        return _sub(sym, a if station == "a" else b)
+
+    return [lab(t) for t in outgoing], [lab(t) for t in incoming]

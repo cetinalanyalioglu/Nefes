@@ -148,3 +148,39 @@ def test_edge_direction_invariance():
     assert est_f[ES_MDOT, 1] == pytest.approx(-est[ES_MDOT, 1], rel=1e-5)
     assert est_f[ES_P, 1] == pytest.approx(est[ES_P, 1], rel=1e-5)
     assert est_f[ES_HT, 1] == pytest.approx(est[ES_HT, 1], rel=1e-5)
+
+
+# -- progress reporting -----------------------------------------------------
+
+
+def test_verbose_silent_by_default(capsys):
+    prob = _nozzle(120000.0, 300.0, 101325.0)
+    solve(prob)
+    assert capsys.readouterr().out == ""
+
+
+def test_verbose_level1_prints_one_line_per_stage(capsys):
+    prob = _nozzle(120000.0, 300.0, 101325.0)
+    solve(prob, verbose=1)  # one summary line per homotopy stage
+    out = capsys.readouterr().out
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert len(lines) == 3  # default stab_stages = (0.1, 0.01, 0.0)
+    assert all(ln.startswith("stab=") and "converged=True" in ln for ln in lines)
+
+
+def test_verbose_level2_prints_per_iteration(capsys):
+    prob = _nozzle(120000.0, 300.0, 101325.0)
+    solve(prob, verbose=2)
+    out = capsys.readouterr().out
+    assert "||R_hat||=" in out
+    iter_lines = [ln for ln in out.splitlines() if ln.strip().startswith("it ")]
+    assert len(iter_lines) > 3  # more detail than the per-stage summary
+
+
+def test_progress_interval_thins_iteration_prints(capsys):
+    prob = _nozzle(120000.0, 300.0, 101325.0)
+    solve(prob, verbose=2, progress_interval=1)
+    every = len([ln for ln in capsys.readouterr().out.splitlines() if ln.strip().startswith("it ")])
+    solve(prob, verbose=2, progress_interval=100)  # only iteration 0 of each stage
+    sparse = len([ln for ln in capsys.readouterr().out.splitlines() if ln.strip().startswith("it ")])
+    assert sparse < every

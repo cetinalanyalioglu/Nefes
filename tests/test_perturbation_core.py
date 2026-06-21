@@ -16,7 +16,7 @@ from fns.perturbation import (
     duct_modes,
     scattering_2port,
 )
-from fns.perturbation.characteristics import char_to_dq
+from fns.perturbation.characteristics import char_to_dq, basis_matrix
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -38,6 +38,19 @@ def test_characteristic_amplitude_relations():
         assert du == pytest.approx(f - g)
         assert dp == pytest.approx(rho * c * (f + g))
         assert drho == pytest.approx(h + dp / c**2)
+
+
+def test_primitive_basis_is_velocity_normalized():
+    # primitive flavor is (p'/(rho c), u', rho' c/rho) -- all in velocity units.
+    rho, c, u, p, area = 1.2, 340.0, 50.0, 1.0e5, 0.10
+    B = basis_matrix("primitive", rho, c, u, p, area, K)
+    R = char_to_dq(rho, c)  # (rho', u', p') from (f, g, h)
+    for w in (np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.3, -0.4, 0.7])):
+        drho, du, dp = R @ w
+        v1, v2, v3 = B @ w
+        assert v1 == pytest.approx(dp / (rho * c))
+        assert v2 == pytest.approx(du)
+        assert v3 == pytest.approx(drho * c / rho)
 
 
 def _nozzle(pt, Tt, p_out):

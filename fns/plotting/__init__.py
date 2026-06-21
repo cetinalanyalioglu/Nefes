@@ -17,7 +17,12 @@ and 3x3 full perturbation networks)::
 """
 
 from .theme import COLORWAY, FNS_TEMPLATE_NAME, fns_template, use_fns_theme
-from .complex_matrix import plot_complex_matrix, plot_transfer_matrix, plot_scattering_matrix
+from .complex_matrix import (
+    plot_complex_matrix,
+    plot_transfer_matrix,
+    plot_scattering_matrix,
+    scattering_axis_labels,
+)
 
 __all__ = [
     "COLORWAY",
@@ -27,4 +32,5 @@ __all__ = [
     "plot_complex_matrix",
     "plot_transfer_matrix",
     "plot_scattering_matrix",
+    "scattering_axis_labels",
 ]

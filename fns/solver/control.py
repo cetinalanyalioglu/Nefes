@@ -46,6 +46,30 @@ class SolveResult:
     history: List[float] = field(default_factory=list)
 
 
+@dataclass
+class _Reporter:
+    """Newton-progress printer (see ``solve``'s ``verbose``/``progress_interval``).
+
+    ``level`` 0 is silent; 1 prints a one-line summary per homotopy stage; 2 also
+    prints the scaled residual norm every ``interval`` iterations within a stage.
+    """
+
+    level: int = 0
+    interval: int = 1
+
+    def stage_start(self, stab, eps):
+        if self.level >= 2:
+            print(f"[stab={stab:<5g} eps={eps:.2e}]")
+
+    def iteration(self, it, norm):
+        if self.level >= 2 and (it % self.interval == 0):
+            print(f"  it {it:3d}   ||R_hat||={norm:.3e}")
+
+    def stage_end(self, stab, it, norm, converged):
+        if self.level >= 1:
+            print(f"stab={stab:<5g} -> {it:3d} iters, ||R_hat||={norm:.3e}, converged={converged}")
+
+
 def _merit(prob, x2d, eps, stab, res_scale):
     """Scaled residual 2-norm; +inf if the state is non-physical."""
     if np.any(x2d[1, :] <= 0.0) or np.any(x2d[2, :] <= 0.0):
@@ -58,13 +82,15 @@ def _merit(prob, x2d, eps, stab, res_scale):
     return float(np.linalg.norm(R_hat)), R
 
 
-def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history):
+def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter=None):
     res_scale = prob.res_scale
     vcol = col_scale(prob.var_scale, prob.n_edges)
     lam = 1e-3
     norm, R = _merit(prob, x2d, eps, stab, res_scale)
     for it in range(max_iter):
         history.append(norm)
+        if reporter is not None:
+            reporter.iteration(it, norm)
         if norm < tol:
             return x2d, True, it, norm
         J = jacobian(prob, x2d, eps, EPS_FB, stab)
@@ -102,20 +128,46 @@ def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history):
     return x2d, norm < tol, max_iter, norm
 
 
-def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), verbose=False):
-    """Solve the steady mean flow.  Returns a SolveResult (state shape (3, E))."""
+def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), verbose=0, progress_interval=1):
+    """Solve the steady mean flow.  Returns a SolveResult (state shape (3, E)).
+
+    Parameters
+    ----------
+    prob : Problem
+        Compiled flow network.
+    x0 : ndarray, optional
+        Initial state, shape ``(3, E)`` (default: a uniform co-directional guess).
+    tol : float, optional
+        Convergence tolerance on the scaled residual 2-norm.
+    max_iter : int, optional
+        Maximum Newton iterations per homotopy stage.
+    stab_stages : sequence of float, optional
+        Vanishing-friction homotopy schedule, warm-started in order.
+    verbose : int or bool, optional
+        Progress verbosity.  ``0``/``False`` is silent; ``1``/``True`` prints a
+        one-line summary per homotopy stage; ``2`` additionally prints the scaled
+        residual norm every ``progress_interval`` iterations within each stage.
+    progress_interval : int, optional
+        Iteration stride for the per-iteration prints at ``verbose >= 2``.
+
+    Returns
+    -------
+    SolveResult
+        The converged state and solve diagnostics.
+    """
     mdot_ref = prob.var_scale[0]
     x2d = initial_guess(prob) if x0 is None else np.array(x0, dtype=np.float64)
+    reporter = _Reporter(level=int(verbose), interval=max(1, int(progress_interval)))
     history: List[float] = []
     total_it = 0
     converged = False
     norm = np.inf
     for stab in stab_stages:
         eps = max(0.3 * stab, 1e-4) * mdot_ref
-        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, stab, tol, max_iter, history)
+        reporter.stage_start(stab, eps)
+        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter)
         total_it += it
-        if verbose:
-            print(f"stab={stab:<5g} -> {it:3d} iters, ||R_hat||={norm:.3e}, converged={converged}")
+        reporter.stage_end(stab, it, norm, converged)
         if not converged and stab == 0.0:
             break
     return SolveResult(x=x2d, converged=converged, iterations=total_it, residual_norm=norm, history=history)

@@ -302,3 +302,47 @@ def test_cascade_embedded_duct_phases():
         T = resp.acoustic_transfer_matrix(a, b)
         diag = np.array([np.diag([np.exp(-1j * w * Ld / (u + c)), np.exp(1j * w * Ld / (c - u))]) for w in OM])
         assert np.allclose(T, diag, atol=1e-8)
+
+
+# -- edge-aware plotting convenience ----------------------------------------
+
+
+def test_response_plot_methods_label_entries_by_edge():
+    # the f -> f bug: the free plotter cannot see the edges, so the response
+    # methods must inject them and produce f_a -> f_b titles.
+    prob, res = _cascade(110000.0, 101325.0)
+    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+
+    figT = resp.plot_transfer_matrix(1, 2)
+    titlesT = {a.text for a in figT.layout.annotations}
+    assert "f<sub>1</sub>→f<sub>2</sub>" in titlesT  # input edge 1 -> output edge 2
+    assert "f→f" not in titlesT  # the ambiguous bare form is gone
+
+    figS = resp.plot_scattering_matrix(1, 2)
+    titlesS = {a.text for a in figS.layout.annotations}
+    # every scattering label carries a station (edge 1 or 2) subscript
+    assert titlesS and all(("<sub>1</sub>" in t or "<sub>2</sub>" in t) for t in titlesS if t)
+
+
+def test_response_plot_methods_accept_hz_axis():
+    prob, res = _cascade(110000.0, 101325.0)
+    resp = perturbation_response(prob, res.x, OM)
+    fig = resp.plot_transfer_matrix(0, 1, resp.omegas / (2.0 * np.pi))  # x in Hz
+    xs = np.asarray(fig.data[0].x)
+    assert np.allclose(xs, OM / (2.0 * np.pi))
+
+
+def test_response_plot_basis_converts_and_relabels_consistently():
+    # the response-method basis genuinely re-expresses the matrix AND names it to
+    # match -- no label-only mismatch like the (removed) free-function basis knob.
+    prob, res = _cascade(110000.0, 101325.0)
+    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+
+    figP = resp.plot_transfer_matrix(1, 2, basis="primitive")
+    titlesP = {a.text for a in figP.layout.annotations}
+    assert "u'<sub>1</sub>→u'<sub>2</sub>" in titlesP
+
+    # the basis really changed the numbers, not just the labels
+    char = resp.transfer_matrix(1, 2, basis="char")
+    prim = resp.transfer_matrix(1, 2, basis="primitive")
+    assert not np.allclose(char, prim)

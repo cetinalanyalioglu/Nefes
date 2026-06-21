@@ -32,7 +32,7 @@ from fns.solver import solve
 from fns.solver.control import states_table
 from fns.derive import ES_RHO, ES_U, ES_P, ES_C, ES_M
 from fns.perturbation import perturbation_response
-from fns.perturbation.characteristics import char_to_dq
+from fns.perturbation.characteristics import char_to_dq, basis_block_from_state
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -243,6 +243,6 @@ def test_basis_and_scattering_roundtrips():
     assert np.allclose(resp.scattering_matrix(0, 1), S, atol=1e-9)
     # a flavor change is an invertible similarity: primitive then back == char
     Tp = resp.transfer_matrix(0, 1, basis="primitive")
-    Ba = char_to_dq(est[ES_RHO, 0], est[ES_C, 0])
-    Bb = char_to_dq(est[ES_RHO, 1], est[ES_C, 1])
+    Ba = basis_block_from_state("primitive", est[:, 0], K)
+    Bb = basis_block_from_state("primitive", est[:, 1], K)
     assert np.allclose(mat.tm_in_basis(Tp, np.linalg.inv(Ba), np.linalg.inv(Bb)), T, atol=1e-9)

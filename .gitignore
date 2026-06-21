@@ -46,6 +46,10 @@ dmypy.json
 # Notebooks
 .ipynb_checkpoints/
 
+# Scratch
+scratch/
+Scratch/
+
 # Environments
 .env
 .venv/

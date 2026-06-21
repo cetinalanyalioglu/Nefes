@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "flake8", "black", "matplotlib"]
+dev = ["pytest", "flake8", "black"]
+jupyter = ["jupyterlab", "notebook", "ipykernel", "nbformat>=4.2.0", "plotly>=5.0"]
 
 [tool.setuptools.packages.find]
 include = ["fns*"]

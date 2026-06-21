@@ -44,6 +44,8 @@ class CompiledProblem:
     # nondimensionalization (filled by the solver layer; may be all-ones)
     var_scale: np.ndarray  # float64[n_solve]
     res_scale: np.ndarray  # float64[n_eq]
+    # per-element smoothing-eps override (< 0 -> use the global eps); see ElementSpec.eps
+    node_eps: np.ndarray = None  # float64[N]
 
     @property
     def n_col(self) -> int:

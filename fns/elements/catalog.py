@@ -6,7 +6,7 @@ of element specs plus directed edges into the immutable CompiledProblem.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -31,12 +31,20 @@ class ElementSpec:
     ``acoustic_id`` (implementation-plan.md s8.3) declares the optional acoustic
     face that overrides the default CSD linearization; ``ACOUSTIC_DEFAULT`` means
     the element contributes only through ``J_alg``.
+
+    ``eps`` optionally overrides this element's smoothing width (the smooth-step /
+    complementarity regularization, in mass-flow units, i.e. ~ a fraction of
+    ``mdot_ref``).  ``None`` follows the global solve-time ``eps``.  Settable at
+    creation or mutated later (``spec.eps = ...``) before ``build_problem``; a
+    sharper value makes the frozen perturbation linearization track the exact
+    (un-regularized) jump -- see the ``SUDDEN_AREA_CHANGE`` note in ``kernels.py``.
     """
 
     residual_id: int
     fparams: List[float] = field(default_factory=list)
     name: str = ""
     acoustic_id: int = ACOUSTIC_DEFAULT
+    eps: Optional[float] = None
 
 
 def mass_flow_inlet(mdot, Tt, name="inlet"):
@@ -57,16 +65,22 @@ def isentropic_area_change(name="iac"):
     return ElementSpec(ISEN_AREA_CHANGE, [], name)
 
 
-def sudden_area_change(name="sac"):
+def sudden_area_change(name="sac", eps=None):
+    """Borda/isentropic sudden area change.
+
+    ``eps`` optionally sharpens this element's momentum<->isentropic switch (see
+    ``ElementSpec.eps``); use a small value (e.g. ``1e-6 * mdot_ref``) when the
+    flow is firmly one-directional and an accurate perturbation jump is wanted.
+    """
     from .ids import SUDDEN_AREA_CHANGE
 
-    return ElementSpec(SUDDEN_AREA_CHANGE, [], name)
+    return ElementSpec(SUDDEN_AREA_CHANGE, [], name, eps=eps)
 
 
-def loss(K, name="loss"):
+def loss(K, name="loss", eps=None):
     from .ids import LOSS
 
-    return ElementSpec(LOSS, [float(K)], name)
+    return ElementSpec(LOSS, [float(K)], name, eps=eps)
 
 
 def junction(name="junction"):
@@ -149,6 +163,9 @@ def build_problem_from_connectivity(
         npar_fptr[n + 1] = npar_fptr[n] + len(el.fparams)
     npar_f = np.array(npar_f, dtype=np.float64)
 
+    # per-element smoothing-eps override (< 0 -> follow the global solve-time eps)
+    node_eps = np.array([el.eps if el.eps is not None else -1.0 for el in elements], dtype=np.float64)
+
     pat = build_jacobian_pattern(conn, degrees, n_solve=3)
 
     # residual scales
@@ -185,4 +202,5 @@ def build_problem_from_connectivity(
         indices=pat.indices,
         var_scale=var_scale,
         res_scale=res_scale,
+        node_eps=node_eps,
     )

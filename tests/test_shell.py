@@ -75,8 +75,8 @@ def test_load_case_solves():
     net = load_case(CASE_YAML)
     sol = net.solve()
     assert sol.converged
-    throat = sol.edge(1)
-    # isentropic: total pressure uniform from feed to throat
+    throat = sol.edge(2)  # feed(0), pipe(1), throat(2), tailpipe(3)
+    # isentropic nozzle + inert constant-area ducts: total pressure uniform
     assert throat["p_t"] == pytest.approx(200000.0, rel=1e-4)
     assert throat["p"] == pytest.approx(150000.0, rel=1e-6)  # subsonic: exit p = spec
     assert 0.0 < throat["M"] < 1.0
@@ -84,17 +84,18 @@ def test_load_case_solves():
 
 @pytest.mark.skipif(not os.path.exists(CASE_YAML), reason="example case not present")
 def test_load_case_preserves_ports():
-    # The UI export pins ports via the handles: feed enters the area change at
-    # port 0, throat leaves it at port 1.  The compiled connectivity must reflect
-    # exactly that (port 0 = target/in side, port 1 = source/out side).
+    # The UI export pins ports via the handles: the pipe enters the area change at
+    # port 0, the throat leaves it at port 1.  The compiled connectivity must
+    # reflect exactly that (port 0 = target/in side, port 1 = source/out side).
     net = load_case(CASE_YAML)
     prob = net.compile()
-    assert list(prob.tail_node) == [0, 1]
-    assert list(prob.head_node) == [1, 2]
-    # node 1 (the area change) sees edge0 at its port 0 and edge1 at its port 1
-    sl = slice(prob.row_ptr[1], prob.row_ptr[2])
-    assert list(prob.col_edge[sl]) == [0, 1]
-    assert list(prob.orient[sl]) == [-1, 1]  # edge0 incoming, edge1 outgoing
+    # inlet(0) -feed(0)-> Duct(1) -pipe(1)-> nozzle(2) -throat(2)-> Duct(3) -tailpipe(3)-> outlet(4)
+    assert list(prob.tail_node) == [0, 1, 2, 3]
+    assert list(prob.head_node) == [1, 2, 3, 4]
+    # node 2 (the area change) sees edge1 at its port 0 and edge2 at its port 1
+    sl = slice(prob.row_ptr[2], prob.row_ptr[3])
+    assert list(prob.col_edge[sl]) == [1, 2]
+    assert list(prob.orient[sl]) == [-1, 1]  # edge1 incoming, edge2 outgoing
 
 
 @pytest.mark.skipif(not os.path.exists(SHOWCASE), reason="UI showcase cases not present")

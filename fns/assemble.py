@@ -38,6 +38,7 @@ def assemble_residual(
     node_row_ptr,
     transport_row0,
     eps,
+    node_eps,
     eps_fb,
     stab,
     est,
@@ -49,8 +50,9 @@ def assemble_residual(
     recover_all(model_id, tf, ti, x, area, n_elem, est)
 
     for n in range(N):
+        eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
         node_residual(
-            n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, eps_fb, stab, est, R, node_row_ptr
+            n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps_n, eps_fb, stab, est, R, node_row_ptr
         )
 
     Hd = R[:N] * 0.0
@@ -98,6 +100,7 @@ def jacobian_fill(
     indptr,
     indices,
     eps,
+    node_eps,
     eps_fb,
     stab,
     Jdata,
@@ -115,6 +118,8 @@ def jacobian_fill(
     for e in range(E):
         nt = tail_node[e]
         nh = head_node[e]
+        eps_nt = node_eps[nt] if node_eps[nt] >= 0.0 else eps  # per-element smoothing override
+        eps_nh = node_eps[nh] if node_eps[nh] >= 0.0 else eps
         for v in range(n_solve):
             c = n_solve * e + v
             xc[v, e] = x[v, e] + 1j * H
@@ -130,7 +135,7 @@ def jacobian_fill(
                 npar_f,
                 npar_fptr,
                 tf,
-                eps,
+                eps_nt,
                 eps_fb,
                 stab,
                 est,
@@ -149,7 +154,7 @@ def jacobian_fill(
                     npar_f,
                     npar_fptr,
                     tf,
-                    eps,
+                    eps_nh,
                     eps_fb,
                     stab,
                     est,
@@ -201,6 +206,13 @@ def jacobian_fill(
 # --------------------------------------------------------------------------
 
 
+def _resolve_node_eps(prob):
+    """Per-element eps overrides as a dense float64[N] (< 0 -> follow global eps)."""
+    if prob.node_eps is not None:
+        return prob.node_eps
+    return np.full(prob.n_nodes, -1.0, dtype=np.float64)
+
+
 def residual(prob, x2d, eps, eps_fb, stab=0.0):
     """Assemble the residual vector (R) for state ``x2d`` of shape (n_solve, E)."""
     R = np.zeros(prob.n_eq, dtype=x2d.dtype)
@@ -223,6 +235,7 @@ def residual(prob, x2d, eps, eps_fb, stab=0.0):
         prob.node_row_ptr,
         prob.transport_row0,
         eps,
+        _resolve_node_eps(prob),
         eps_fb,
         stab,
         est,
@@ -255,6 +268,7 @@ def jacobian(prob, x2d, eps, eps_fb, stab=0.0):
         prob.indptr,
         prob.indices,
         eps,
+        _resolve_node_eps(prob),
         eps_fb,
         stab,
         Jdata,

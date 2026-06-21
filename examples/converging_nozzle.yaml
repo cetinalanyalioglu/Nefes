@@ -1,6 +1,12 @@
 # Converging nozzle -- saved from the FNetLibUI tool (model: fns-flow-network).
 #
-#   reservoir --(feed)--> IsentropicAreaChange --(throat)--> back-pressure
+#   reservoir --(feed)--> Duct --(pipe)--> IsentropicAreaChange
+#             --(throat)--> Duct --(tailpipe)--> back-pressure
+#
+# A high-pressure reservoir discharges through a feed pipe, a smooth area
+# contraction, and a tailpipe to a fixed back pressure.  The two ducts are
+# constant-area: they are inert in the mean flow (duct length does not enter the
+# steady residual) but carry the acoustic phase used by the perturbation network.
 #
 # This is the UI tool's native export format.  Note that edges reference PORTS
 # explicitly via sourceHandle / targetHandle (`<node>-port-<ordinal>`): port 0 is
@@ -23,36 +29,68 @@ model:
         index: 0
         totalPressure: 200000.0
         totalTemperature: 300.0
+    - id: Duct_1
+      type: Duct
+      attributes:
+        label: feed-pipe
+        index: 1
+        length: 0.50
     - id: IsentropicAreaChange_1
       type: IsentropicAreaChange
       attributes:
         label: nozzle
-        index: 1
+        index: 2
+    - id: Duct_2
+      type: Duct
+      attributes:
+        label: tailpipe
+        index: 3
+        length: 0.30
     - id: PressureOutlet_1
       type: PressureOutlet
       attributes:
         label: back-pressure
-        index: 2
+        index: 4
         pressure: 150000.0
         backflowTotalTemperature: 300.0
   edges:
     - id: edge_1
       source: TotalPressureInlet_1
-      target: IsentropicAreaChange_1
+      target: Duct_1
       sourceHandle: TotalPressureInlet_1-port-0
-      targetHandle: IsentropicAreaChange_1-port-0
+      targetHandle: Duct_1-port-0
       type: flow
       attributes:
         label: feed
         index: 0
         area: 0.020
     - id: edge_2
+      source: Duct_1
+      target: IsentropicAreaChange_1
+      sourceHandle: Duct_1-port-1
+      targetHandle: IsentropicAreaChange_1-port-0
+      type: flow
+      attributes:
+        label: pipe
+        index: 1
+        area: 0.020
+    - id: edge_3
       source: IsentropicAreaChange_1
-      target: PressureOutlet_1
+      target: Duct_2
       sourceHandle: IsentropicAreaChange_1-port-1
-      targetHandle: PressureOutlet_1-port-0
+      targetHandle: Duct_2-port-0
       type: flow
       attributes:
         label: throat
-        index: 1
+        index: 2
+        area: 0.010
+    - id: edge_4
+      source: Duct_2
+      target: PressureOutlet_1
+      sourceHandle: Duct_2-port-1
+      targetHandle: PressureOutlet_1-port-0
+      type: flow
+      attributes:
+        label: tailpipe
+        index: 3
         area: 0.010

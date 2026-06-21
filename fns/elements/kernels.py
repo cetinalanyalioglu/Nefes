@@ -134,6 +134,12 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         r_mom = -r_mom / la
         r_isen = est[ES_PT, e0] - est[ES_PT, e1]
         mdot_in_small = -ss * est[ES_MDOT, se]
+        # xi switches momentum (forward expansion: Borda loss) <-> isentropic
+        # (contraction).  NOTE: even when xi is saturated (|mdot| >> eps, so the
+        # mean flow is pure Borda), the switch's *derivative* leaks the large loss
+        # residual (r_mom - r_isen) into the frozen perturbation Jacobian, biasing
+        # the jump off the exact Borda by O(eps).  When the flow is one-directional,
+        # set this element's eps small (ElementSpec.eps) to recover the exact jump.
         xi = smooth_step(mdot_in_small, eps)
         R[r0 + 1] = xi * r_mom + (1.0 - xi) * r_isen - stab_term
         return

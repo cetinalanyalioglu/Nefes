@@ -1,4 +1,4 @@
-"""Phase 6 validation: characteristic maps, A(0)=J_alg, and duct acoustics."""
+"""Perturbation-network core: characteristic maps, A(0)=J_alg, and duct phases."""
 
 import numpy as np
 import pytest
@@ -8,7 +8,7 @@ from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
 from fns.derive import ES_MDOT
-from fns.acoustics import (
+from fns.perturbation import (
     char_to_dx,
     dx_to_char,
     build_acoustic_blocks,
@@ -16,7 +16,7 @@ from fns.acoustics import (
     duct_modes,
     scattering_2port,
 )
-from fns.acoustics.characteristics import char_to_dq
+from fns.perturbation.characteristics import char_to_dq
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

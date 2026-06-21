@@ -7,7 +7,11 @@ dependencies:
   - scipy
   - numba
   - pyyaml
-  - matplotlib
   - pytest
   - flake8
   - black
+  # notebook support + plotting (the `jupyter` extra)
+  - jupyterlab
+  - notebook
+  - ipykernel
+  - plotly

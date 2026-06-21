@@ -1,0 +1,30 @@
+"""Plotly presentation layer for FNS.
+
+A single home for everything Plotly-related: a custom, modern theme (registered
+as the ``"fns"`` template) plus a small colour palette so every figure across the
+examples and notebooks shares one consistent look.  Import side effects register
+the template; call :func:`use_fns_theme` to make it the process-wide default.
+
+    from fns.plotting import use_fns_theme
+    use_fns_theme()        # all subsequent figures adopt the FNS look
+
+It also hosts the complex-matrix viewers used to read transfer / scattering
+matrices in a notebook (magnitude over phase, with presets for the 2x2 acoustic
+and 3x3 full perturbation networks)::
+
+    from fns.plotting import plot_transfer_matrix
+    plot_transfer_matrix(resp.transfer_matrix(0, 1), resp.omegas).show()
+"""
+
+from .theme import COLORWAY, FNS_TEMPLATE_NAME, fns_template, use_fns_theme
+from .complex_matrix import plot_complex_matrix, plot_transfer_matrix, plot_scattering_matrix
+
+__all__ = [
+    "COLORWAY",
+    "FNS_TEMPLATE_NAME",
+    "fns_template",
+    "use_fns_theme",
+    "plot_complex_matrix",
+    "plot_transfer_matrix",
+    "plot_scattering_matrix",
+]

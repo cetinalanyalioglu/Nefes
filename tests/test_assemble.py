@@ -33,8 +33,8 @@ def _chain():
         (0, 1, 0.25),
         (1, 2, 0.20),
         (2, 3, 0.18),
-        (3, 4, 0.18),
-        (4, 5, 0.16),
+        (3, 4, 0.18),  # loss: constant area
+        (4, 5, 0.18),  # duct: constant area
     ]
     prob = cat.build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
     return prob
@@ -54,8 +54,8 @@ def _branch():
         (0, 1, 0.25),
         (1, 2, 0.20),
         (1, 3, 0.20),
-        (2, 4, 0.18),
-        (3, 4, 0.18),
+        (2, 4, 0.20),  # loss: constant area
+        (3, 4, 0.20),  # loss: constant area
         (4, 5, 0.30),
     ]
     prob = cat.build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)

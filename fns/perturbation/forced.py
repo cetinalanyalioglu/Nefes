@@ -27,7 +27,7 @@ from .characteristics import edge_transforms, basis_block_from_state
 from ..solver.control import states_table
 
 
-def boundary_response(prob, x_bar, omegas, *, eps=None, eps_fb=1e-6, u_floor=1e-8):
+def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8):
     """Solve the perturbation field under each terminal's declared boundary condition.
 
     Parameters
@@ -38,8 +38,8 @@ def boundary_response(prob, x_bar, omegas, *, eps=None, eps_fb=1e-6, u_floor=1e-
         boundary row.
     x_bar : ndarray
         Converged mean-flow state, shape ``(n_solve, E)``.
-    omegas : array_like
-        Angular frequencies (rad/s) to solve at.
+    freqs : array_like
+        Frequencies (Hz) to solve at.
     eps, eps_fb, u_floor : float, optional
         Operator-assembly regularizers forwarded to :func:`build_acoustic_blocks`.
 
@@ -48,7 +48,8 @@ def boundary_response(prob, x_bar, omegas, *, eps=None, eps_fb=1e-6, u_floor=1e-
     ForcedResponse
         The nodal perturbation field at every frequency.
     """
-    omegas = np.asarray(omegas, dtype=float)
+    freqs = np.asarray(freqs, dtype=float)
+    omegas = 2.0 * np.pi * freqs  # operator assembly works in angular frequency (rad/s)
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
@@ -59,15 +60,15 @@ def boundary_response(prob, x_bar, omegas, *, eps=None, eps_fb=1e-6, u_floor=1e-
         A = assemble_acoustic(omega, blocks, with_boundaries=True)
         b = boundary_forcing(prob, x_bar, omega)
         X[i] = spla.spsolve(A.tocsc(), b)
-    return ForcedResponse(omegas=omegas, X=X, L=L, est=est, K=K, n_solve=int(prob.n_solve))
+    return ForcedResponse(freqs=freqs, X=X, L=L, est=est, K=K, n_solve=int(prob.n_solve))
 
 
 @dataclass
 class ForcedResponse:
     """Nodal perturbation field of a physically-terminated network over a sweep."""
 
-    omegas: np.ndarray  # (n_omega,)
-    X: np.ndarray  # (n_omega, n_col) nodal perturbation vectors
+    freqs: np.ndarray  # (n_freq,) in Hz
+    X: np.ndarray  # (n_freq, n_col) nodal perturbation vectors
     L: List[np.ndarray]  # per-edge dx_to_char (3x3) at the mean state
     est: np.ndarray  # frozen mean edge-state table
     K: float  # cp / R

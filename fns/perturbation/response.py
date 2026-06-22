@@ -102,6 +102,26 @@ _CHAR_OF_FAMILY = {"acoustic": (0, 1), "entropy": (2,)}
 # Wave symbol per characteristic index, for multiport scattering labels.
 _CHAR_SYM = ("f", "g", "h")
 
+# LaTeX special characters to escape when an element name is dropped into a
+# ``\text{}`` subscript (so an arbitrary label cannot break the MathJax string).
+_TEX_ESCAPE = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+
+
+def _tex_text(s) -> str:
+    """Escape ``s`` for use inside a LaTeX ``\\text{}`` group."""
+    return "".join(_TEX_ESCAPE.get(ch, ch) for ch in str(s))
+
 
 def _validate_excite(excite):
     if "acoustic" not in excite:
@@ -179,7 +199,7 @@ class _ExcitationContext:
     only back-substituted per excitation -- force once, extract many.
     """
 
-    omegas: np.ndarray
+    freqs: np.ndarray  # excitation frequencies (Hz)
     L: List[np.ndarray]
     est: np.ndarray
     K: float
@@ -192,9 +212,10 @@ class _ExcitationContext:
     u_floor: float  # speed below which a station is treated as quiescent
 
 
-def _build_excitation_context(prob, x_bar, omegas, forcing, *, eps, eps_fb, u_floor) -> _ExcitationContext:
+def _build_excitation_context(prob, x_bar, freqs, forcing, *, eps, eps_fb, u_floor) -> _ExcitationContext:
     """Assemble and factorize the prescribed operator over the whole frequency array."""
-    omegas = np.asarray(omegas, dtype=float)
+    freqs = np.asarray(freqs, dtype=float)
+    omegas = 2.0 * np.pi * freqs  # operator assembly works in angular frequency (rad/s)
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
@@ -214,7 +235,7 @@ def _build_excitation_context(prob, x_bar, omegas, forcing, *, eps, eps_fb, u_fl
             for v in range(3):
                 A[p.row, ns * p.edge + v] = L[p.edge][p.char, v]
         lus.append(spla.splu(sp.csc_matrix(A)))
-    return _ExcitationContext(omegas, L, est, K, sel, all_terms, pres, lus, ns, n_col, float(u_floor))
+    return _ExcitationContext(freqs, L, est, K, sel, all_terms, pres, lus, ns, n_col, float(u_floor))
 
 
 def _validate_modes(modes):
@@ -257,10 +278,10 @@ class PerturbationField:
 
     Attributes
     ----------
-    omegas : ndarray
-        Angular frequencies (rad/s), shape ``(n_omega,)``.
+    freqs : ndarray
+        Excitation frequencies (Hz), shape ``(n_freq,)``.
     X : ndarray
-        Nodal perturbation fields, shape ``(n_omega, n_driven, n_col)`` -- one
+        Nodal perturbation fields, shape ``(n_freq, n_driven, n_col)`` -- one
         column per driven wave at the node.
     L : list of ndarray
         Per-edge ``dx_to_char`` (3x3) maps at the frozen mean state.
@@ -276,7 +297,7 @@ class PerturbationField:
         ``(kind, char)`` tag of each column of :attr:`X`, in canonical order.
     """
 
-    omegas: np.ndarray
+    freqs: np.ndarray
     X: np.ndarray
     L: List[np.ndarray]
     est: np.ndarray
@@ -305,7 +326,7 @@ class PerturbationField:
 
 
 def excite_perturbation(
-    prob, x_bar, omegas, node, modes=("acoustic",), *, forcing=None, eps=None, eps_fb=1e-6, u_floor=1e-8, _context=None
+    prob, x_bar, freqs, node, modes=("acoustic",), *, forcing=None, eps=None, eps_fb=1e-6, u_floor=1e-8, _context=None
 ):
     """Solve the perturbation field for incoming waves driven at one boundary node.
 
@@ -322,8 +343,8 @@ def excite_perturbation(
         Compiled flow network.
     x_bar : ndarray
         Converged mean-flow state vector.
-    omegas : array_like
-        Angular frequencies (rad/s) to solve at.
+    freqs : array_like
+        Frequencies (Hz) to solve at.
     node : int
         Boundary element id to drive.  Must be one of the forced 1-port terminals
         (see ``forcing``).
@@ -351,11 +372,11 @@ def excite_perturbation(
     """
     modes = tuple(modes)
     _validate_modes(modes)
-    ctx = _context or _build_excitation_context(prob, x_bar, omegas, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    ctx = _context or _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
     driven = _driven_prescriptions(ctx, node, modes)
     n_driven = len(driven)
 
-    X = np.zeros((ctx.omegas.size, n_driven, ctx.n_col), dtype=np.complex128)
+    X = np.zeros((ctx.freqs.size, n_driven, ctx.n_col), dtype=np.complex128)
     for i, lu in enumerate(ctx.lus):
         b = np.zeros((ctx.n_col, n_driven), dtype=np.complex128)
         for k, p in enumerate(driven):
@@ -363,7 +384,7 @@ def excite_perturbation(
         X[i] = lu.solve(b).T
 
     return PerturbationField(
-        omegas=ctx.omegas,
+        freqs=ctx.freqs,
         X=X,
         L=ctx.L,
         est=ctx.est,
@@ -375,7 +396,7 @@ def excite_perturbation(
 
 
 def perturbation_response(
-    prob, x_bar, omegas, forcing=None, *, excite=("acoustic",), eps=None, eps_fb=1e-6, u_floor=1e-8
+    prob, x_bar, freqs, forcing=None, *, excite=("acoustic",), eps=None, eps_fb=1e-6, u_floor=1e-8
 ):
     """Drive every forced incoming wave and store the perturbation fields.
 
@@ -391,8 +412,8 @@ def perturbation_response(
         Compiled flow network.
     x_bar : ndarray
         Converged mean-flow state vector.
-    omegas : array_like
-        Angular frequencies (rad/s) to solve at.
+    freqs : array_like
+        Frequencies (Hz) to solve at.
     forcing : tuple of int, optional
         The pair of terminal node ids to force (default: the network's two
         terminals).
@@ -418,7 +439,7 @@ def perturbation_response(
     """
     excite = tuple(excite)
     _validate_excite(excite)
-    ctx = _build_excitation_context(prob, x_bar, omegas, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    ctx = _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
 
     # One driven excitation per (terminal, family): all acoustic first, then the incoming
     # entropy at each genuine-inflow seat -> canonical column order (f, g, h).
@@ -432,14 +453,14 @@ def perturbation_response(
     by_node = {t.node: t for t in ctx.sel}
     cols, forcing_kinds = [], []
     for nd, fam in excitations:  # the dedicated routine solves each one; the factorization is shared
-        field = excite_perturbation(prob, x_bar, omegas, nd, modes=(fam,), _context=ctx)
+        field = excite_perturbation(prob, x_bar, freqs, nd, modes=(fam,), _context=ctx)
         cols.append(field.X[:, 0, :])  # one driven wave per call -> (n_omega, n_col)
         forcing_kinds.append((fam, by_node[nd]))
 
     X = np.stack(cols, axis=1)  # (n_omega, n_force, n_col)
     cidx = _excited_char_indices({fam for _nd, fam in excitations})
     return PerturbationResponse(
-        omegas=ctx.omegas,
+        freqs=ctx.freqs,
         X=X,
         L=ctx.L,
         est=ctx.est,
@@ -457,8 +478,8 @@ def perturbation_response(
 class PerturbationResponse:
     """Stored independent perturbation fields; extracts N x N matrices on demand."""
 
-    omegas: np.ndarray  # (n_omega,)
-    X: np.ndarray  # (n_omega, n_force, n_col) -- one forced field per excitation
+    freqs: np.ndarray  # (n_freq,) excitation frequencies in Hz
+    X: np.ndarray  # (n_freq, n_force, n_col) -- one forced field per excitation
     L: List[np.ndarray]  # per-edge dx_to_char (3x3) at the mean state
     est: np.ndarray  # frozen mean edge-state table (for basis blocks / wave speeds)
     K: float  # cp / R
@@ -703,25 +724,29 @@ class PerturbationResponse:
             If the network was not driven at every terminal (rebuild with ``forcing=None``).
         """
         incoming, outgoing = self._multiport_io()
-        S = np.zeros((self.omegas.size, len(outgoing), len(incoming)), dtype=np.complex128)
+        S = np.zeros((self.freqs.size, len(outgoing), len(incoming)), dtype=np.complex128)
         for r, (_node, edge, ch) in enumerate(outgoing):
             S[:, r, :] = self._waves(edge)[:, ch, :]  # outgoing amplitude per driven (unit-incoming) case
         return S
 
     def _node_tag(self, node):
-        """Subscript for a terminal node: its id, plus its element name when known.
+        """LaTeX subscript for a terminal node: its id, plus its element name when known.
 
         Edges are referred to by id alone (edge names are not meaningful), but node names are
-        unique and meaningful, so a terminal reads ``0:MassFlowInlet1`` -- the id (for cross-
-        referencing ``forcing``/code) and the label (for meaning).  Falls back to the bare id
-        when the problem carries no names.
+        unique and meaningful, so a terminal reads ``0:\\text{MassFlowInlet1}`` -- the id (for
+        cross-referencing ``forcing``/code) and the label (for meaning).  Falls back to the bare
+        id when the problem carries no names.  The name rides a ``\\text{}`` group so it renders
+        upright and an arbitrary label cannot break the MathJax string.
         """
         name = self.node_names[node] if node < len(self.node_names) else ""
-        return f"{node}:{name}" if name else f"{node}"
+        return f"{node}:\\text{{{_tex_text(name)}}}" if name else f"{node}"
 
     def _wave_at_node(self, char, node):
-        """Wave symbol for characteristic ``char`` of a terminal ``node`` (e.g. ``f₀:inlet``)."""
-        return f"{_CHAR_SYM[char]}<sub>{self._node_tag(node)}</sub>"
+        """LaTeX wave-symbol fragment for characteristic ``char`` at terminal ``node``.
+
+        e.g. ``f_{0:\\text{inlet}}`` -- a fragment (no ``$``); the plotting layer wraps it.
+        """
+        return f"{_CHAR_SYM[char]}_{{{self._node_tag(node)}}}"
 
     def multiport_scattering_labels(self):
         """Per-wave symbols for the multiport columns (incoming) and rows (outgoing).
@@ -800,7 +825,7 @@ class PerturbationResponse:
         (columns), so a plotted entry reads ``source → output`` (e.g. ``g₇:Outlet1 → f₅``: the
         incoming wave at terminal Outlet1 contributing to ``f`` at edge 5).
         """
-        outputs = [f"{_CHAR_SYM[c]}<sub>{edge}</sub>" for c in self.cidx]
+        outputs = [f"{_CHAR_SYM[c]}_{{{edge}}}" for c in self.cidx]
         sources = [self._wave_at_node(self._source_char(fam, t), t.node) for fam, t in self.forcing_kinds]
         return outputs, sources
 
@@ -841,8 +866,7 @@ class PerturbationResponse:
             Upstream / downstream edge ids; the matrix maps the waves at ``a`` to
             those at ``b``.
         freqs : array_like, optional
-            x-axis values (default: ``self.omegas`` in rad/s).  Pass
-            ``self.omegas / (2*np.pi)`` to plot against frequency in Hz.
+            x-axis values (default: ``self.freqs``, in Hz).
         basis : str, optional
             Variable flavor (``characteristics.BASIS_LABELS``; e.g. ``"char"``,
             ``"primitive"``, ``"network"``).  Default ``"char"``.
@@ -856,8 +880,9 @@ class PerturbationResponse:
         from ..plotting import plot_transfer_matrix as _plot
 
         T = self.transfer_matrix(a, b, basis=basis)
-        x = self.omegas if freqs is None else freqs
-        title = self._residual_title(a, b, kwargs.pop("title", None))
+        x = self.freqs if freqs is None else freqs
+        title = kwargs.pop("title", None) or f"Transfer matrix: edge {a} → edge {b}"
+        title = self._residual_title(a, b, title)
         return _plot(T, x, labels=self._basis_labels(basis), edges=(a, b), title=title, **kwargs)
 
     def plot_scattering_matrix(self, a, b, freqs=None, *, basis="char", **kwargs):
@@ -873,7 +898,7 @@ class PerturbationResponse:
         a, b : int
             Upstream / downstream edge ids of the cut.
         freqs : array_like, optional
-            x-axis values (default: ``self.omegas`` in rad/s).
+            x-axis values (default: ``self.freqs``, in Hz).
         basis : str, optional
             Wave flavor (``"char"`` or ``"riemann"`` -- diagonal in the waves).
             Default ``"char"``.
@@ -887,8 +912,9 @@ class PerturbationResponse:
         from ..plotting import plot_scattering_matrix as _plot
 
         S = self.scattering_matrix(a, b, basis=basis)
-        x = self.omegas if freqs is None else freqs
-        title = self._residual_title(a, b, kwargs.pop("title", None))
+        x = self.freqs if freqs is None else freqs
+        title = kwargs.pop("title", None) or f"Scattering matrix: edges {a}, {b}"
+        title = self._residual_title(a, b, title)
         return _plot(
             S,
             x,
@@ -909,8 +935,7 @@ class PerturbationResponse:
         Parameters
         ----------
         freqs : array_like, optional
-            x-axis values (default: ``self.omegas`` in rad/s).  Pass
-            ``self.omegas / (2*np.pi)`` for frequency in Hz.
+            x-axis values (default: ``self.freqs``, in Hz).
         **kwargs
             Forwarded to :func:`fns.plotting.plot_scattering_matrix`.
 
@@ -922,7 +947,8 @@ class PerturbationResponse:
 
         S = self.multiport_scattering_matrix()
         incoming, outgoing = self.multiport_scattering_labels()
-        x = self.omegas if freqs is None else freqs
+        x = self.freqs if freqs is None else freqs
+        kwargs.setdefault("title", "Multiport scattering matrix")
         return _plot(S, x, row_labels=outgoing, col_labels=incoming, **kwargs)
 
     def plot_contributions(self, edge, freqs=None, *, incoming=None, normalize="auto", **kwargs):
@@ -940,8 +966,7 @@ class PerturbationResponse:
         edge : int
             Edge whose wave is decomposed.
         freqs : array_like, optional
-            x-axis values (default: ``self.omegas`` in rad/s).  Pass ``self.omegas / (2*np.pi)``
-            for frequency in Hz.
+            x-axis values (default: ``self.freqs``, in Hz).
         incoming : array_like, optional
             Per-source incoming amplitudes for a specific scenario (see :meth:`contributions`);
             default is unit amplitude on every source.
@@ -970,11 +995,13 @@ class PerturbationResponse:
             C = C / np.where(peak > 0.0, peak, 1.0)
             kwargs.setdefault("mag_range", (0.0, 1.05))
             suffix = " (normalized to the dominant source per panel)"
-        x = self.omegas if freqs is None else freqs
-        title = kwargs.pop("title", None) or f"edge {edge}: wave contribution by source{suffix}"
-        # one overlaid series per source -> a curve per source in each output-wave panel
+        x = self.freqs if freqs is None else freqs
+        title = kwargs.pop("title", None) or f"Edge {edge}: wave contribution by source{suffix}"
+        # one overlaid series per source -> a curve per source in each output-wave panel;
+        # source labels are LaTeX fragments, wrapped as math for the legend
+        legend = [f"${s}$" for s in sources]
         mats = [C[:, :, k, None] for k in range(C.shape[2])]
-        return _plot(mats, x, names=sources, row_labels=outputs, col_labels=[""], title=title, **kwargs)
+        return _plot(mats, x, names=legend, row_labels=outputs, col_labels=[""], title=title, **kwargs)
 
     # -- acoustics-only convenience (entropy dropped) -----------------------
 

@@ -41,3 +41,41 @@ FIXED_NPORTS = {
     LOSS: 2,
     DUCT: 2,
 }
+
+# Whether an element permits an area change across it (its incident edges may
+# carry different areas).  Area changes are physically carried by the dedicated
+# area-change elements; the constant-area elements -- the duct (theory.md s12.3)
+# and the concentrated loss (whose K-referenced loss assumes equal up/downstream
+# area, modeling-guide.md s4) -- require one shared area across both ports.
+# Junctions/splitters are manifolds and impose no area-equality constraint.
+# Single-port boundaries are exempt (one edge, nothing to compare).  Elements
+# absent from this map default to True (unconstrained); add an entry here when a
+# new element type needs the equal-area rule enforced.
+ALLOWS_AREA_CHANGE = {
+    MASS_FLOW_INLET: True,
+    PT_INLET: True,
+    P_OUTLET: True,
+    WALL: True,
+    ISEN_AREA_CHANGE: True,
+    SUDDEN_AREA_CHANGE: True,
+    JUNCTION: True,
+    SPLITTER: True,
+    DUCT: False,
+    LOSS: False,
+}
+
+# Human-readable element-type names, for validation / reporting messages.
+RESIDUAL_NAMES = {
+    MASS_FLOW_INLET: "MassFlowInlet",
+    PT_INLET: "TotalPressureInlet",
+    P_OUTLET: "PressureOutlet",
+    ISEN_AREA_CHANGE: "IsentropicAreaChange",
+    SUDDEN_AREA_CHANGE: "SuddenAreaChange",
+    LOSS: "LossElement",
+    JUNCTION: "JunctionStaticP",
+    SPLITTER: "LosslessSplitter",
+    DUCT: "Duct",
+    SUPERSONIC_INLET: "SupersonicInlet",
+    SUPERSONIC_OUTLET: "SupersonicOutlet",
+    WALL: "Wall",
+}

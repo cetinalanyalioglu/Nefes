@@ -33,7 +33,8 @@ _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 
 R_AIR, GAMMA = 287.0, 1.4
 CFG = perfect_gas(R_AIR, GAMMA)
-OMEGAS = np.linspace(80.0, 3200.0, 9)
+OMEGAS = np.linspace(80.0, 3200.0, 9)  # angular frequencies (rad/s) for the e^{-iwt} phase checks
+FREQS = OMEGAS / (2.0 * np.pi)  # the matching Hz sweep fed to the (Hz) boundary_response API
 LDUCT = 0.5
 
 
@@ -81,7 +82,7 @@ def _roundtrip(L, u, c, omegas):
 def test_terminated_duct_reflection(outlet_bc, Rval):
     _, sol = _duct_case(PerturbationBC.excitation(1.0), outlet_bc)
     u, c = _uc(sol)
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     expected = Rval * _roundtrip(LDUCT, u, c, OMEGAS)
     assert np.allclose(fr.reflection_at(0), expected, atol=1e-9, rtol=1e-7)
 
@@ -92,7 +93,7 @@ def test_impedance_specific_and_absolute(zeta):
     # specific impedance: R independent of rho*c
     _, sol = _duct_case(PerturbationBC.excitation(1.0), PerturbationBC.impedance(zeta, specific=True))
     u, c = _uc(sol)
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     assert np.allclose(fr.reflection_at(0), R * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-9)
 
     # absolute impedance Z = zeta * (rho c) read at the outlet edge -> same R
@@ -100,7 +101,7 @@ def test_impedance_specific_and_absolute(zeta):
     rho_c = float(est[ES_RHO, 1]) * float(est[ES_C, 1])
     _, sol2 = _duct_case(PerturbationBC.excitation(1.0), PerturbationBC.impedance(zeta * rho_c, specific=False))
     u2, c2 = _uc(sol2)
-    fr2 = boundary_response(sol2.problem, sol2.x, OMEGAS)
+    fr2 = boundary_response(sol2.problem, sol2.x, FREQS)
     assert np.allclose(fr2.reflection_at(0), R * _roundtrip(LDUCT, u2, c2, OMEGAS), atol=1e-9)
 
 
@@ -110,17 +111,17 @@ def test_mean_flow_open_end():
     M = u / c
     R = -(1.0 - M) / (1.0 + M)
     assert M > 0.2 and abs(R + 1.0) > 0.05  # genuinely mean-flow-corrected, not the ideal open end
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     assert np.allclose(fr.reflection_at(0), R * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-9)
 
 
 def test_frequency_dependent_reflection_table():
-    om_tab = np.linspace(0.0, 6000.0, 13)
-    R_tab = 0.2 + 0.1j + (om_tab / 6000.0) * (0.5 - 0.2j)  # ramps with frequency
-    _, sol = _duct_case(PerturbationBC.excitation(1.0), PerturbationBC.reflection((om_tab, R_tab)))
+    f_tab = np.linspace(0.0, 6000.0, 13)  # reflection table in Hz
+    R_tab = 0.2 + 0.1j + (f_tab / 6000.0) * (0.5 - 0.2j)  # ramps with frequency
+    _, sol = _duct_case(PerturbationBC.excitation(1.0), PerturbationBC.reflection((f_tab, R_tab)))
     u, c = _uc(sol)
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
-    R_at = np.interp(OMEGAS, om_tab, R_tab.real) + 1j * np.interp(OMEGAS, om_tab, R_tab.imag)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
+    R_at = np.interp(FREQS, f_tab, R_tab.real) + 1j * np.interp(FREQS, f_tab, R_tab.imag)
     assert np.allclose(fr.reflection_at(0), R_at * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-9)
 
 
@@ -128,7 +129,7 @@ def test_excitation_pins_incoming_wave_and_propagates():
     amp = 0.7 - 0.2j
     _, sol = _duct_case(PerturbationBC.excitation(amp), PerturbationBC.anechoic())
     u, c = _uc(sol)
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     # the excitation pins the incoming downstream wave f at the inlet edge
     assert np.allclose(fr.waves(0)[:, 0], amp, atol=1e-9)
     # anechoic outlet: no reflected (upstream) wave returns
@@ -154,7 +155,7 @@ def test_entropy_seat_convects_through_flowing_duct(inlet_bc):
     _, sol = _duct_case(inlet_bc, PerturbationBC.anechoic(), pt_in=115000.0)
     u, c = _uc(sol)
     assert u > 1.0  # genuinely flowing, so the entropy wave convects
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     assert np.allclose(fr.waves(0)[:, 2], amp, atol=1e-9)  # entropy seated at the inlet edge
     assert np.allclose(fr.waves(1)[:, 2], amp * np.exp(-1j * OMEGAS * (LDUCT / u)), atol=1e-9)  # convected out
     assert np.allclose(fr.waves(0)[:, 0], 0.0, atol=1e-9)  # no incoming acoustic f at the inlet
@@ -167,8 +168,50 @@ def test_inherited_pressure_outlet_is_pressure_release():
     # "continuity with the steady solution").
     _, sol = _duct_case(PerturbationBC.excitation(1.0), PerturbationBC.inherit())
     u, c = _uc(sol)
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     assert np.allclose(fr.reflection_at(0), -1.0 * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-8)
+
+
+# --------------------------------------------------------------------------
+# 1b. Linearity: the perturbation response scales/superposes with the excitation.
+# --------------------------------------------------------------------------
+
+
+def test_forced_response_scales_linearly_with_amplitude():
+    """Scaling the excitation scales the whole field by the same (complex) factor.
+
+    The perturbation problem is a linear system ``A(omega) x = b``; the operator is
+    fixed by the mean state and the closures (here a constant reflection, so the same
+    for every amplitude), and only ``b`` carries the excitation.  So the field must be
+    exactly proportional to the excitation amplitude -- the defining test of linearity.
+    """
+    outlet = PerturbationBC.reflection(0.4 + 0.1j)
+    _, s1 = _duct_case(PerturbationBC.excitation(1.0), outlet)
+    X1 = boundary_response(s1.problem, s1.x, FREQS).X
+    assert np.linalg.norm(X1) > 0.0  # genuinely excited
+    for scale in (2.0, 0.25, -3.0 + 1.5j):
+        _, s = _duct_case(PerturbationBC.excitation(scale), outlet)
+        X = boundary_response(s.problem, s.x, FREQS).X
+        assert np.allclose(X, scale * X1, atol=1e-10, rtol=1e-8)
+
+
+def test_forced_response_obeys_superposition():
+    """Independent excitations add: ``f(acoustic a, 0) + f(0, entropy b) == f(a, b)``.
+
+    With a clean (``R = 0``) excitation seat the operator is identical across the three
+    cases and only the right-hand side differs, so linearity makes the combined response
+    the exact sum of the individual ones.
+    """
+    a, b = 0.7 - 0.2j, 0.4 + 0.5j
+    outlet = PerturbationBC.reflection(0.3 - 0.2j)
+
+    def field(amp, ent):  # flowing inlet so the seated entropy wave convects
+        _, sol = _duct_case(PerturbationBC.excitation(amp, family="acoustic", entropy_in=ent), outlet, pt_in=115000.0)
+        return boundary_response(sol.problem, sol.x, FREQS).X
+
+    Xa, Xe, Xae = field(a, 0.0), field(0.0, b), field(a, b)
+    assert np.allclose(Xa + Xe, Xae, atol=1e-10, rtol=1e-8)
+    assert not np.allclose(Xa, Xae)  # both excitations genuinely contribute
 
 
 # --------------------------------------------------------------------------
@@ -217,7 +260,7 @@ def test_choked_nozzle_outlet_marble_candel():
     assert 0.1 < M < 0.9  # genuinely flowing, subsonic
     R, R_s = _choked_reflection(rho, u, p)
     assert R == pytest.approx((2 - (GAMMA - 1) * M) / (2 + (GAMMA - 1) * M), rel=1e-6)  # literature R(M)
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     f1, g1, h1 = fr.waves(1)[:, 0], fr.waves(1)[:, 1], fr.waves(1)[:, 2]
     assert np.allclose(g1, R * f1 + R_s * h1, atol=1e-7, rtol=1e-6)  # BC encodes the coupling
     assert np.max(np.abs(R_s * h1)) > 0.05 * np.max(np.abs(g1))  # entropy noise genuinely active
@@ -247,7 +290,7 @@ def test_generic_outlet_entropy_coupling():
     _, sol = _duct_case(inlet, outlet, pt_in=130000.0)
     u, _ = _uc(sol, 1)
     assert u > 1.0  # flowing, so an entropy wave reaches the outlet
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     f1, g1, h1 = fr.waves(1)[:, 0], fr.waves(1)[:, 1], fr.waves(1)[:, 2]
     assert np.allclose(g1, Rv * f1 + Rsv * h1, atol=1e-9)
 
@@ -287,7 +330,7 @@ def test_wall_terminated_duct_is_hard_wall():
     assert sol.converged
     u, c = _uc(sol)
     assert abs(u) < 1e-9  # quiescent
-    fr = boundary_response(sol.problem, sol.x, OMEGAS)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
     assert np.allclose(fr.reflection_at(0), np.exp(-2j * OMEGAS * LDUCT / c), atol=1e-9)
 
 
@@ -332,10 +375,10 @@ def test_bc_impedance_polar():
     assert abs(PerturbationBC.impedance_polar(1.0, 90.0).reflection_coefficient(0.0, rho, c, 0.0)) == pytest.approx(1.0)
 
 
-def test_bc_table_interpolation_in_omega():
-    om = np.array([0.0, 100.0, 200.0])
+def test_bc_table_interpolation_in_freq():
+    f = np.array([0.0, 100.0, 200.0])  # Hz
     val = np.array([0.0 + 0j, 1.0 + 0j, 1.0 + 2j])
-    bc = PerturbationBC.reflection((om, val))
+    bc = PerturbationBC.reflection((f, val))
     assert bc.reflection_coefficient(50.0, 1.0, 1.0, 0.0) == pytest.approx(0.5 + 0j)
     assert bc.reflection_coefficient(150.0, 1.0, 1.0, 0.0) == pytest.approx(1.0 + 1j)
 

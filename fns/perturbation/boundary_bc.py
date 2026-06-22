@@ -50,10 +50,11 @@ pressure-release end ``Z -> 0`` gives ``R = -1``, and the matched impedance
 ``Z = rho c`` gives ``R = 0``.
 
 Each numeric carrier (``R``, ``Z``, ``amplitude``, ``entropy_in``) may be a complex
-constant, a frequency table ``(omegas, values)`` interpolated in ``omega``, or a
-callable ``omega -> complex`` (Python API only; YAML/UI use constants or a table).
-This object lives entirely *above* the @njit line -- it is evaluated on the frozen
-mean state at assembly time, so no complex-step differentiation flows through it.
+constant, a frequency table ``(freqs_hz, values)`` interpolated in frequency, or a
+callable ``freq_hz -> complex`` (Python API only; YAML/UI use constants or a table).
+Frequencies here are in **Hz**, matching the public perturbation API.  This object
+lives entirely *above* the @njit line -- it is evaluated on the frozen mean state at
+assembly time, so no complex-step differentiation flows through it.
 """
 
 import cmath
@@ -79,21 +80,21 @@ KINDS = (
 _F, _G, _H = 0, 1, 2
 
 
-def _eval(value, omega):
-    """Evaluate a coefficient at angular frequency ``omega`` (rad/s).
+def _eval(value, freq):
+    """Evaluate a coefficient at frequency ``freq`` (Hz).
 
-    ``value`` is a complex constant, a callable ``omega -> complex``, or a frequency
-    table ``(omegas, values)`` linearly interpolated (real and imaginary parts) in
-    ``omega`` and held flat outside its range.
+    ``value`` is a complex constant, a callable ``freq -> complex``, or a frequency
+    table ``(freqs, values)`` linearly interpolated (real and imaginary parts) in
+    ``freq`` and held flat outside its range.
     """
     if value is None:
         return 0.0 + 0.0j
     if callable(value):
-        return complex(value(omega))
+        return complex(value(freq))
     if isinstance(value, tuple) and len(value) == 2:
         xs, ys = np.asarray(value[0], dtype=float), np.asarray(value[1], dtype=complex)
-        re = np.interp(omega, xs, ys.real)
-        im = np.interp(omega, xs, ys.imag)
+        re = np.interp(freq, xs, ys.real)
+        im = np.interp(freq, xs, ys.imag)
         return complex(re, im)
     return complex(value)
 
@@ -159,8 +160,8 @@ class PerturbationBC:
 
     # -- evaluation on the frozen mean state --------------------------------
 
-    def reflection_coefficient(self, omega, rho, c, M, K=None) -> Optional[complex]:
-        """Acoustic reflection coefficient ``R`` at ``omega`` and the terminal mean state.
+    def reflection_coefficient(self, freq, rho, c, M, K=None) -> Optional[complex]:
+        """Acoustic reflection coefficient ``R`` at ``freq`` (Hz) and the terminal mean state.
 
         Returns ``None`` for ``inherit`` (signalling "do not stamp this terminal").
         ``M`` is the **outward-normal** mean Mach number at the terminal edge; ``K =
@@ -178,21 +179,21 @@ class PerturbationBC:
         if k == "anechoic":
             return 0.0 + 0.0j
         if k == "reflection":
-            return _eval(self.R, omega)
+            return _eval(self.R, freq)
         if k == "impedance":
-            z = _eval(self.Z, omega)
+            z = _eval(self.Z, freq)
             if self.specific:
                 z = z * (rho * c)
             zc = rho * c
             return (z - zc) / (z + zc)
         if k == "excitation":
-            return _eval(self.base_R, omega)
+            return _eval(self.base_R, freq)
         if k == "choked_nozzle":  # compact choked outlet: delta_M = 0 (Marble--Candel)
             gm1 = _gamma_minus_one(K)
             return complex((2.0 - gm1 * M) / (2.0 + gm1 * M))
         raise ValueError(f"unhandled perturbation BC kind {k!r}")  # pragma: no cover
 
-    def entropy_coupling_coefficient(self, omega, rho, c, M, K=None) -> complex:
+    def entropy_coupling_coefficient(self, freq, rho, c, M, K=None) -> complex:
         """Off-diagonal ``R_s``: arriving entropy -> reflected acoustic at an outlet.
 
         Zero unless ``choked_nozzle`` (``R_s = (c/rho) M/(2+(gamma-1)M)``) or an explicit
@@ -202,17 +203,17 @@ class PerturbationBC:
             gm1 = _gamma_minus_one(K)
             return complex((c / rho) * M / (2.0 + gm1 * M))
         if self.entropy_coupling is not None:
-            return _eval(self.entropy_coupling, omega)
+            return _eval(self.entropy_coupling, freq)
         return 0.0 + 0.0j
 
-    def acoustic_to_entropy_coefficient(self, omega) -> complex:
+    def acoustic_to_entropy_coefficient(self, freq) -> complex:
         """Off-diagonal: arriving acoustic -> specified entropy at an inlet (0 unless set)."""
         if self.acoustic_to_entropy is not None:
-            return _eval(self.acoustic_to_entropy, omega)
+            return _eval(self.acoustic_to_entropy, freq)
         return 0.0 + 0.0j
 
-    def closure(self, omega, rho, c, u, M, K, specify, arriving):
-        """Matrix closure ``(A, b)`` for one terminal at ``omega`` and the mean state.
+    def closure(self, freq, rho, c, u, M, K, specify, arriving):
+        """Matrix closure ``(A, b)`` for one terminal at ``freq`` (Hz) and the mean state.
 
         ``specify`` / ``arriving`` are the to-specify / arriving characteristic indices
         from :func:`matrices.partition`.  Returns ``A`` of shape
@@ -231,28 +232,28 @@ class PerturbationBC:
 
         ac_spec = _F if _F in spos else _G  # the to-specify acoustic wave
         ac_arr = _G if ac_spec == _F else _F  # the arriving acoustic wave
-        R = self.reflection_coefficient(omega, rho, c, M, K)
+        R = self.reflection_coefficient(freq, rho, c, M, K)
         A[spos[ac_spec], apos[ac_arr]] = R
-        b[spos[ac_spec]] = self.forcing(omega)
+        b[spos[ac_spec]] = self.forcing(freq)
 
         if _H in apos:  # outlet: arriving entropy can reflect into the specified acoustic wave
-            A[spos[ac_spec], apos[_H]] = self.entropy_coupling_coefficient(omega, rho, c, M, K)
+            A[spos[ac_spec], apos[_H]] = self.entropy_coupling_coefficient(freq, rho, c, M, K)
         if _H in spos:  # inlet: entropy is to-specify (seated, with an optional acoustic source term)
-            b[spos[_H]] = self.entropy_forcing(omega)
-            A[spos[_H], apos[ac_arr]] = self.acoustic_to_entropy_coefficient(omega)
+            b[spos[_H]] = self.entropy_forcing(freq)
+            A[spos[_H], apos[ac_arr]] = self.acoustic_to_entropy_coefficient(freq)
         return A, b
 
-    def forcing(self, omega) -> complex:
-        """Acoustic-row excitation forcing ``b`` at ``omega`` (0 unless excitation)."""
+    def forcing(self, freq) -> complex:
+        """Acoustic-row excitation forcing ``b`` at ``freq`` (Hz) (0 unless excitation)."""
         if self.kind == "excitation" and self.family == "acoustic":
-            return _eval(self.amplitude, omega)
+            return _eval(self.amplitude, freq)
         return 0.0 + 0.0j
 
-    def entropy_forcing(self, omega) -> complex:
-        """Incoming entropy amplitude seated at an inflow terminal, at ``omega``."""
-        b = _eval(self.entropy_in, omega) if self.entropy_in is not None else 0.0 + 0.0j
+    def entropy_forcing(self, freq) -> complex:
+        """Incoming entropy amplitude seated at an inflow terminal, at ``freq`` (Hz)."""
+        b = _eval(self.entropy_in, freq) if self.entropy_in is not None else 0.0 + 0.0j
         if self.kind == "excitation" and self.family == "entropy":
-            b = b + _eval(self.amplitude, omega)
+            b = b + _eval(self.amplitude, freq)
         return b
 
     @property

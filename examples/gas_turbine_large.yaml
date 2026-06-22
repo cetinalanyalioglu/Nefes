@@ -25,7 +25,7 @@
 #     MassFlowInlet (LP, 3 kg/s / 480 K) -- merged at a static-pressure junction;
 #   * a non-tree topology (the cross-bridge cycle between two sub-manifolds);
 #   * EMERGENT BACKFLOW: the sink "sink-1480--560" sits at 830 kPa, above the
-#     local manifold static pressure, so it ingests air (mdot ~ -0.21 kg/s).  Its
+#     local manifold static pressure, so it ingests air (mdot ~ -0.14 kg/s).  Its
 #     backflowTotalTemperature closes the energy balance for the ingested stream.
 #   * ACOUSTIC PROPAGATION: six constant-area Duct sections sit on the transport
 #     runs -- the two inlet feeds (hp/lp-feed-duct), the main manifold pipe
@@ -36,8 +36,8 @@
 #     is held constant ACROSS each duct (both incident edges have equal area) --
 #     area changes belong to IsentropicAreaChange / SuddenAreaChange, not ducts.
 #
-# 63 elements / 63 edges (6 of them constant-area ducts); converges in ~13 Newton
-# steps to ||r|| ~ 1e-11; fully subsonic (max M ~ 0.65), so it stays inside the v1
+# 63 elements / 63 edges (6 of them constant-area ducts); converges in ~15 Newton
+# steps to ||r|| ~ 1e-15; fully subsonic (max M ~ 0.65), so it stays inside the v1
 # subsonic scope.  As with the other UI exports, edges reference PORTS via
 # sourceHandle / targetHandle (`<node>-port-<ordinal>`): port 0 is the target
 # (incoming) side, port 1 the source (outgoing) side; the loader densifies each
@@ -484,7 +484,7 @@ model:
     type: flow
     attributes:
       index: 4
-      area: 0.01
+      area: 0.012
   - id: edge_6
     source: LossElement_1
     target: Duct_4
@@ -637,7 +637,7 @@ model:
     type: flow
     attributes:
       index: 21
-      area: 0.01
+      area: 0.012
   - id: edge_23
     source: LossElement_8
     target: Duct_5
@@ -781,7 +781,7 @@ model:
     type: flow
     attributes:
       index: 37
-      area: 0.01
+      area: 0.012
   - id: edge_39
     source: LossElement_15
     target: Duct_6

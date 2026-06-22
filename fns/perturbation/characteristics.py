@@ -89,13 +89,16 @@ def edge_transforms(est, K):
 # Perturbation-variable flavors: B with  v_basis = B @ w,  w = (f, g, h).
 # --------------------------------------------------------------------------
 
+# Per-component symbols as LaTeX (MathJax) fragments, for plot labelling.  The
+# plotting layer wraps and subscripts these (so they must group cleanly under a
+# subscript); they are not meant for plain-text display.
 BASIS_LABELS = {
     "char": ("f", "g", "h"),
-    "primitive": ("p'/ρc", "u'", "ρ'c/ρ"),
-    "network": ("ṁ'", "p'", "h_t'"),
-    "riemann": ("P+", "P−", "σ"),
-    "pu_entropy": ("p'/ρc", "u'", "s'/c_p"),
-    "pu_rho": ("p'/ρc", "u'", "ρ'"),
+    "primitive": (r"p'/\rho c", r"u'", r"\rho' c/\rho"),
+    "network": (r"\dot{m}'", r"p'", r"h_t'"),
+    "riemann": (r"P^+", r"P^-", r"\sigma"),
+    "pu_entropy": (r"p'/\rho c", r"u'", r"s'/c_p"),
+    "pu_rho": (r"p'/\rho c", r"u'", r"\rho'"),
 }
 
 

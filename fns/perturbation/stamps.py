@@ -167,7 +167,8 @@ def _terminal_closure(prob, est, K, t, bc, omega):
     p, area = float(est[ES_P, e]), float(est[ES_AREA, e])
     m_out = (u / c) if not t.at_tail else (-u / c)  # outward-normal mean Mach
     specify, arriving = partition(u, c, "a" if t.at_tail else "b")
-    Amat, bvec = bc.closure(omega, rho, c, u, m_out, K, specify, arriving)
+    freq = omega / (2.0 * np.pi)  # BC carriers (tables/callables) are in Hz; operator stays in omega
+    Amat, bvec = bc.closure(freq, rho, c, u, m_out, K, specify, arriving)
     L_e = dx_to_char(rho, c, u, p, area, K)
     out = []
     for i, ch in enumerate(specify):

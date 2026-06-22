@@ -35,8 +35,9 @@ _FONT_FAMILY = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
 
 
 # Uniform line weight shared by every axis line, mirrored border and tick, so all
-# four sides of every subplot read at the same thickness.
-_LINE_W = 1.2
+# four sides of every subplot read at the same thickness.  A slightly heavier weight
+# gives each panel a crisper frame than the hairline grid inside it.
+_LINE_W = 1.6
 
 
 def _axis():

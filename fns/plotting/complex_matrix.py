@@ -32,24 +32,34 @@ def _as_list(x):
 
 
 def _sub(sym, idx):
-    """Attach an edge/station subscript, rendered by Plotly (``f`` at edge 1 -> ``f₁``)."""
-    return f"{sym}<sub>{idx}</sub>"
+    """Attach an edge/station subscript as a LaTeX fragment (``f`` at edge 1 -> ``{f}_{1}``).
+
+    The symbol is grouped with braces so a composite label (``p'/\\rho c``) is
+    subscripted as a whole, not just its last token.
+    """
+    return f"{{{sym}}}_{{{idx}}}"
+
+
+def _math(s):
+    """Wrap a LaTeX fragment as a complete MathJax string for a Plotly label."""
+    return f"${s}$"
 
 
 def _entry_title(row_labels, col_labels, i, j):
     """Title of matrix entry ``(i, j)`` read causally: input (column ``j``) -> output (row ``i``).
 
-    For a transfer matrix ``v_b = T v_a`` the column is the variable at the input
-    station and the row is the variable at the output station, so entry ``(i, j)``
-    reads ``col_j -> row_i`` (e.g. ``f₁ -> f₂`` between edges 1 and 2).
+    Returns a LaTeX (MathJax) string.  For a transfer matrix ``v_b = T v_a`` the
+    column is the variable at the input station and the row is the variable at the
+    output station, so entry ``(i, j)`` reads ``col_j -> row_i`` (e.g. ``f_1 \\to
+    f_2`` between edges 1 and 2).  Labels are expected to be LaTeX fragments.
     """
     if row_labels is None or col_labels is None:
-        return f"{i + 1}{j + 1}"
+        return _math(f"{i + 1}{j + 1}")
     if not col_labels[j]:  # single-axis overlay (e.g. source attribution): title by row alone
-        return row_labels[i]
+        return _math(row_labels[i])
     if not row_labels[i]:
-        return col_labels[j]
-    return f"{col_labels[j]}→{row_labels[i]}"
+        return _math(col_labels[j])
+    return _math(f"{col_labels[j]} \\to {row_labels[i]}")
 
 
 def _axis_labels(nrow, ncol, labels, row_labels, col_labels, edges):
@@ -84,11 +94,12 @@ def _resolve_mag_range(matrices, i, j, mag_range):
 def _preset_mag_range(matrices):
     """Shared magnitude range used by the transfer/scattering presets.
 
-    ``(0, 1)`` when no entry exceeds unity (the natural band for reflection /
-    transmission coefficients), otherwise ``(0, max |entry|)``.
+    ``(0, 1.05)`` when no entry exceeds unity (the natural band for reflection /
+    transmission coefficients, with a little headroom so a coefficient sitting at
+    ``1`` is not flush against the frame), otherwise ``(0, 1.05 * max |entry|)``.
     """
     m = max(float(np.max(np.abs(np.asarray(M)))) for M in _as_list(matrices))
-    return (0.0, 1.0) if m <= 1.0 else (0.0, m)
+    return (0.0, 1.05) if m <= 1.0 else (0.0, 1.05 * m)
 
 
 def _normalize(matrices, freqs, names):
@@ -123,7 +134,7 @@ def plot_complex_matrix(
     edges=None,
     entries=None,
     layout="auto",
-    x_title="frequency",
+    x_title=r"$f\;(\mathrm{Hz})$",
     phase="rad",
     unwrap=False,
     mag_range=None,
@@ -178,7 +189,7 @@ def plot_complex_matrix(
         showlegend = len(matrices) > 1
 
     ph_scale = 180.0 / np.pi if phase == "deg" else 1.0
-    ph_title = "∠ (deg)" if phase == "deg" else "∠ (rad)"
+    ph_title = r"$\angle\;(\mathrm{deg})$" if phase == "deg" else r"$\angle\;(\mathrm{rad})$"
 
     if layout == "flat":
         fig = _flat_axes(entries, row_labels, col_labels, x_title, ph_title, height, width)
@@ -213,14 +224,14 @@ def _flat_axes(entries, row_labels, col_labels, x_title, ph_title, height, width
         cols=ncol,
         shared_xaxes=True,
         subplot_titles=titles,
-        vertical_spacing=0.08,
-        horizontal_spacing=0.04,
+        vertical_spacing=0.10,
+        horizontal_spacing=0.06,
     )
-    fig.update_yaxes(title_text="|·|", row=1, col=1)
+    fig.update_yaxes(title_text=r"$|\cdot|$", row=1, col=1)
     fig.update_yaxes(title_text=ph_title, row=2, col=1)
     for c in range(1, ncol + 1):
         fig.update_xaxes(title_text=x_title, row=2, col=c)
-    fig.update_layout(height=height or 420, width=width)
+    fig.update_layout(height=height or 440, width=width)
     return fig
 
 
@@ -263,11 +274,11 @@ def _grid_axes(nrow, ncol, entries, row_labels, col_labels, x_title, ph_title, h
         cols=ncol,
         shared_xaxes=True,
         subplot_titles=titles,
-        vertical_spacing=0.04,
-        horizontal_spacing=0.05,
+        vertical_spacing=0.05,
+        horizontal_spacing=0.07,
     )
     for i in range(nrow):
-        fig.update_yaxes(title_text="|·|", row=2 * i + 1, col=1)
+        fig.update_yaxes(title_text=r"$|\cdot|$", row=2 * i + 1, col=1)
         fig.update_yaxes(title_text=ph_title, row=2 * i + 2, col=1)
     for c in range(1, ncol + 1):
         fig.update_xaxes(title_text=x_title, row=2 * nrow, col=c)
@@ -367,11 +378,12 @@ def plot_transfer_matrix(matrices, freqs, *, labels=None, edges=None, mag_range=
     Examples
     --------
     >>> T = resp.transfer_matrix(1, 2, basis="primitive")   # convert here
-    >>> plot_transfer_matrix(T, resp.omegas, edges=(1, 2),
+    >>> plot_transfer_matrix(T, resp.freqs, edges=(1, 2),
     ...                      labels=("p'/ρc", "u'", "ρ'c/ρ")).show()
     """
     if mag_range is _PRESET:
         mag_range = _preset_mag_range(matrices)
+    kwargs.setdefault("title", "Transfer matrix (magnitude over phase)")
     return plot_complex_matrix(matrices, freqs, labels=labels, edges=edges, mag_range=mag_range, **kwargs)
 
 
@@ -441,13 +453,14 @@ def plot_scattering_matrix(
     Examples
     --------
     >>> S = resp.scattering_matrix(1, 2)
-    >>> plot_scattering_matrix(S, resp.omegas, edges=(1, 2),
+    >>> plot_scattering_matrix(S, resp.freqs, edges=(1, 2),
     ...                        partition=resp.scattering_labels(1, 2)).show()
     """
     if partition is not None and edges is not None and row_labels is None and col_labels is None:
         row_labels, col_labels = scattering_axis_labels(partition[0], partition[1], edges, labels)
     if mag_range is _PRESET:
         mag_range = _preset_mag_range(matrices)
+    kwargs.setdefault("title", "Scattering matrix (magnitude over phase)")
     return plot_complex_matrix(
         matrices,
         freqs,

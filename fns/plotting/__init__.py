@@ -13,7 +13,7 @@ matrices in a notebook (magnitude over phase, with presets for the 2x2 acoustic
 and 3x3 full perturbation networks)::
 
     from fns.plotting import plot_transfer_matrix
-    plot_transfer_matrix(resp.transfer_matrix(0, 1), resp.omegas).show()
+    plot_transfer_matrix(resp.transfer_matrix(0, 1), resp.freqs).show()
 """
 
 from .theme import COLORWAY, FNS_TEMPLATE_NAME, fns_template, use_fns_theme

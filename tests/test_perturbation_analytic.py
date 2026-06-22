@@ -193,9 +193,11 @@ def test_sudden_area_change_independent_jump():
 
 def test_loss_element_independent_jump():
     K_loss = 2.5
-    prob, res = _two_port(cat.loss(K_loss), 0.08, 0.05, pt_in=120000.0)
+    # the concentrated loss is a constant-area element (its K is referenced to the
+    # inlet dynamic head); the jump stays non-trivial through the total-pressure drop.
+    prob, res = _two_port(cat.loss(K_loss), 0.08, 0.08, pt_in=120000.0)
     T_prim, est = _assembled_prim_tm(prob, res)
-    T_ref = _jump_tm(_r_loss, _prim(est, 0), _prim(est, 1), 0.08, 0.05, K_loss)
+    T_ref = _jump_tm(_r_loss, _prim(est, 0), _prim(est, 1), 0.08, 0.08, K_loss)
     # the loss kernel smooths |u| with width eps ~ 1e-4*mdot_ref; away from u=0 the
     # smoothing is saturated, so the match is tight.
     assert np.allclose(T_prim, T_ref, rtol=1e-4, atol=1e-4 * np.max(np.abs(T_ref)))
@@ -211,7 +213,7 @@ def test_loss_element_independent_jump():
     [
         (cat.isentropic_area_change(), 0.08, 0.05),
         (cat.sudden_area_change(), 0.05, 0.08),
-        (cat.loss(2.5), 0.08, 0.05),
+        (cat.loss(2.5), 0.08, 0.08),  # loss is constant-area (equal-area rule)
         (cat.duct(1.0), 0.06, 0.06),  # length inert at omega -> 0 (phases -> 1)
     ],
 )

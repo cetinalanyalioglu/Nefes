@@ -91,14 +91,15 @@ def test_overlay_two_datasets_adds_legend_groups():
 
 def test_transfer_preset_accepts_explicit_labels():
     # the free plotter only names axes from explicit symbols (it cannot convert the
-    # matrix); primitive symbols read column (input) -> row (output).
+    # matrix); primitive symbols read column (input) -> row (output).  Labels are
+    # LaTeX fragments and the plotter composes them into a MathJax entry title.
     freqs = np.linspace(50, 1500, 16)
-    prim = ("p'/ρc", "u'", "ρ'c/ρ")
+    prim = (r"p'/\rho c", r"u'", r"\rho' c/\rho")
     fig = plot_transfer_matrix(_rand_matrix(16, 3), freqs, labels=prim)
     titles = {a.text for a in fig.layout.annotations}
-    assert "u'→u'" in titles  # diagonal
-    assert "p'/ρc→u'" in titles  # (1,0): input p'/ρc -> output u'
-    assert "ρ'c/ρ→ρ'c/ρ" in titles
+    assert r"$u' \to u'$" in titles  # diagonal
+    assert r"$p'/\rho c \to u'$" in titles  # (1,0): input p'/ρc -> output u'
+    assert r"$\rho' c/\rho \to \rho' c/\rho$" in titles
 
 
 def test_phase_in_degrees_scales_axis():
@@ -134,16 +135,16 @@ def test_rectangular_matrix_supported():
 
 
 def _sub(sym, idx):
-    return f"{sym}<sub>{idx}</sub>"
+    return f"{{{sym}}}_{{{idx}}}"  # LaTeX subscript fragment, matching complex_matrix._sub
 
 
 def test_entry_titles_read_input_to_output():
     # No edges: titles read column (input) -> row (output), so the full 3x3 carries
-    # both orderings of an off-diagonal pair.
+    # both orderings of an off-diagonal pair.  Titles are MathJax strings.
     freqs = np.linspace(50, 1500, 16)
     fig = plot_transfer_matrix(_rand_matrix(16, 3), freqs)  # default labels (f, g, h)
     titles = {a.text for a in fig.layout.annotations}
-    assert {"f→f", "g→f", "f→g", "h→h"} <= titles
+    assert {r"$f \to f$", r"$g \to f$", r"$f \to g$", r"$h \to h$"} <= titles
 
 
 def test_edges_subscript_entry_titles():
@@ -152,16 +153,16 @@ def test_edges_subscript_entry_titles():
     freqs = np.linspace(50, 1500, 16)
     fig = plot_transfer_matrix(_rand_matrix(16, 3), freqs, edges=(1, 2))  # default labels (f, g, h)
     titles = {a.text for a in fig.layout.annotations}
-    assert f"{_sub('f', 1)}→{_sub('f', 2)}" in titles  # diagonal (0,0)
-    assert f"{_sub('g', 1)}→{_sub('f', 2)}" in titles  # (0,1): input g at 1 -> output f at 2
-    assert f"{_sub('f', 1)}→{_sub('g', 2)}" in titles  # (1,0): input f at 1 -> output g at 2
+    assert f"${_sub('f', 1)} \\to {_sub('f', 2)}$" in titles  # diagonal (0,0)
+    assert f"${_sub('g', 1)} \\to {_sub('f', 2)}$" in titles  # (0,1): input g at 1 -> output f at 2
+    assert f"${_sub('f', 1)} \\to {_sub('g', 2)}$" in titles  # (1,0): input f at 1 -> output g at 2
 
 
 def test_explicit_row_col_labels_override():
     freqs = np.linspace(50, 1500, 16)
     fig = plot_complex_matrix(_rand_matrix(16, 2), freqs, row_labels=["out0", "out1"], col_labels=["in0", "in1"])
     titles = {a.text for a in fig.layout.annotations}
-    assert "in1→out0" in titles  # entry (0,1): col 1 -> row 0
+    assert r"$in1 \to out0$" in titles  # entry (0,1): col 1 -> row 0
 
 
 def test_scattering_axis_labels_tag_their_own_station():
@@ -177,7 +178,7 @@ def test_scattering_preset_partition_labels_entries():
     inc, out = [("a", 0), ("b", 1)], [("a", 1), ("b", 0)]
     fig = plot_scattering_matrix(_rand_matrix(16, 2), freqs, edges=(0, 2), partition=(inc, out))
     titles = {a.text for a in fig.layout.annotations}
-    assert f"{_sub('f', 0)}→{_sub('g', 0)}" in titles  # (0,0): incoming f_a -> outgoing g_a
+    assert f"${_sub('f', 0)} \\to {_sub('g', 0)}$" in titles  # (0,0): incoming f_a -> outgoing g_a
 
 
 # -- magnitude axis scaling -------------------------------------------------
@@ -186,8 +187,8 @@ def test_scattering_preset_partition_labels_entries():
 def test_preset_mag_range_rule():
     from fns.plotting.complex_matrix import _preset_mag_range
 
-    assert _preset_mag_range(0.4 * np.ones((4, 2, 2), dtype=complex)) == (0.0, 1.0)
-    assert _preset_mag_range(3.0 * np.ones((4, 2, 2), dtype=complex)) == (0.0, 3.0)
+    assert _preset_mag_range(0.4 * np.ones((4, 2, 2), dtype=complex)) == pytest.approx((0.0, 1.05))
+    assert _preset_mag_range(3.0 * np.ones((4, 2, 2), dtype=complex)) == pytest.approx((0.0, 3.15))
 
 
 def test_explicit_mag_range_sets_every_magnitude_axis():
@@ -202,4 +203,4 @@ def test_scattering_preset_uses_unit_band_when_subunit():
     M = 0.5 * np.ones((16, 2, 2), dtype=complex)  # nothing exceeds 1
     fig = plot_scattering_matrix(M, freqs)
     ranges = [tuple(ax.range) for ax in fig.select_yaxes() if ax.range is not None]
-    assert (0.0, 1.0) in ranges
+    assert (0.0, 1.05) in ranges

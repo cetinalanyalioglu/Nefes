@@ -22,7 +22,13 @@ from .ids import (
     SPLITTER,
     ACOUSTIC_DEFAULT,
     ACOUSTIC_DUCT,
+    FIXED_NPORTS,
+    ALLOWS_AREA_CHANGE,
+    RESIDUAL_NAMES,
 )
+
+# Relative tolerance for the equal-area check on constant-area elements.
+_AREA_RTOL = 1e-9
 
 
 @dataclass
@@ -120,6 +126,70 @@ def duct(length=0.0, name="duct"):
     return ElementSpec(DUCT, [float(length)], name, acoustic_id=ACOUSTIC_DUCT)
 
 
+def _node_label(n: int, el: ElementSpec) -> str:
+    """Human-readable identifier for an element, for validation messages."""
+    typ = RESIDUAL_NAMES.get(el.residual_id, f"residual {el.residual_id}")
+    name = f" {el.name!r}" if el.name else ""
+    return f"element {n}{name} ({typ})"
+
+
+def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.ndarray) -> None:
+    """Check structural and area-consistency invariants before compiling.
+
+    Raises ``ValueError`` (naming the offending element) on the first violation:
+
+    * every edge area is finite and strictly positive;
+    * each element's port count matches its arity -- exactly ``FIXED_NPORTS`` for
+      fixed-arity elements, ``>= 2`` for the variable junction/splitter;
+    * elements that do not permit an area change (``ALLOWS_AREA_CHANGE`` is
+      ``False`` -- the duct and the concentrated loss) carry one shared area
+      across all their incident edges.  An intended area change must use an
+      ``isentropic_area_change`` or ``sudden_area_change`` element.
+
+    Parameters
+    ----------
+    elements : list of ElementSpec
+        The network elements, in node order.
+    conn : Connectivity
+        The compiled connectivity (per-node incident edges and degrees).
+    area : ndarray
+        Per-edge cross-sectional area, indexed by global edge id.
+    """
+    area = np.asarray(area, dtype=np.float64)
+    if area.size != conn.n_edges:
+        raise ValueError(f"area has {area.size} entries but the network has {conn.n_edges} edges")
+    bad = np.nonzero(~(np.isfinite(area) & (area > 0.0)))[0]
+    if bad.size:
+        raise ValueError(f"edge areas must be finite and positive; offending edge id(s): {bad.tolist()}")
+    if len(elements) != conn.n_nodes:
+        raise ValueError(f"{len(elements)} elements but the connectivity has {conn.n_nodes} nodes")
+
+    for n, el in enumerate(elements):
+        rid = el.residual_id
+        deg = conn.degree(n)
+        label = _node_label(n, el)
+
+        expected = FIXED_NPORTS.get(rid)
+        if expected is not None:
+            if deg != expected:
+                raise ValueError(f"{label} expects {expected} port(s) but is connected to {deg} edge(s)")
+        elif rid in (JUNCTION, SPLITTER):
+            if deg < 2:
+                raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
+
+        if not ALLOWS_AREA_CHANGE.get(rid, True) and deg >= 2:
+            inc = conn.incident_edges(n)
+            a0 = float(area[inc[0]])
+            for e in inc[1:]:
+                ae = float(area[e])
+                if abs(ae - a0) > _AREA_RTOL * max(abs(a0), abs(ae)):
+                    raise ValueError(
+                        f"{label} does not permit an area change but its ports carry different "
+                        f"areas ({a0:g} vs {ae:g} m^2); model the area change with an "
+                        f"isentropic_area_change or sudden_area_change element"
+                    )
+
+
 def _row_kinds(rid: int, deg: int, mdot_ref, p_ref):
     """Residual-row scale magnitudes for one element."""
     if rid == MASS_FLOW_INLET or rid == WALL:
@@ -167,6 +237,7 @@ def build_problem_from_connectivity(
     """
     n_nodes = len(elements)
     area = np.ascontiguousarray(area, dtype=np.float64)
+    validate_network(elements, conn, area)
 
     degrees = [conn.degree(n) for n in range(n_nodes)]
     node_rid = np.array([el.residual_id for el in elements], dtype=np.int64)

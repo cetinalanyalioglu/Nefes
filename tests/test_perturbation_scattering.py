@@ -31,7 +31,8 @@ from fns.perturbation import (
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
 CFG = perfect_gas(R_AIR, GAMMA)
-OM = np.linspace(50.0, 1500.0, 9)
+OM = np.linspace(50.0, 1500.0, 9)  # angular frequencies (rad/s) for the e^{-iwt} phase checks
+FR = OM / (2.0 * np.pi)  # the matching Hz sweep fed to the (Hz) perturbation_response API
 FULL = ("acoustic", "entropy")  # drive the entropy wave too -> full 3x3 response
 
 
@@ -140,7 +141,7 @@ def test_default_excitation_is_acoustic_2x2():
     # the default drives only the acoustic waves and pins the incoming entropy to
     # zero -- a clean, well-conditioned 2x2 acoustic response.
     prob, res = _single_duct(110000.0, 101325.0, 1.0)
-    resp = perturbation_response(prob, res.x, OM)
+    resp = perturbation_response(prob, res.x, FR)
     assert resp.X.shape[1] == 2  # f@inlet, g@outlet
     assert resp.n == 2 and resp.cidx == (0, 1)
     assert resp.transfer_matrix(0, 1).shape == (OM.size, 2, 2)
@@ -149,7 +150,7 @@ def test_default_excitation_is_acoustic_2x2():
 
 def test_entropy_excitation_gives_full_3x3():
     prob, res = _single_duct(110000.0, 101325.0, 1.0)
-    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+    resp = perturbation_response(prob, res.x, FR, excite=FULL)
     assert resp.X.shape[1] == 3  # f@inlet, g@outlet, h@inlet
     assert resp.n == 3 and resp.cidx == (0, 1, 2)
     assert resp.transfer_matrix(0, 1).shape == (OM.size, 3, 3)
@@ -159,9 +160,9 @@ def test_entropy_excitation_gives_full_3x3():
 def test_unknown_family_rejected():
     prob, res = _single_duct(110000.0, 101325.0, 1.0)
     with pytest.raises(ValueError, match="unknown wave family"):
-        perturbation_response(prob, res.x, OM, excite=("acoustic", "vortical"))
+        perturbation_response(prob, res.x, FR, excite=("acoustic", "vortical"))
     with pytest.raises(ValueError, match="must include 'acoustic'"):
-        perturbation_response(prob, res.x, OM, excite=("entropy",))
+        perturbation_response(prob, res.x, FR, excite=("entropy",))
 
 
 def test_duct_entropy_phase_and_decoupling():
@@ -170,7 +171,7 @@ def test_duct_entropy_phase_and_decoupling():
     L = 1.0
     prob, res = _single_duct(110000.0, 101325.0, L)
     u = states_table(prob, res.x)[ES_U, 0]
-    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+    resp = perturbation_response(prob, res.x, FR, excite=FULL)
     T = resp.transfer_matrix(0, 1)
     assert np.allclose(T[:, 2, 2], np.exp(-1j * OM * L / u), atol=1e-7)  # entropy phase
     for i, j in [(0, 2), (1, 2), (2, 0), (2, 1)]:  # acoustic <-> entropy blocks vanish
@@ -184,7 +185,7 @@ def test_quiescent_duct_transmission_phase():
     L = 1.0
     prob, res = _single_duct(101325.0, 101325.0, L)
     c = states_table(prob, res.x)[ES_C, 0]
-    resp = perturbation_response(prob, res.x, OM)
+    resp = perturbation_response(prob, res.x, FR)
     trans = resp.transfer_matrix(0, 1)[:, 0, 0]  # f -> f
     assert np.allclose(np.abs(trans), 1.0, atol=1e-6)  # lossless
     assert np.allclose(trans, np.exp(-1j * OM * L / c), atol=1e-4)
@@ -202,7 +203,7 @@ def test_meanflow_duct_tau_plus_phase():
     c, u = est[ES_C, 0], est[ES_U, 0]
     assert u > 1.0  # genuinely flowing
     tau_p = L / (u + c)
-    resp = perturbation_response(prob, res.x, OM)
+    resp = perturbation_response(prob, res.x, FR)
     trans = resp.transfer_matrix(0, 1)[:, 0, 0]
     assert np.allclose(np.abs(trans), 1.0, atol=1e-9)
     assert np.allclose(trans, np.exp(-1j * OM * tau_p), atol=1e-9)  # wrong signs give tau_-
@@ -213,7 +214,7 @@ def test_meanflow_duct_tau_plus_phase():
 
 def test_reextraction_without_resolve():
     prob, res = _cascade(110000.0, 101325.0)
-    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+    resp = perturbation_response(prob, res.x, FR, excite=FULL)
     T01 = resp.transfer_matrix(0, 1)
     T03 = resp.transfer_matrix(0, 3)
     S13 = resp.scattering_matrix(1, 3)
@@ -231,7 +232,7 @@ def test_reextraction_without_resolve():
 
 def test_quiescent_scattering_unitary():
     prob, res = _single_duct(101325.0, 101325.0, 1.0)
-    resp = perturbation_response(prob, res.x, OM)
+    resp = perturbation_response(prob, res.x, FR)
     S = resp.acoustic_scattering_matrix(0, 1)
     for i in range(OM.size):
         assert np.allclose(S[i].conj().T @ S[i], np.eye(2), atol=1e-6)
@@ -273,14 +274,14 @@ def test_three_terminals_multiport():
     refinement -- the spurious comb from a stray reflecting terminal is gone.
     """
     prob, res = _tree_3term()
-    om = 2 * np.pi * np.linspace(20.0, 1500.0, 400)
+    om = np.linspace(20.0, 1500.0, 400)
     r = perturbation_response(prob, res.x, om)  # acoustic-only; default forcing drives all 3
     S = r.multiport_scattering_matrix()
     inc, out = r.multiport_scattering_labels()
     assert S.shape == (om.size, 3, 3)
     assert len(inc) == 3 and len(out) == 3
 
-    S_fine = perturbation_response(prob, res.x, 2 * np.pi * np.linspace(20.0, 1500.0, 1600))
+    S_fine = perturbation_response(prob, res.x, np.linspace(20.0, 1500.0, 1600))
     S_fine = S_fine.multiport_scattering_matrix()
     assert np.abs(S).max() < 1.5  # lossless tree, anechoic everywhere -> no blow-up
     assert abs(np.abs(S).max() - np.abs(S_fine).max()) < 0.05 * np.abs(S_fine).max()  # no hidden sharp peak
@@ -299,7 +300,7 @@ def test_branched_entropy_excitation_convects_in_series():
     prob, res = _tree_3term()
     L = 1.0  # the inlet duct length in _tree_3term
     u = float(states_table(prob, res.x)[ES_U, 0])
-    T = perturbation_response(prob, res.x, OM, excite=FULL).transfer_matrix(0, 1)  # in-series, 3x3
+    T = perturbation_response(prob, res.x, FR, excite=FULL).transfer_matrix(0, 1)  # in-series, 3x3
     assert T.shape == (OM.size, 3, 3)
     assert np.allclose(T[:, 2, 2], np.exp(-1j * OM * L / u), atol=1e-7)  # entropy convection phase
     for i, j in [(0, 2), (1, 2), (2, 0), (2, 1)]:  # acoustic <-> entropy decoupled on a pure duct
@@ -309,7 +310,7 @@ def test_branched_entropy_excitation_convects_in_series():
 def test_transfer_matrix_in_series_well_defined():
     """On a 3-terminal net the in-series duct transfer matrix is unique (pinv over 3 forcings)."""
     prob, res = _tree_3term()
-    r = perturbation_response(prob, res.x, OM)  # 3 forcings -> Wa is (2, 3), pinv path
+    r = perturbation_response(prob, res.x, FR)  # 3 forcings -> Wa is (2, 3), pinv path
     T = r.transfer_matrix(0, 1)  # edges 0, 1 are the two ends of the inlet duct (in series)
     assert T.shape == (OM.size, 2, 2)
     assert np.allclose(T, r.acoustic_transfer_matrix(0, 1), atol=1e-9)  # consistent reconstruction
@@ -323,7 +324,7 @@ def test_transfer_matrix_across_branch_warns_and_returns_best_fit():
     least-squares matrix back to inspect / plot.
     """
     prob, res = _tree_3term()
-    r = perturbation_response(prob, res.x, OM)  # all 3 terminals driven -> residual test valid
+    r = perturbation_response(prob, res.x, FR)  # all 3 terminals driven -> residual test valid
     with pytest.warns(TransferMatrixWarning, match="straddle an internal branch"):
         T = r.transfer_matrix(2, 3)  # the two splitter branches
     assert T.shape == (OM.size, 2, 2)
@@ -339,7 +340,7 @@ def test_transfer_matrix_underdetermined_warns_unverifiable():
     """
     prob, res = _tree_3term()
     nodes = sorted(t.node for t in find_terminals(prob, res.x))
-    r = perturbation_response(prob, res.x, OM, forcing=(nodes[0], nodes[1]))  # drive only 2 of 3
+    r = perturbation_response(prob, res.x, FR, forcing=(nodes[0], nodes[1]))  # drive only 2 of 3
     with pytest.warns(TransferMatrixWarning, match="under-determined"):
         T = r.transfer_matrix(2, 3)  # across the branch, but residual is structurally ~0
     assert T.shape == (OM.size, 2, 2)
@@ -349,12 +350,12 @@ def test_transfer_matrix_underdetermined_warns_unverifiable():
 def test_source_attribution_breaks_down_wave_at_edge():
     """contributions(edge) is the exact per-terminal-source decomposition of the wave there."""
     prob, res = _tree_3term()
-    r = perturbation_response(prob, res.x, OM)  # 3 terminals -> 3 sources, acoustic n=2
+    r = perturbation_response(prob, res.x, FR)  # 3 terminals -> 3 sources, acoustic n=2
     C = r.contributions(3)  # edge 3 lives in branch B
     assert C.shape == (OM.size, 2, 3)
     outputs, sources = r.contribution_labels(3)
     assert len(outputs) == 2 and len(sources) == 3
-    assert all("<sub>" in s for s in outputs + sources)
+    assert all("_{" in s for s in outputs + sources)  # LaTeX subscript fragments
     # a unit selector isolates exactly one source and zeroes the rest (pure superposition)
     sel = r.contributions(3, incoming=[1.0, 0.0, 0.0])
     assert np.allclose(sel[:, :, 0], C[:, :, 0]) and np.allclose(sel[:, :, 1:], 0.0)
@@ -367,7 +368,7 @@ def test_source_attribution_breaks_down_wave_at_edge():
 def test_source_attribution_consistent_with_in_series_transfer():
     """For in-series edges each source's contribution at b is T_ba times its contribution at a."""
     prob, res = _cascade(110000.0, 101325.0)
-    r = perturbation_response(prob, res.x, OM)
+    r = perturbation_response(prob, res.x, FR)
     T = r.transfer_matrix(0, 1)  # in series -> exact (residual ~ 0)
     Ca, Cb = r.contributions(0), r.contributions(1)
     assert np.allclose(np.einsum("oij,ojk->oik", T, Ca), Cb, atol=1e-8)
@@ -375,13 +376,13 @@ def test_source_attribution_consistent_with_in_series_transfer():
 
 def test_plot_contributions_overlays_sources_per_output_panel():
     prob, res = _tree_3term()
-    r = perturbation_response(prob, res.x, OM)
+    r = perturbation_response(prob, res.x, FR)
     _, sources = r.contribution_labels(3)
 
     fig = r.plot_contributions(3)  # normalize defaults on (no incoming)
     titles = {a.text for a in fig.layout.annotations if a.text}
-    assert {"f<sub>3</sub>", "g<sub>3</sub>"} <= titles  # one panel per output wave at edge 3
-    assert set(sources) <= {d.name for d in fig.data}  # one overlaid curve per source (legend)
+    assert {"$f_{3}$", "$g_{3}$"} <= titles  # one panel per output wave at edge 3
+    assert {f"${s}$" for s in sources} <= {d.name for d in fig.data}  # one overlaid curve per source (legend)
     assert tuple(fig.layout.yaxis.range) == (0.0, 1.05)  # normalized magnitude axis
 
     fig_abs = r.plot_contributions(3, incoming=[1.0, 1.0, 1.0])  # absolute -> auto-scaled, not (0, 1.05)
@@ -392,7 +393,7 @@ def test_branched_single_in_out_two_excitations():
     """A 1-inlet/1-outlet net with a recombining internal loop is fully set by 2 excitations."""
     prob, res = _diamond()
     assert len(find_terminals(prob, res.x)) == 2
-    om = 2 * np.pi * np.linspace(20.0, 1500.0, 400)
+    om = np.linspace(20.0, 1500.0, 400)
     r = perturbation_response(prob, res.x, om)
     S = r.multiport_scattering_matrix()
     assert S.shape == (om.size, 2, 2)
@@ -413,14 +414,14 @@ def test_wall_terminated_branch_multiport():
     est = states_table(prob, res.x)
     assert abs(float(est[ES_U, 5])) < 1e-9  # the side branch behind the wall is a quiescent dead leg
 
-    om = 2 * np.pi * np.linspace(20.0, 1500.0, 400)
+    om = np.linspace(20.0, 1500.0, 400)
     r = perturbation_response(prob, res.x, om)  # acoustic-only; all 3 terminals driven
     Sa = r.multiport_scattering_matrix()
     inc, out = r.multiport_scattering_labels()
     assert Sa.shape == (om.size, 3, 3) and len(inc) == 3 and len(out) == 3
     assert np.abs(Sa).max() < 1.5  # lossless, anechoic everywhere -> bounded (no quarter-wave pole)
 
-    Sf_fine = perturbation_response(prob, res.x, 2 * np.pi * np.linspace(20.0, 1500.0, 3200))
+    Sf_fine = perturbation_response(prob, res.x, np.linspace(20.0, 1500.0, 3200))
     Sf_fine = Sf_fine.multiport_scattering_matrix()
     assert abs(np.abs(Sa).max() - np.abs(Sf_fine).max()) < 0.05 * np.abs(Sf_fine).max()  # no hidden peak
 
@@ -433,12 +434,18 @@ def test_wall_terminated_branch_multiport():
     assert np.allclose(Sa, acoustic_sub, atol=1e-10)
 
     # the quiescent wall (node 6) carries no entropy port: no h wave at the wall in either set.
-    assert "h<sub>6:wall</sub>" not in finc and "h<sub>6:wall</sub>" not in fout
+    assert r"h_{6:\text{wall}}" not in finc and r"h_{6:\text{wall}}" not in fout
     assert finc == [  # entropy enters only at the flowing inlet
-        "f<sub>0:pt-inlet</sub>", "g<sub>4:outlet</sub>", "g<sub>6:wall</sub>", "h<sub>0:pt-inlet</sub>",
+        r"f_{0:\text{pt-inlet}}",
+        r"g_{4:\text{outlet}}",
+        r"g_{6:\text{wall}}",
+        r"h_{0:\text{pt-inlet}}",
     ]
     assert fout == [  # entropy leaves only at the flowing outlet
-        "g<sub>0:pt-inlet</sub>", "f<sub>4:outlet</sub>", "h<sub>4:outlet</sub>", "f<sub>6:wall</sub>",
+        r"g_{0:\text{pt-inlet}}",
+        r"f_{4:\text{outlet}}",
+        r"h_{4:\text{outlet}}",
+        r"f_{6:\text{wall}}",
     ]
     assert Sfull.shape == (om.size, 4, 4) and np.isfinite(Sfull).all()
 
@@ -450,8 +457,8 @@ def test_entropy_quiescent_rejected():
     res = solve(prob)
     assert res.converged
     with pytest.raises(ValueError, match="quiescent"):
-        perturbation_response(prob, res.x, OM, excite=FULL)
-    assert perturbation_response(prob, res.x, OM).transfer_matrix(0, 1).shape == (OM.size, 2, 2)
+        perturbation_response(prob, res.x, FR, excite=FULL)
+    assert perturbation_response(prob, res.x, FR).transfer_matrix(0, 1).shape == (OM.size, 2, 2)
 
 
 def test_reversed_duct_supported():
@@ -469,11 +476,12 @@ def test_reversed_duct_supported():
     assert res.converged
     u = float(states_table(prob, res.x)[ES_U, 0])
     assert u < 0.0  # the duct runs backward
-    om = 2.0 * np.pi * np.linspace(20.0, 1500.0, 64)
-    r = perturbation_response(prob, res.x, om, excite=FULL)
+    fr = np.linspace(20.0, 1500.0, 64)  # Hz
+    om = 2.0 * np.pi * fr  # angular, for the convection-phase check
+    r = perturbation_response(prob, res.x, fr, excite=FULL)
     assert np.abs(r.multiport_scattering_matrix()).max() < 1.0 + 1e-6  # lossless
     # entropy driven at the genuine inlet (node 2) convects to edge 0 at speed |u|
-    fld = excite_perturbation(prob, res.x, om, node=2, modes=("entropy",))
+    fld = excite_perturbation(prob, res.x, fr, node=2, modes=("entropy",))
     ratio = fld.waves(0)[:, 2, 0] / fld.waves(1)[:, 2, 0]
     assert np.allclose(ratio, np.exp(-1j * om * L / abs(u)), atol=1e-3)
 
@@ -494,20 +502,20 @@ def test_branched_reversal_well_posed():
     res = solve(prob)
     assert res.converged
     assert float(states_table(prob, res.x)[ES_U, 2]) < 0.0  # the (101325) branch reverses
-    Sc = perturbation_response(prob, res.x, 2 * np.pi * np.linspace(20.0, 1500.0, 400)).multiport_scattering_matrix()
-    Sf = perturbation_response(prob, res.x, 2 * np.pi * np.linspace(20.0, 1500.0, 3200)).multiport_scattering_matrix()
+    Sc = perturbation_response(prob, res.x, np.linspace(20.0, 1500.0, 400)).multiport_scattering_matrix()
+    Sf = perturbation_response(prob, res.x, np.linspace(20.0, 1500.0, 3200)).multiport_scattering_matrix()
     # bounded and refinement-stable -> no spurious resonance from a floating incoming entropy
     assert np.abs(Sc).max() < 1.5
     assert abs(np.abs(Sc).max() - np.abs(Sf).max()) < 0.05 * np.abs(Sf).max()
 
     # entropy excitation is also well posed here: entropy enters at *both* genuine inlets
     # (the forward inlet and the reversed branch) and leaves at the single genuine outlet.
-    rf = perturbation_response(prob, res.x, 2 * np.pi * np.linspace(20.0, 1500.0, 400), excite=FULL)
+    rf = perturbation_response(prob, res.x, np.linspace(20.0, 1500.0, 400), excite=FULL)
     Srect = rf.multiport_scattering_matrix()
     inc, out = rf.multiport_scattering_labels()
     assert Srect.shape == (400, 4, 5) and np.abs(Srect).max() < 1.5
-    assert sum(s.startswith("h<sub>") for s in inc) == 2  # two genuine inlets carry incoming entropy
-    assert sum(s.startswith("h<sub>") for s in out) == 1  # one genuine outlet carries outgoing entropy
+    assert sum(s.startswith("h_{") for s in inc) == 2  # two genuine inlets carry incoming entropy
+    assert sum(s.startswith("h_{") for s in out) == 1  # one genuine outlet carries outgoing entropy
 
 
 def test_verifier_rejects_reverse_wired_duct():
@@ -573,7 +581,7 @@ def test_flame_face_is_wired_but_unimplemented():
 def test_cascade_composition(pt_in):
     # full 3x3 composition: a transfer-matrix chain multiplies, entropy included.
     prob, res = _cascade(pt_in, 101325.0)
-    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+    resp = perturbation_response(prob, res.x, FR, excite=FULL)
     T01 = resp.transfer_matrix(0, 1)
     T12 = resp.transfer_matrix(1, 2)
     T23 = resp.transfer_matrix(2, 3)
@@ -595,7 +603,7 @@ def test_cascade_quiescent_unitary():
     sa, sb = scale(0), scale(3)
     D = np.diag([sa, sb])
     Dinv = np.diag([1.0 / sa, 1.0 / sb])
-    resp = perturbation_response(prob, res.x, OM)
+    resp = perturbation_response(prob, res.x, FR)
     S = resp.acoustic_scattering_matrix(0, 3)
     for i in range(OM.size):  # exact unitarity only at u=0; residual Mach ~1e-6 leaks ~1e-6
         Sn = D @ S[i] @ Dinv  # power-normalized
@@ -605,7 +613,7 @@ def test_cascade_quiescent_unitary():
 def test_cascade_embedded_duct_phases():
     prob, res = _cascade(110000.0, 101325.0, L1=0.7, L2=1.1)
     est = states_table(prob, res.x)
-    resp = perturbation_response(prob, res.x, OM)
+    resp = perturbation_response(prob, res.x, FR)
     for (a, b), e, Ld in (((0, 1), 0, 0.7), ((2, 3), 2, 1.1)):
         c, u = est[ES_C, e], est[ES_U, e]
         T = resp.acoustic_transfer_matrix(a, b)
@@ -620,36 +628,40 @@ def test_response_plot_methods_label_entries_by_edge():
     # the f -> f bug: the free plotter cannot see the edges, so the response
     # methods must inject them and produce f_a -> f_b titles.
     prob, res = _cascade(110000.0, 101325.0)
-    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+    resp = perturbation_response(prob, res.x, FR, excite=FULL)
 
     figT = resp.plot_transfer_matrix(1, 2)
     titlesT = {a.text for a in figT.layout.annotations}
-    assert "f<sub>1</sub>→f<sub>2</sub>" in titlesT  # input edge 1 -> output edge 2
-    assert "f→f" not in titlesT  # the ambiguous bare form is gone
+    assert r"${f}_{1} \to {f}_{2}$" in titlesT  # input edge 1 -> output edge 2
+    assert r"$f \to f$" not in titlesT  # the ambiguous bare form is gone
 
     figS = resp.plot_scattering_matrix(1, 2)
     titlesS = {a.text for a in figS.layout.annotations}
     # every scattering label carries a station (edge 1 or 2) subscript
-    assert titlesS and all(("<sub>1</sub>" in t or "<sub>2</sub>" in t) for t in titlesS if t)
+    assert titlesS and all(("_{1}" in t or "_{2}" in t) for t in titlesS if t)
 
 
-def test_response_plot_methods_accept_hz_axis():
+def test_response_plot_methods_default_to_hz_axis():
     prob, res = _cascade(110000.0, 101325.0)
-    resp = perturbation_response(prob, res.x, OM)
-    fig = resp.plot_transfer_matrix(0, 1, resp.omegas / (2.0 * np.pi))  # x in Hz
+    resp = perturbation_response(prob, res.x, FR)
+    assert np.allclose(resp.freqs, FR)  # the response stores its sweep in Hz
+    fig = resp.plot_transfer_matrix(0, 1)  # default x-axis is resp.freqs (Hz)
     xs = np.asarray(fig.data[0].x)
-    assert np.allclose(xs, OM / (2.0 * np.pi))
+    assert np.allclose(xs, FR)
+    # an explicit frequency axis is still honored
+    fig2 = resp.plot_transfer_matrix(0, 1, FR / 1000.0)  # e.g. kHz
+    assert np.allclose(np.asarray(fig2.data[0].x), FR / 1000.0)
 
 
 def test_response_plot_basis_converts_and_relabels_consistently():
     # the response-method basis genuinely re-expresses the matrix AND names it to
     # match -- no label-only mismatch like the (removed) free-function basis knob.
     prob, res = _cascade(110000.0, 101325.0)
-    resp = perturbation_response(prob, res.x, OM, excite=FULL)
+    resp = perturbation_response(prob, res.x, FR, excite=FULL)
 
     figP = resp.plot_transfer_matrix(1, 2, basis="primitive")
     titlesP = {a.text for a in figP.layout.annotations}
-    assert "u'<sub>1</sub>→u'<sub>2</sub>" in titlesP
+    assert r"${u'}_{1} \to {u'}_{2}$" in titlesP
 
     # the basis really changed the numbers, not just the labels
     char = resp.transfer_matrix(1, 2, basis="char")

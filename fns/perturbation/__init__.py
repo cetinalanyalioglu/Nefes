@@ -34,6 +34,7 @@ from .response import (
     PerturbationResponse,
     excite_perturbation,
     PerturbationField,
+    TransferMatrixWarning,
     acoustic_response,
     AcousticResponse,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "PerturbationResponse",
     "excite_perturbation",
     "PerturbationField",
+    "TransferMatrixWarning",
     "find_terminals",
     "Terminal",
     "acoustic_response",

@@ -25,6 +25,7 @@ from fns.perturbation import (
     assemble_acoustic,
     verify_acoustic,
     scattering_2port,
+    TransferMatrixWarning,
 )
 
 R_AIR, GAMMA = 287.0, 1.4
@@ -314,12 +315,77 @@ def test_transfer_matrix_in_series_well_defined():
     assert np.allclose(T, r.acoustic_transfer_matrix(0, 1), atol=1e-9)  # consistent reconstruction
 
 
-def test_transfer_matrix_across_branch_raises():
-    """Edges on opposite sides of the splitter have no transfer matrix -> a clear error."""
+def test_transfer_matrix_across_branch_warns_and_returns_best_fit():
+    """Edges across the splitter have no transfer matrix -> warn (don't raise), return best fit.
+
+    With all three terminals driven the seriality residual is a valid test, so the branch
+    straddle is flagged by a large residual and a clear warning -- but the user still gets the
+    least-squares matrix back to inspect / plot.
+    """
+    prob, res = _tree_3term()
+    r = perturbation_response(prob, res.x, OM)  # all 3 terminals driven -> residual test valid
+    with pytest.warns(TransferMatrixWarning, match="straddle an internal branch"):
+        T = r.transfer_matrix(2, 3)  # the two splitter branches
+    assert T.shape == (OM.size, 2, 2)
+    assert r.transfer_residual(2, 3) > 1e-3  # the large residual is what flags the non-seriality
+    assert r.transfer_residual(0, 1) < 1e-6  # an in-series pair stays clean (no false positive)
+
+
+def test_transfer_matrix_underdetermined_warns_unverifiable():
+    """Forcing a 2-terminal subset of a 3-terminal net cannot test seriality -> unverified warning.
+
+    Here ``n_force == n``, so the fit is exact by construction and the residual is ~0 even across
+    the branch: the warning must call out that seriality is *unverifiable*, not that it is clean.
+    """
+    prob, res = _tree_3term()
+    nodes = sorted(t.node for t in find_terminals(prob, res.x))
+    r = perturbation_response(prob, res.x, OM, forcing=(nodes[0], nodes[1]))  # drive only 2 of 3
+    with pytest.warns(TransferMatrixWarning, match="under-determined"):
+        T = r.transfer_matrix(2, 3)  # across the branch, but residual is structurally ~0
+    assert T.shape == (OM.size, 2, 2)
+    assert r.transfer_residual(2, 3) < 1e-6  # blind: looks clean despite straddling the branch
+
+
+def test_source_attribution_breaks_down_wave_at_edge():
+    """contributions(edge) is the exact per-terminal-source decomposition of the wave there."""
+    prob, res = _tree_3term()
+    r = perturbation_response(prob, res.x, OM)  # 3 terminals -> 3 sources, acoustic n=2
+    C = r.contributions(3)  # edge 3 lives in branch B
+    assert C.shape == (OM.size, 2, 3)
+    outputs, sources = r.contribution_labels(3)
+    assert len(outputs) == 2 and len(sources) == 3
+    assert all("<sub>" in s for s in outputs + sources)
+    # a unit selector isolates exactly one source and zeroes the rest (pure superposition)
+    sel = r.contributions(3, incoming=[1.0, 0.0, 0.0])
+    assert np.allclose(sel[:, :, 0], C[:, :, 0]) and np.allclose(sel[:, :, 1:], 0.0)
+    with pytest.raises(ValueError, match="one amplitude per source"):
+        r.contributions(3, incoming=[1.0, 0.0])
+    with pytest.raises(ValueError, match="out of range"):
+        r.contributions(99)
+
+
+def test_source_attribution_consistent_with_in_series_transfer():
+    """For in-series edges each source's contribution at b is T_ba times its contribution at a."""
+    prob, res = _cascade(110000.0, 101325.0)
+    r = perturbation_response(prob, res.x, OM)
+    T = r.transfer_matrix(0, 1)  # in series -> exact (residual ~ 0)
+    Ca, Cb = r.contributions(0), r.contributions(1)
+    assert np.allclose(np.einsum("oij,ojk->oik", T, Ca), Cb, atol=1e-8)
+
+
+def test_plot_contributions_overlays_sources_per_output_panel():
     prob, res = _tree_3term()
     r = perturbation_response(prob, res.x, OM)
-    with pytest.raises(ValueError, match="straddle an internal branch"):
-        r.transfer_matrix(2, 3)  # the two splitter branches
+    _, sources = r.contribution_labels(3)
+
+    fig = r.plot_contributions(3)  # normalize defaults on (no incoming)
+    titles = {a.text for a in fig.layout.annotations if a.text}
+    assert {"f<sub>3</sub>", "g<sub>3</sub>"} <= titles  # one panel per output wave at edge 3
+    assert set(sources) <= {d.name for d in fig.data}  # one overlaid curve per source (legend)
+    assert tuple(fig.layout.yaxis.range) == (0.0, 1.05)  # normalized magnitude axis
+
+    fig_abs = r.plot_contributions(3, incoming=[1.0, 1.0, 1.0])  # absolute -> auto-scaled, not (0, 1.05)
+    assert tuple(fig_abs.layout.yaxis.range) != (0.0, 1.05)
 
 
 def test_branched_single_in_out_two_excitations():
@@ -366,10 +432,14 @@ def test_wall_terminated_branch_multiport():
     acoustic_sub = Sfull[:, [[0], [1], [3]], [0, 1, 2]]  # rows g@n0,f@n4,f@n6 x cols f@n0,g@n4,g@n6
     assert np.allclose(Sa, acoustic_sub, atol=1e-10)
 
-    # the quiescent wall (node 6) carries no entropy port: no h@n6 in either set.
-    assert "h@n6" not in finc and "h@n6" not in fout
-    assert finc == ["f@n0", "g@n4", "g@n6", "h@n0"]  # entropy enters only at the flowing inlet
-    assert fout == ["g@n0", "f@n4", "h@n4", "f@n6"]  # entropy leaves only at the flowing outlet
+    # the quiescent wall (node 6) carries no entropy port: no h wave at the wall in either set.
+    assert "h<sub>6:wall</sub>" not in finc and "h<sub>6:wall</sub>" not in fout
+    assert finc == [  # entropy enters only at the flowing inlet
+        "f<sub>0:pt-inlet</sub>", "g<sub>4:outlet</sub>", "g<sub>6:wall</sub>", "h<sub>0:pt-inlet</sub>",
+    ]
+    assert fout == [  # entropy leaves only at the flowing outlet
+        "g<sub>0:pt-inlet</sub>", "f<sub>4:outlet</sub>", "h<sub>4:outlet</sub>", "f<sub>6:wall</sub>",
+    ]
     assert Sfull.shape == (om.size, 4, 4) and np.isfinite(Sfull).all()
 
 
@@ -436,8 +506,8 @@ def test_branched_reversal_well_posed():
     Srect = rf.multiport_scattering_matrix()
     inc, out = rf.multiport_scattering_labels()
     assert Srect.shape == (400, 4, 5) and np.abs(Srect).max() < 1.5
-    assert sum(s.startswith("h@") for s in inc) == 2  # two genuine inlets carry incoming entropy
-    assert sum(s.startswith("h@") for s in out) == 1  # one genuine outlet carries outgoing entropy
+    assert sum(s.startswith("h<sub>") for s in inc) == 2  # two genuine inlets carry incoming entropy
+    assert sum(s.startswith("h<sub>") for s in out) == 1  # one genuine outlet carries outgoing entropy
 
 
 def test_verifier_rejects_reverse_wired_duct():

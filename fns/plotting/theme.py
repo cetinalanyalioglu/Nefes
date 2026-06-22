@@ -34,6 +34,11 @@ _PLOT = "#ffffff"
 _FONT_FAMILY = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 
+# Uniform line weight shared by every axis line, mirrored border and tick, so all
+# four sides of every subplot read at the same thickness.
+_LINE_W = 1.2
+
+
 def _axis():
     return dict(
         showgrid=True,
@@ -42,9 +47,11 @@ def _axis():
         zeroline=False,
         showline=True,
         linecolor=_AXIS,
-        linewidth=1,
+        linewidth=_LINE_W,
+        mirror=True,  # mirror the axis line to the opposite side -> a full box around each subplot
         ticks="outside",
         ticklen=5,
+        tickwidth=_LINE_W,
         tickcolor=_AXIS,
         tickfont=dict(color=_MUTED, size=12),
         title=dict(font=dict(color=_INK, size=14)),

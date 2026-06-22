@@ -50,6 +50,9 @@ class CompiledProblem:
     # @njit line by the perturbation layer); None / "inherit" where unset.  See
     # fns.perturbation.boundary_bc.PerturbationBC.
     node_bc: tuple = ()  # length N (or empty -> all inherit)
+    # human-readable element name per node (the YAML/UI label); for labelling only,
+    # never touched by the kernels.  length N, or empty -> nameless.
+    node_names: tuple = ()
 
     @property
     def n_col(self) -> int:

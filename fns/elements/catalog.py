@@ -186,6 +186,9 @@ def build_problem_from_connectivity(
     # per-node perturbation BC (Python objects; read only by the perturbation layer)
     node_bc = tuple(getattr(el, "perturbation_bc", None) for el in elements)
 
+    # per-node human-readable name (label); for plotting / reporting only
+    node_names = tuple(getattr(el, "name", "") or "" for el in elements)
+
     pat = build_jacobian_pattern(conn, degrees, n_solve=3)
 
     # residual scales
@@ -224,4 +227,5 @@ def build_problem_from_connectivity(
         res_scale=res_scale,
         node_eps=node_eps,
         node_bc=node_bc,
+        node_names=node_names,
     )

@@ -33,6 +33,7 @@ fields can be inspected directly.  ``perturbation_response`` simply drives every
 forced terminal in turn, sharing the one factorization, and stacks the columns.
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -46,6 +47,17 @@ from .terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (
 from . import matrices as mat
 from ..solver.control import states_table
 from ..derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT  # noqa: F401
+
+
+class TransferMatrixWarning(UserWarning):
+    """A fitted transfer/scattering matrix may not be a genuine 2-port descriptor.
+
+    Raised (as a warning, never an exception) by :meth:`PerturbationResponse.transfer_matrix`
+    and :meth:`~PerturbationResponse.scattering_matrix` when the two edges straddle an internal
+    branch point -- so no transfer matrix exists and the returned matrix is only a least-squares
+    best fit -- or when the response is too under-determined to verify either way.  Silence it
+    with :func:`warnings.filterwarnings` once you have understood the diagnostic.
+    """
 
 
 def _edge_transforms(prob, x_bar, K):
@@ -437,6 +449,7 @@ def perturbation_response(
         forcing_kinds=forcing_kinds,
         cidx=cidx,
         terminals=ctx.terminals,
+        node_names=tuple(getattr(prob, "node_names", ()) or ()),
     )
 
 
@@ -454,6 +467,7 @@ class PerturbationResponse:
     forcing_kinds: list
     cidx: tuple = (0, 1, 2)  # characteristic indices spanned by the driven waves
     terminals: Optional[List[Terminal]] = None  # all terminals (for the multiport matrix)
+    node_names: tuple = ()  # per-node element label (for plot labels); empty -> id only
 
     @property
     def n(self) -> int:
@@ -477,25 +491,90 @@ class PerturbationResponse:
 
     _DIAGONAL_BASES = ("char", "riemann")  # flavors that do not mix characteristics
 
-    def _assert_in_series(self, T, Wa, Wb, a, b, tol=1e-6):
-        """Raise unless ``T`` reproduces every forced field, i.e. ``a`` and ``b`` are in series.
+    @staticmethod
+    def _seriality_residual(T, Wa, Wb):
+        """Max-over-frequency relative residual ``||T Wa - Wb|| / ||Wb||``.
 
-        A transfer matrix ``v_b = T v_a`` exists only when the wave state at ``a``
-        *determines* the state at ``b`` -- true for edges in series, false for edges
-        on opposite sides of an internal branch point (a splitter/junction), where
-        the redistribution depends on the other branches.  With more than ``self.n``
-        independent forcings the least-squares ``T`` then fails to reproduce the data;
-        a per-frequency relative residual flags it.
+        Measures how badly a *single* fixed map ``T`` fails to reproduce ``b`` from ``a``
+        across **all** forced excitations.  Near zero iff the wave state at ``a`` is sufficient
+        to determine that at ``b`` -- i.e. the edges are in series.  A large value means they
+        straddle an internal branch point, where no transfer matrix exists and
+        ``T = Wb @ pinv(Wa)`` is only a least-squares best fit.
         """
         resid = np.linalg.norm(T @ Wa - Wb, axis=(1, 2))
         scale = np.linalg.norm(Wb, axis=(1, 2))
         rel = resid / np.where(scale > 0.0, scale, 1.0)
-        if np.max(rel) > tol:
-            raise ValueError(
+        return float(np.max(rel))
+
+    def _underdetermined(self, n, n_force):
+        """Whether the seriality residual is structurally blind for this response.
+
+        The residual can only *test* seriality when the forcing over-determines the fit:
+        more independent excitations than the matrix dimension, driven at **every** terminal.
+        When ``n_force <= n`` the fit is exact by construction (residual ~ 0 regardless of
+        topology); when a terminal is left undriven the test cannot see a branch dependence
+        on it.  Either way only matters on a genuinely multi-terminal network (a single-path
+        chain has no branch point to miss).
+        """
+        if not self.terminals or len(self.terminals) <= 2:
+            return False  # single-path / 2-terminal: a transfer matrix always exists
+        all_driven = {t.node for t in self.forcing} == {t.node for t in self.terminals}
+        return n_force <= n or not all_driven
+
+    def _warn_seriality(self, a, b, n, n_force, max_rel, tol=1e-6):
+        """Warn -- never raise -- when the fitted ``T`` may not be a genuine transfer matrix.
+
+        Two distinct failure modes, in order of certainty:
+
+        * ``max_rel > tol`` -- a definitive branch straddle: no transfer matrix exists and the
+          returned ``T`` is a least-squares best fit only.
+        * otherwise, an under-determined multi-terminal response -- the residual is structurally
+          ``~0`` and cannot confirm seriality, so the matrix is returned unverified.
+
+        The caller always gets the best-fit matrix back; this only flags how much to trust it.
+        """
+        if max_rel > tol:
+            warnings.warn(
                 f"no transfer matrix exists between edges {a} and {b}: they straddle an internal "
-                f"branch point (max relative residual {np.max(rel):.2e}), so the wave state at one "
-                "edge does not determine the other. Use multiport_scattering_matrix() instead."
+                f"branch point (max relative residual {max_rel:.2e}), so the wave state at one edge "
+                "is not sufficient to determine the other. The returned matrix is a least-squares best "
+                "fit, not a physical transfer matrix; use multiport_scattering_matrix() for the rigorous "
+                "descriptor, or source attribution to break down what reaches one edge from each terminal.",
+                TransferMatrixWarning,
+                stacklevel=3,
             )
+        elif self._underdetermined(n, n_force):
+            ndriven = len({t.node for t in self.forcing})
+            warnings.warn(
+                f"cannot verify a transfer matrix exists between edges {a} and {b}: the response is "
+                f"under-determined ({n_force} forcing(s) for a {n}-wave matrix, {ndriven} of "
+                f"{len(self.terminals)} terminals driven), so the seriality residual is structurally ~0 "
+                "and cannot detect a branch point. Re-run perturbation_response with forcing=None (drive "
+                "every terminal) to validate. The returned matrix is the best fit for this forcing.",
+                TransferMatrixWarning,
+                stacklevel=3,
+            )
+
+    def transfer_residual(self, a, b):
+        """Seriality residual of the fitted transfer matrix between edges ``a`` and ``b``.
+
+        The max-over-frequency relative residual of ``T = Wb @ pinv(Wa)`` (see
+        :meth:`_seriality_residual`).  Near zero means a genuine transfer matrix exists (the
+        edges are in series); a large value means they straddle an internal branch point and
+        :meth:`transfer_matrix` returns only a least-squares best fit.  Computed in the
+        characteristic basis, so it is independent of the ``basis`` the matrix is later
+        expressed in.  Beware: when the response is under-determined
+        (:meth:`_underdetermined`) this is structurally ``~0`` and does **not** certify
+        seriality.
+
+        Returns
+        -------
+        float
+        """
+        ci = list(self.cidx)
+        Wa = self._waves(a)[:, ci, :]
+        Wb = self._waves(b)[:, ci, :]
+        return self._seriality_residual(Wb @ np.linalg.pinv(Wa), Wa, Wb)
 
     def transfer_matrix(self, a, b, basis="char"):
         """Transfer matrix ``T_ba`` mapping the driven waves at ``a`` to those at ``b``.
@@ -504,17 +583,23 @@ class PerturbationResponse:
         entropy).  Read along each edge's own arrow; ``basis`` selects the variable
         flavor (``characteristics.BASIS_LABELS``).  Shape ``(n_omega, n, n)``.
 
-        Raises
-        ------
-        ValueError
-            If ``a`` and ``b`` lie on opposite sides of an internal branch point, where
-            no transfer matrix exists (use :meth:`multiport_scattering_matrix`).
+        Always returns a matrix.  If ``a`` and ``b`` lie on opposite sides of an internal
+        branch point no transfer matrix exists, so the returned ``T`` is only the
+        least-squares best fit and a :class:`TransferMatrixWarning` is emitted -- inspect
+        :meth:`transfer_residual` and prefer :meth:`multiport_scattering_matrix`.  A second
+        warning flavor fires when the response is too under-determined to tell either way.
+
+        Warns
+        -----
+        TransferMatrixWarning
+            If ``a`` and ``b`` straddle an internal branch point, or the response is
+            under-determined so seriality cannot be verified.
         """
         ci = list(self.cidx)
         Wa = self._waves(a)[:, ci, :]  # (n_omega, n, n_force) over driven characteristics
         Wb = self._waves(b)[:, ci, :]
         T = Wb @ np.linalg.pinv(Wa)  # pinv: >= n_force forcings (= n for a 2-terminal net)
-        self._assert_in_series(T, Wa, Wb, a, b)
+        self._warn_seriality(a, b, self.n, Wa.shape[2], self._seriality_residual(T, Wa, Wb))
         if basis == "char":
             return T
         if self.n < self.n_char and basis not in self._DIAGONAL_BASES:
@@ -534,6 +619,12 @@ class PerturbationResponse:
         ones; ordering follows ``matrices.scattering_labels``.  ``basis`` may only be
         a flavor diagonal in the characteristics (``char`` or ``riemann``); mixed
         flavors are undefined for a scattering matrix.
+
+        Warns
+        -----
+        TransferMatrixWarning
+            Via :meth:`transfer_matrix`, if ``a`` and ``b`` straddle an internal branch
+            point or the response is under-determined (see :meth:`transfer_residual`).
         """
         ua, ca = float(self.est[ES_U, a]), float(self.est[ES_C, a])
         ub, cb = float(self.est[ES_U, b]), float(self.est[ES_C, b])
@@ -576,8 +667,9 @@ class PerturbationResponse:
         all_nodes = {t.node for t in self.terminals}
         if driven_nodes != all_nodes:
             raise ValueError(
-                "multiport scattering needs every terminal driven; rebuild with the default forcing=None "
-                f"(driven {sorted(driven_nodes)} of {sorted(all_nodes)})"
+                "multiport scattering describes the whole network, so every terminal must be driven. "
+                f"This response drove only {sorted(driven_nodes)} of {sorted(all_nodes)} -- re-run "
+                "perturbation_response with forcing=None (the default) to drive them all."
             )
         ci = set(self.cidx)
         incoming = [(t.node, t.edge, (t.incoming if fam == "acoustic" else 2)) for fam, t in self.forcing_kinds]
@@ -616,14 +708,101 @@ class PerturbationResponse:
             S[:, r, :] = self._waves(edge)[:, ch, :]  # outgoing amplitude per driven (unit-incoming) case
         return S
 
+    def _node_tag(self, node):
+        """Subscript for a terminal node: its id, plus its element name when known.
+
+        Edges are referred to by id alone (edge names are not meaningful), but node names are
+        unique and meaningful, so a terminal reads ``0:MassFlowInlet1`` -- the id (for cross-
+        referencing ``forcing``/code) and the label (for meaning).  Falls back to the bare id
+        when the problem carries no names.
+        """
+        name = self.node_names[node] if node < len(self.node_names) else ""
+        return f"{node}:{name}" if name else f"{node}"
+
+    def _wave_at_node(self, char, node):
+        """Wave symbol for characteristic ``char`` of a terminal ``node`` (e.g. ``f₀:inlet``)."""
+        return f"{_CHAR_SYM[char]}<sub>{self._node_tag(node)}</sub>"
+
     def multiport_scattering_labels(self):
-        """Per-wave symbols ``("f@n0", ...)`` for the multiport columns (incoming) and rows (outgoing)."""
+        """Per-wave symbols for the multiport columns (incoming) and rows (outgoing).
+
+        Each wave is its characteristic symbol (``f``/``g``/``h``) subscripted by the terminal it
+        lives on -- the node id and its element name (e.g. ``f<sub>0:MassFlowInlet1</sub>``) -- so a
+        multiport entry reads ``f₀:inlet → g₀:inlet``.
+        """
         incoming, outgoing = self._multiport_io()
 
         def sym(node, _edge, ch):
-            return f"{_CHAR_SYM[ch]}@n{node}"
+            return self._wave_at_node(ch, node)
 
         return [sym(*w) for w in incoming], [sym(*w) for w in outgoing]
+
+    # -- source attribution (where the wave at an edge comes from) -----------
+
+    def _source_char(self, fam, t):
+        """The characteristic index a source drives: a terminal's incoming acoustic wave, or entropy."""
+        return t.incoming if fam == "acoustic" else 2
+
+    def contributions(self, edge, *, incoming=None):
+        """Break the wave at ``edge`` into the contribution of each terminal's incoming wave.
+
+        Every driven excitation is a unit incoming wave at one terminal with all others zero, so
+        by linearity the perturbation field at ``edge`` is the **exact superposition** of one
+        contribution per source.  This is the physically honest "where does what I see at this
+        edge come from" decomposition: each term is a genuine one-way path gain (a multiport
+        scattering entry generalized to an internal edge), free of the common-driver confounding
+        that makes a least-squares transfer matrix overstate one edge's influence on another (the
+        residual measures *predictability*, this measures *contribution*).
+
+        Parameters
+        ----------
+        edge : int
+            Edge whose wave is decomposed.
+        incoming : array_like of complex, optional
+            Complex amplitude assigned to each *source*, as a 1-D array with one entry per source
+            in the order of :meth:`contribution_labels` (the excitation-column order).  A source is
+            the incoming characteristic wave entering at one terminal -- ``f`` driven into the
+            inlet, ``g`` driven into an outlet, etc. -- expressed in characteristic units.  Use it
+            to set the operating scenario you care about: e.g. ``[1, 0, 0]`` for unit forcing at
+            the first terminal and silence elsewhere, or the actual/measured incoming amplitudes
+            at each terminal.  The contribution of source ``k`` is then its unit response scaled by
+            ``incoming[k]``, and the columns sum to the total field for that scenario.  Default
+            (``None``): unit amplitude on every source, so each column is the bare per-source
+            transfer function (gain) and the columns are directly comparable.
+
+        Returns
+        -------
+        ndarray
+            Shape ``(n_omega, n, n_source)``: entry ``[:, c, k]`` is the amplitude of driven
+            characteristic ``c`` (see :attr:`cidx`) at ``edge`` produced by source ``k``.
+
+        Raises
+        ------
+        ValueError
+            If ``edge`` is out of range or ``incoming`` has the wrong length.
+        """
+        if not 0 <= edge < len(self.L):
+            raise ValueError(f"edge {edge} out of range [0, {len(self.L)})")
+        W = self._waves(edge)[:, list(self.cidx), :]  # (n_omega, n, n_source)
+        if incoming is not None:
+            w = np.asarray(incoming, dtype=np.complex128)
+            if w.shape != (W.shape[2],):
+                raise ValueError(f"incoming must give one amplitude per source ({W.shape[2]}); got {w.shape}")
+            W = W * w[None, None, :]
+        return W
+
+    def contribution_labels(self, edge):
+        """Labels for :meth:`contributions` at ``edge``: ``(output_labels, source_labels)``.
+
+        ``output_labels`` are the driven characteristics at ``edge`` (rows, ``f``/``g``/``h``
+        subscripted by the edge **id** -- edge names are not meaningful); ``source_labels`` are the
+        incoming wave each excitation drives, subscripted by its terminal node **id and name**
+        (columns), so a plotted entry reads ``source → output`` (e.g. ``g₇:Outlet1 → f₅``: the
+        incoming wave at terminal Outlet1 contributing to ``f`` at edge 5).
+        """
+        outputs = [f"{_CHAR_SYM[c]}<sub>{edge}</sub>" for c in self.cidx]
+        sources = [self._wave_at_node(self._source_char(fam, t), t.node) for fam, t in self.forcing_kinds]
+        return outputs, sources
 
     # -- notebook plotting (edge-aware labels) ------------------------------
 
@@ -633,6 +812,19 @@ class PerturbationResponse:
 
         syms = BASIS_LABELS.get(basis)
         return tuple(syms[: self.n]) if syms else None
+
+    def _residual_title(self, a, b, title):
+        """Append the seriality residual to ``title`` so it is visible on the plot.
+
+        A genuine in-series matrix reads ``residual ~ 0``; a branch straddle shows the
+        large residual that makes the matrix a best-fit only.  ``(under-determined)`` flags
+        the case where the residual cannot be trusted (see :meth:`_underdetermined`).
+        """
+        r = self.transfer_residual(a, b)
+        note = f"max residual = {r:.1e}"
+        if self._underdetermined(self.n, self.X.shape[1]):
+            note += " (under-determined)"
+        return note if title is None else f"{title} — {note}"
 
     def plot_transfer_matrix(self, a, b, freqs=None, *, basis="char", **kwargs):
         """Plot the transfer matrix ``T_ba`` in ``basis``, with edge-subscripted labels.
@@ -665,7 +857,8 @@ class PerturbationResponse:
 
         T = self.transfer_matrix(a, b, basis=basis)
         x = self.omegas if freqs is None else freqs
-        return _plot(T, x, labels=self._basis_labels(basis), edges=(a, b), **kwargs)
+        title = self._residual_title(a, b, kwargs.pop("title", None))
+        return _plot(T, x, labels=self._basis_labels(basis), edges=(a, b), title=title, **kwargs)
 
     def plot_scattering_matrix(self, a, b, freqs=None, *, basis="char", **kwargs):
         """Plot the scattering matrix between ``a`` and ``b`` with station-tagged labels.
@@ -695,16 +888,23 @@ class PerturbationResponse:
 
         S = self.scattering_matrix(a, b, basis=basis)
         x = self.omegas if freqs is None else freqs
+        title = self._residual_title(a, b, kwargs.pop("title", None))
         return _plot(
-            S, x, labels=self._basis_labels(basis), edges=(a, b), partition=self.scattering_labels(a, b), **kwargs
+            S,
+            x,
+            labels=self._basis_labels(basis),
+            edges=(a, b),
+            partition=self.scattering_labels(a, b),
+            title=title,
+            **kwargs,
         )
 
     def plot_multiport_scattering_matrix(self, freqs=None, **kwargs):
         """Plot the whole-network multiport scattering matrix with terminal-tagged labels.
 
         Wraps :meth:`multiport_scattering_matrix` and labels every entry by its own
-        terminal-subscripted waves (e.g. ``f@n0 → g@n0`` for the inlet reflection,
-        ``f@n0 → f@n7`` for transmission to terminal 7).
+        terminal-subscripted waves (e.g. ``f₀ → g₀`` for the inlet reflection,
+        ``f₀ → f₇`` for transmission to terminal 7).
 
         Parameters
         ----------
@@ -724,6 +924,57 @@ class PerturbationResponse:
         incoming, outgoing = self.multiport_scattering_labels()
         x = self.omegas if freqs is None else freqs
         return _plot(S, x, row_labels=outgoing, col_labels=incoming, **kwargs)
+
+    def plot_contributions(self, edge, freqs=None, *, incoming=None, normalize="auto", **kwargs):
+        """Plot the source attribution of the wave at ``edge``: one panel per output wave.
+
+        The honest "where does what I see at this edge come from" view.  There is **one panel per
+        driven characteristic** at ``edge`` (``f``/``g``/``h``), and within each panel **one curve
+        per source** (each terminal's incoming wave), magnitude over phase, so the sources can be
+        compared directly against one another for that output wave -- which dominates, where they
+        cross over.  Unlike a transfer matrix this is well defined across branch points: it
+        decomposes a contribution rather than asserting one edge determines another.
+
+        Parameters
+        ----------
+        edge : int
+            Edge whose wave is decomposed.
+        freqs : array_like, optional
+            x-axis values (default: ``self.omegas`` in rad/s).  Pass ``self.omegas / (2*np.pi)``
+            for frequency in Hz.
+        incoming : array_like, optional
+            Per-source incoming amplitudes for a specific scenario (see :meth:`contributions`);
+            default is unit amplitude on every source.
+        normalize : {"auto", True, False}, optional
+            Scale each panel by its **dominant source's peak magnitude** (a scalar -- never by the
+            anchor's frequency curve, which would blow up at its nulls), so the leading source
+            peaks at ``1`` and the rest read as honest fractions of it.  ``"auto"`` (default)
+            normalizes only when ``incoming`` is ``None`` (per-source gains have no absolute scale),
+            and shows absolute magnitudes once an ``incoming`` scenario fixes the amplitudes.
+        **kwargs
+            Forwarded to :func:`fns.plotting.plot_complex_matrix`.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import plot_complex_matrix as _plot
+
+        C = self.contributions(edge, incoming=incoming)  # (n_omega, n, n_source)
+        outputs, sources = self.contribution_labels(edge)
+        if normalize == "auto":
+            normalize = incoming is None
+        suffix = ""
+        if normalize:  # scalar per-component anchor: divide each output wave by its peak contribution
+            peak = np.abs(C).max(axis=(0, 2), keepdims=True)
+            C = C / np.where(peak > 0.0, peak, 1.0)
+            kwargs.setdefault("mag_range", (0.0, 1.05))
+            suffix = " (normalized to the dominant source per panel)"
+        x = self.omegas if freqs is None else freqs
+        title = kwargs.pop("title", None) or f"edge {edge}: wave contribution by source{suffix}"
+        # one overlaid series per source -> a curve per source in each output-wave panel
+        mats = [C[:, :, k, None] for k in range(C.shape[2])]
+        return _plot(mats, x, names=sources, row_labels=outputs, col_labels=[""], title=title, **kwargs)
 
     # -- acoustics-only convenience (entropy dropped) -----------------------
 
@@ -745,7 +996,7 @@ class PerturbationResponse:
         Wa = self._waves(a)[:, :2, :][:, :, cols]  # (n_omega, 2, n_acoustic)
         Wb = self._waves(b)[:, :2, :][:, :, cols]
         T = Wb @ np.linalg.pinv(Wa)  # pinv: >= 2 acoustic forcings on a multi-terminal net
-        self._assert_in_series(T, Wa, Wb, a, b)
+        self._warn_seriality(a, b, 2, Wa.shape[2], self._seriality_residual(T, Wa, Wb))
         return T
 
     def acoustic_scattering_matrix(self, a, b):

@@ -1,0 +1,1285 @@
+# Gas-turbine secondary-air system -- saved from the FNetLibUI tool
+# (model: fns-flow-network).  The large showcase network adapted from the
+# preliminary-study prototype; it loads and solves verbatim on the current FNS.
+#
+#   HP bleed (total-P) --\
+#                         JunctionStaticP (mix-plenum) --> IsentropicAreaChange
+#   LP bleed (mass-flow) /                                  (main-feed) --> ...
+#
+#       ... --> LosslessSplitter (main-manifold) --> 3 sub-manifold legs,
+#               each a JunctionStaticP feeding several cooling circuits:
+#                 * orifice  : IsentropicAreaChange + LossElement     --> sink
+#                 * nozzle   : IsentropicAreaChange + SuddenAreaChange
+#                              (dump) + LossElement                   --> sink
+#                 * lab. seal: two series LossElements                --> sink
+#               every sink is a fixed-back-pressure PressureOutlet.
+#
+# A model of a turbine's secondary-air (cooling/sealing) distribution: two bleed
+# feeds mix, pass a contraction, and split across three manifolds that meter air
+# to ~15 sinks through orifices, dump nozzles and labyrinth seals.  A LossElement
+# "cross-bridge" links sub-manifold-0 to sub-manifold-1, so the graph carries a
+# cycle (not a tree).
+#
+# Things this case exercises on the current solver:
+#   * mixed inlet boundaries -- a TotalPressureInlet (HP, 900 kPa / 700 K) and a
+#     MassFlowInlet (LP, 3 kg/s / 480 K) -- merged at a static-pressure junction;
+#   * a non-tree topology (the cross-bridge cycle between two sub-manifolds);
+#   * EMERGENT BACKFLOW: the sink "sink-1480--560" sits at 830 kPa, above the
+#     local manifold static pressure, so it ingests air (mdot ~ -0.21 kg/s).  Its
+#     backflowTotalTemperature closes the energy balance for the ingested stream.
+#   * ACOUSTIC PROPAGATION: six constant-area Duct sections sit on the transport
+#     runs -- the two inlet feeds (hp/lp-feed-duct), the main manifold pipe
+#     (main-feed-pipe) and each sub-manifold feed (sub-feed-duct-0/1/2).  A Duct
+#     is INERT in the mean flow (its length never enters the steady residual, and
+#     its two edges share one area), so the converged mean flow is unchanged; it
+#     carries the wave phase the perturbation network propagates.  Note the area
+#     is held constant ACROSS each duct (both incident edges have equal area) --
+#     area changes belong to IsentropicAreaChange / SuddenAreaChange, not ducts.
+#
+# 63 elements / 63 edges (6 of them constant-area ducts); converges in ~13 Newton
+# steps to ||r|| ~ 1e-11; fully subsonic (max M ~ 0.65), so it stays inside the v1
+# subsonic scope.  As with the other UI exports, edges reference PORTS via
+# sourceHandle / targetHandle (`<node>-port-<ordinal>`): port 0 is the target
+# (incoming) side, port 1 the source (outgoing) side; the loader densifies each
+# element's incident ports.
+
+version: 2.0.0
+model:
+  id: fns-flow-network
+  globalAttributes:
+    gasConstant: 287.0
+    heatCapacityRatio: 1.4
+    referencePressure: 900000.0
+    referenceTemperature: 700.0
+    referenceMassFlow: 20.0
+  nodes:
+  - id: TotalPressureInlet_1
+    type: TotalPressureInlet
+    attributes:
+      label: hp-bleed
+      index: 0
+      totalPressure: 900000.0
+      totalTemperature: 700.0
+  - id: MassFlowInlet_1
+    type: MassFlowInlet
+    attributes:
+      label: lp-bleed
+      index: 1
+      massFlowRate: 3.0
+      totalTemperature: 480.0
+  - id: JunctionStaticP_1
+    type: JunctionStaticP
+    attributes:
+      label: mix-plenum
+      index: 2
+      leftPorts: 2
+      rightPorts: 1
+  - id: IsentropicAreaChange_1
+    type: IsentropicAreaChange
+    attributes:
+      label: main-feed
+      index: 3
+  - id: LosslessSplitter_1
+    type: LosslessSplitter
+    attributes:
+      label: main-manifold
+      index: 4
+      rightPorts: 3
+  - id: LossElement_1
+    type: LossElement
+    attributes:
+      label: sub-feed-0
+      index: 5
+      lossCoefficient: 0.8
+  - id: JunctionStaticP_2
+    type: JunctionStaticP
+    attributes:
+      label: sub-manifold-0
+      index: 6
+      leftPorts: 1
+      rightPorts: 6
+  - id: IsentropicAreaChange_2
+    type: IsentropicAreaChange
+    attributes:
+      label: orf-1480--560
+      index: 7
+  - id: LossElement_2
+    type: LossElement
+    attributes:
+      label: loss-1480--560
+      index: 8
+      lossCoefficient: 2.0
+  - id: PressureOutlet_1
+    type: PressureOutlet
+    attributes:
+      label: sink-1480--560
+      index: 9
+      pressure: 830000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_3
+    type: LossElement
+    attributes:
+      label: loss-1480--450
+      index: 10
+      lossCoefficient: 4.0
+  - id: PressureOutlet_2
+    type: PressureOutlet
+    attributes:
+      label: sink-1480--450
+      index: 11
+      pressure: 810000.0
+      backflowTotalTemperature: 700.0
+  - id: IsentropicAreaChange_3
+    type: IsentropicAreaChange
+    attributes:
+      label: noz-1480--340
+      index: 12
+  - id: SuddenAreaChange_1
+    type: SuddenAreaChange
+    attributes:
+      label: dump-1480--340
+      index: 13
+  - id: LossElement_4
+    type: LossElement
+    attributes:
+      label: loss-1480--340
+      index: 14
+      lossCoefficient: 1.0
+  - id: PressureOutlet_3
+    type: PressureOutlet
+    attributes:
+      label: sink-1480--340
+      index: 15
+      pressure: 790000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_5
+    type: LossElement
+    attributes:
+      label: lab1-1480--230
+      index: 16
+      lossCoefficient: 2.5
+  - id: LossElement_6
+    type: LossElement
+    attributes:
+      label: lab2-1480--230
+      index: 17
+      lossCoefficient: 2.5
+  - id: PressureOutlet_4
+    type: PressureOutlet
+    attributes:
+      label: sink-1480--230
+      index: 18
+      pressure: 770000.0
+      backflowTotalTemperature: 700.0
+  - id: IsentropicAreaChange_4
+    type: IsentropicAreaChange
+    attributes:
+      label: orf-1480--120
+      index: 19
+  - id: LossElement_7
+    type: LossElement
+    attributes:
+      label: loss-1480--120
+      index: 20
+      lossCoefficient: 2.0
+  - id: PressureOutlet_5
+    type: PressureOutlet
+    attributes:
+      label: sink-1480--120
+      index: 21
+      pressure: 750000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_8
+    type: LossElement
+    attributes:
+      label: sub-feed-1
+      index: 22
+      lossCoefficient: 1.2000000000000002
+  - id: JunctionStaticP_3
+    type: JunctionStaticP
+    attributes:
+      label: sub-manifold-1
+      index: 23
+      leftPorts: 2
+      rightPorts: 5
+  - id: LossElement_9
+    type: LossElement
+    attributes:
+      label: loss-1480-160
+      index: 24
+      lossCoefficient: 4.0
+  - id: PressureOutlet_6
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-160
+      index: 25
+      pressure: 810000.0
+      backflowTotalTemperature: 700.0
+  - id: IsentropicAreaChange_5
+    type: IsentropicAreaChange
+    attributes:
+      label: noz-1480-270
+      index: 26
+  - id: SuddenAreaChange_2
+    type: SuddenAreaChange
+    attributes:
+      label: dump-1480-270
+      index: 27
+  - id: LossElement_10
+    type: LossElement
+    attributes:
+      label: loss-1480-270
+      index: 28
+      lossCoefficient: 1.0
+  - id: PressureOutlet_7
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-270
+      index: 29
+      pressure: 790000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_11
+    type: LossElement
+    attributes:
+      label: lab1-1480-380
+      index: 30
+      lossCoefficient: 2.5
+  - id: LossElement_12
+    type: LossElement
+    attributes:
+      label: lab2-1480-380
+      index: 31
+      lossCoefficient: 2.5
+  - id: PressureOutlet_8
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-380
+      index: 32
+      pressure: 770000.0
+      backflowTotalTemperature: 700.0
+  - id: IsentropicAreaChange_6
+    type: IsentropicAreaChange
+    attributes:
+      label: orf-1480-490
+      index: 33
+  - id: LossElement_13
+    type: LossElement
+    attributes:
+      label: loss-1480-490
+      index: 34
+      lossCoefficient: 2.0
+  - id: PressureOutlet_9
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-490
+      index: 35
+      pressure: 750000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_14
+    type: LossElement
+    attributes:
+      label: loss-1480-600
+      index: 36
+      lossCoefficient: 4.0
+  - id: PressureOutlet_10
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-600
+      index: 37
+      pressure: 730000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_15
+    type: LossElement
+    attributes:
+      label: sub-feed-2
+      index: 38
+      lossCoefficient: 1.6
+  - id: JunctionStaticP_4
+    type: JunctionStaticP
+    attributes:
+      label: sub-manifold-2
+      index: 39
+      leftPorts: 1
+      rightPorts: 5
+  - id: IsentropicAreaChange_7
+    type: IsentropicAreaChange
+    attributes:
+      label: noz-1480-880
+      index: 40
+  - id: SuddenAreaChange_3
+    type: SuddenAreaChange
+    attributes:
+      label: dump-1480-880
+      index: 41
+  - id: LossElement_16
+    type: LossElement
+    attributes:
+      label: loss-1480-880
+      index: 42
+      lossCoefficient: 1.0
+  - id: PressureOutlet_11
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-880
+      index: 43
+      pressure: 790000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_17
+    type: LossElement
+    attributes:
+      label: lab1-1480-990
+      index: 44
+      lossCoefficient: 2.5
+  - id: LossElement_18
+    type: LossElement
+    attributes:
+      label: lab2-1480-990
+      index: 45
+      lossCoefficient: 2.5
+  - id: PressureOutlet_12
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-990
+      index: 46
+      pressure: 770000.0
+      backflowTotalTemperature: 700.0
+  - id: IsentropicAreaChange_8
+    type: IsentropicAreaChange
+    attributes:
+      label: orf-1480-1100
+      index: 47
+  - id: LossElement_19
+    type: LossElement
+    attributes:
+      label: loss-1480-1100
+      index: 48
+      lossCoefficient: 2.0
+  - id: PressureOutlet_13
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-1100
+      index: 49
+      pressure: 750000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_20
+    type: LossElement
+    attributes:
+      label: loss-1480-1210
+      index: 50
+      lossCoefficient: 4.0
+  - id: PressureOutlet_14
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-1210
+      index: 51
+      pressure: 730000.0
+      backflowTotalTemperature: 700.0
+  - id: IsentropicAreaChange_9
+    type: IsentropicAreaChange
+    attributes:
+      label: noz-1480-1320
+      index: 52
+  - id: SuddenAreaChange_4
+    type: SuddenAreaChange
+    attributes:
+      label: dump-1480-1320
+      index: 53
+  - id: LossElement_21
+    type: LossElement
+    attributes:
+      label: loss-1480-1320
+      index: 54
+      lossCoefficient: 1.0
+  - id: PressureOutlet_15
+    type: PressureOutlet
+    attributes:
+      label: sink-1480-1320
+      index: 55
+      pressure: 710000.0
+      backflowTotalTemperature: 700.0
+  - id: LossElement_22
+    type: LossElement
+    attributes:
+      label: cross-bridge
+      index: 56
+      lossCoefficient: 5.0
+  - id: Duct_1
+    type: Duct
+    attributes:
+      label: hp-feed-duct
+      index: 57
+      length: 0.6
+  - id: Duct_2
+    type: Duct
+    attributes:
+      label: lp-feed-duct
+      index: 58
+      length: 0.6
+  - id: Duct_3
+    type: Duct
+    attributes:
+      label: main-feed-pipe
+      index: 59
+      length: 0.8
+  - id: Duct_4
+    type: Duct
+    attributes:
+      label: sub-feed-duct-0
+      index: 60
+      length: 0.5
+  - id: Duct_5
+    type: Duct
+    attributes:
+      label: sub-feed-duct-1
+      index: 61
+      length: 0.5
+  - id: Duct_6
+    type: Duct
+    attributes:
+      label: sub-feed-duct-2
+      index: 62
+      length: 0.5
+  edges:
+  - id: edge_1
+    source: TotalPressureInlet_1
+    target: Duct_1
+    sourceHandle: TotalPressureInlet_1-port-0
+    targetHandle: Duct_1-port-0
+    type: flow
+    attributes:
+      index: 0
+      area: 0.02
+  - id: edge_2
+    source: MassFlowInlet_1
+    target: Duct_2
+    sourceHandle: MassFlowInlet_1-port-0
+    targetHandle: Duct_2-port-0
+    type: flow
+    attributes:
+      index: 1
+      area: 0.015
+  - id: edge_3
+    source: JunctionStaticP_1
+    target: IsentropicAreaChange_1
+    sourceHandle: JunctionStaticP_1-port-2
+    targetHandle: IsentropicAreaChange_1-port-0
+    type: flow
+    attributes:
+      index: 2
+      area: 0.03
+  - id: edge_4
+    source: IsentropicAreaChange_1
+    target: Duct_3
+    sourceHandle: IsentropicAreaChange_1-port-1
+    targetHandle: Duct_3-port-0
+    type: flow
+    attributes:
+      index: 3
+      area: 0.025
+  - id: edge_5
+    source: LosslessSplitter_1
+    target: LossElement_1
+    sourceHandle: LosslessSplitter_1-port-1
+    targetHandle: LossElement_1-port-0
+    type: flow
+    attributes:
+      index: 4
+      area: 0.01
+  - id: edge_6
+    source: LossElement_1
+    target: Duct_4
+    sourceHandle: LossElement_1-port-1
+    targetHandle: Duct_4-port-0
+    type: flow
+    attributes:
+      index: 5
+      area: 0.012
+  - id: edge_7
+    source: JunctionStaticP_2
+    target: IsentropicAreaChange_2
+    sourceHandle: JunctionStaticP_2-port-1
+    targetHandle: IsentropicAreaChange_2-port-0
+    type: flow
+    attributes:
+      index: 6
+      area: 0.004
+  - id: edge_8
+    source: IsentropicAreaChange_2
+    target: LossElement_2
+    sourceHandle: IsentropicAreaChange_2-port-1
+    targetHandle: LossElement_2-port-0
+    type: flow
+    attributes:
+      index: 7
+      area: 0.002
+  - id: edge_9
+    source: LossElement_2
+    target: PressureOutlet_1
+    sourceHandle: LossElement_2-port-1
+    targetHandle: PressureOutlet_1-port-0
+    type: flow
+    attributes:
+      index: 8
+      area: 0.002
+  - id: edge_10
+    source: JunctionStaticP_2
+    target: LossElement_3
+    sourceHandle: JunctionStaticP_2-port-2
+    targetHandle: LossElement_3-port-0
+    type: flow
+    attributes:
+      index: 9
+      area: 0.004
+  - id: edge_11
+    source: LossElement_3
+    target: PressureOutlet_2
+    sourceHandle: LossElement_3-port-1
+    targetHandle: PressureOutlet_2-port-0
+    type: flow
+    attributes:
+      index: 10
+      area: 0.004
+  - id: edge_12
+    source: JunctionStaticP_2
+    target: IsentropicAreaChange_3
+    sourceHandle: JunctionStaticP_2-port-3
+    targetHandle: IsentropicAreaChange_3-port-0
+    type: flow
+    attributes:
+      index: 11
+      area: 0.004
+  - id: edge_13
+    source: IsentropicAreaChange_3
+    target: SuddenAreaChange_1
+    sourceHandle: IsentropicAreaChange_3-port-1
+    targetHandle: SuddenAreaChange_1-port-0
+    type: flow
+    attributes:
+      index: 12
+      area: 0.0025
+  - id: edge_14
+    source: SuddenAreaChange_1
+    target: LossElement_4
+    sourceHandle: SuddenAreaChange_1-port-1
+    targetHandle: LossElement_4-port-0
+    type: flow
+    attributes:
+      index: 13
+      area: 0.006
+  - id: edge_15
+    source: LossElement_4
+    target: PressureOutlet_3
+    sourceHandle: LossElement_4-port-1
+    targetHandle: PressureOutlet_3-port-0
+    type: flow
+    attributes:
+      index: 14
+      area: 0.006
+  - id: edge_16
+    source: JunctionStaticP_2
+    target: LossElement_5
+    sourceHandle: JunctionStaticP_2-port-4
+    targetHandle: LossElement_5-port-0
+    type: flow
+    attributes:
+      index: 15
+      area: 0.004
+  - id: edge_17
+    source: LossElement_5
+    target: LossElement_6
+    sourceHandle: LossElement_5-port-1
+    targetHandle: LossElement_6-port-0
+    type: flow
+    attributes:
+      index: 16
+      area: 0.004
+  - id: edge_18
+    source: LossElement_6
+    target: PressureOutlet_4
+    sourceHandle: LossElement_6-port-1
+    targetHandle: PressureOutlet_4-port-0
+    type: flow
+    attributes:
+      index: 17
+      area: 0.004
+  - id: edge_19
+    source: JunctionStaticP_2
+    target: IsentropicAreaChange_4
+    sourceHandle: JunctionStaticP_2-port-5
+    targetHandle: IsentropicAreaChange_4-port-0
+    type: flow
+    attributes:
+      index: 18
+      area: 0.004
+  - id: edge_20
+    source: IsentropicAreaChange_4
+    target: LossElement_7
+    sourceHandle: IsentropicAreaChange_4-port-1
+    targetHandle: LossElement_7-port-0
+    type: flow
+    attributes:
+      index: 19
+      area: 0.002
+  - id: edge_21
+    source: LossElement_7
+    target: PressureOutlet_5
+    sourceHandle: LossElement_7-port-1
+    targetHandle: PressureOutlet_5-port-0
+    type: flow
+    attributes:
+      index: 20
+      area: 0.002
+  - id: edge_22
+    source: LosslessSplitter_1
+    target: LossElement_8
+    sourceHandle: LosslessSplitter_1-port-2
+    targetHandle: LossElement_8-port-0
+    type: flow
+    attributes:
+      index: 21
+      area: 0.01
+  - id: edge_23
+    source: LossElement_8
+    target: Duct_5
+    sourceHandle: LossElement_8-port-1
+    targetHandle: Duct_5-port-0
+    type: flow
+    attributes:
+      index: 22
+      area: 0.012
+  - id: edge_24
+    source: JunctionStaticP_3
+    target: LossElement_9
+    sourceHandle: JunctionStaticP_3-port-2
+    targetHandle: LossElement_9-port-0
+    type: flow
+    attributes:
+      index: 23
+      area: 0.004
+  - id: edge_25
+    source: LossElement_9
+    target: PressureOutlet_6
+    sourceHandle: LossElement_9-port-1
+    targetHandle: PressureOutlet_6-port-0
+    type: flow
+    attributes:
+      index: 24
+      area: 0.004
+  - id: edge_26
+    source: JunctionStaticP_3
+    target: IsentropicAreaChange_5
+    sourceHandle: JunctionStaticP_3-port-3
+    targetHandle: IsentropicAreaChange_5-port-0
+    type: flow
+    attributes:
+      index: 25
+      area: 0.004
+  - id: edge_27
+    source: IsentropicAreaChange_5
+    target: SuddenAreaChange_2
+    sourceHandle: IsentropicAreaChange_5-port-1
+    targetHandle: SuddenAreaChange_2-port-0
+    type: flow
+    attributes:
+      index: 26
+      area: 0.0025
+  - id: edge_28
+    source: SuddenAreaChange_2
+    target: LossElement_10
+    sourceHandle: SuddenAreaChange_2-port-1
+    targetHandle: LossElement_10-port-0
+    type: flow
+    attributes:
+      index: 27
+      area: 0.006
+  - id: edge_29
+    source: LossElement_10
+    target: PressureOutlet_7
+    sourceHandle: LossElement_10-port-1
+    targetHandle: PressureOutlet_7-port-0
+    type: flow
+    attributes:
+      index: 28
+      area: 0.006
+  - id: edge_30
+    source: JunctionStaticP_3
+    target: LossElement_11
+    sourceHandle: JunctionStaticP_3-port-4
+    targetHandle: LossElement_11-port-0
+    type: flow
+    attributes:
+      index: 29
+      area: 0.004
+  - id: edge_31
+    source: LossElement_11
+    target: LossElement_12
+    sourceHandle: LossElement_11-port-1
+    targetHandle: LossElement_12-port-0
+    type: flow
+    attributes:
+      index: 30
+      area: 0.004
+  - id: edge_32
+    source: LossElement_12
+    target: PressureOutlet_8
+    sourceHandle: LossElement_12-port-1
+    targetHandle: PressureOutlet_8-port-0
+    type: flow
+    attributes:
+      index: 31
+      area: 0.004
+  - id: edge_33
+    source: JunctionStaticP_3
+    target: IsentropicAreaChange_6
+    sourceHandle: JunctionStaticP_3-port-5
+    targetHandle: IsentropicAreaChange_6-port-0
+    type: flow
+    attributes:
+      index: 32
+      area: 0.004
+  - id: edge_34
+    source: IsentropicAreaChange_6
+    target: LossElement_13
+    sourceHandle: IsentropicAreaChange_6-port-1
+    targetHandle: LossElement_13-port-0
+    type: flow
+    attributes:
+      index: 33
+      area: 0.002
+  - id: edge_35
+    source: LossElement_13
+    target: PressureOutlet_9
+    sourceHandle: LossElement_13-port-1
+    targetHandle: PressureOutlet_9-port-0
+    type: flow
+    attributes:
+      index: 34
+      area: 0.002
+  - id: edge_36
+    source: JunctionStaticP_3
+    target: LossElement_14
+    sourceHandle: JunctionStaticP_3-port-6
+    targetHandle: LossElement_14-port-0
+    type: flow
+    attributes:
+      index: 35
+      area: 0.004
+  - id: edge_37
+    source: LossElement_14
+    target: PressureOutlet_10
+    sourceHandle: LossElement_14-port-1
+    targetHandle: PressureOutlet_10-port-0
+    type: flow
+    attributes:
+      index: 36
+      area: 0.004
+  - id: edge_38
+    source: LosslessSplitter_1
+    target: LossElement_15
+    sourceHandle: LosslessSplitter_1-port-3
+    targetHandle: LossElement_15-port-0
+    type: flow
+    attributes:
+      index: 37
+      area: 0.01
+  - id: edge_39
+    source: LossElement_15
+    target: Duct_6
+    sourceHandle: LossElement_15-port-1
+    targetHandle: Duct_6-port-0
+    type: flow
+    attributes:
+      index: 38
+      area: 0.012
+  - id: edge_40
+    source: JunctionStaticP_4
+    target: IsentropicAreaChange_7
+    sourceHandle: JunctionStaticP_4-port-1
+    targetHandle: IsentropicAreaChange_7-port-0
+    type: flow
+    attributes:
+      index: 39
+      area: 0.004
+  - id: edge_41
+    source: IsentropicAreaChange_7
+    target: SuddenAreaChange_3
+    sourceHandle: IsentropicAreaChange_7-port-1
+    targetHandle: SuddenAreaChange_3-port-0
+    type: flow
+    attributes:
+      index: 40
+      area: 0.0025
+  - id: edge_42
+    source: SuddenAreaChange_3
+    target: LossElement_16
+    sourceHandle: SuddenAreaChange_3-port-1
+    targetHandle: LossElement_16-port-0
+    type: flow
+    attributes:
+      index: 41
+      area: 0.006
+  - id: edge_43
+    source: LossElement_16
+    target: PressureOutlet_11
+    sourceHandle: LossElement_16-port-1
+    targetHandle: PressureOutlet_11-port-0
+    type: flow
+    attributes:
+      index: 42
+      area: 0.006
+  - id: edge_44
+    source: JunctionStaticP_4
+    target: LossElement_17
+    sourceHandle: JunctionStaticP_4-port-2
+    targetHandle: LossElement_17-port-0
+    type: flow
+    attributes:
+      index: 43
+      area: 0.004
+  - id: edge_45
+    source: LossElement_17
+    target: LossElement_18
+    sourceHandle: LossElement_17-port-1
+    targetHandle: LossElement_18-port-0
+    type: flow
+    attributes:
+      index: 44
+      area: 0.004
+  - id: edge_46
+    source: LossElement_18
+    target: PressureOutlet_12
+    sourceHandle: LossElement_18-port-1
+    targetHandle: PressureOutlet_12-port-0
+    type: flow
+    attributes:
+      index: 45
+      area: 0.004
+  - id: edge_47
+    source: JunctionStaticP_4
+    target: IsentropicAreaChange_8
+    sourceHandle: JunctionStaticP_4-port-3
+    targetHandle: IsentropicAreaChange_8-port-0
+    type: flow
+    attributes:
+      index: 46
+      area: 0.004
+  - id: edge_48
+    source: IsentropicAreaChange_8
+    target: LossElement_19
+    sourceHandle: IsentropicAreaChange_8-port-1
+    targetHandle: LossElement_19-port-0
+    type: flow
+    attributes:
+      index: 47
+      area: 0.002
+  - id: edge_49
+    source: LossElement_19
+    target: PressureOutlet_13
+    sourceHandle: LossElement_19-port-1
+    targetHandle: PressureOutlet_13-port-0
+    type: flow
+    attributes:
+      index: 48
+      area: 0.002
+  - id: edge_50
+    source: JunctionStaticP_4
+    target: LossElement_20
+    sourceHandle: JunctionStaticP_4-port-4
+    targetHandle: LossElement_20-port-0
+    type: flow
+    attributes:
+      index: 49
+      area: 0.004
+  - id: edge_51
+    source: LossElement_20
+    target: PressureOutlet_14
+    sourceHandle: LossElement_20-port-1
+    targetHandle: PressureOutlet_14-port-0
+    type: flow
+    attributes:
+      index: 50
+      area: 0.004
+  - id: edge_52
+    source: JunctionStaticP_4
+    target: IsentropicAreaChange_9
+    sourceHandle: JunctionStaticP_4-port-5
+    targetHandle: IsentropicAreaChange_9-port-0
+    type: flow
+    attributes:
+      index: 51
+      area: 0.004
+  - id: edge_53
+    source: IsentropicAreaChange_9
+    target: SuddenAreaChange_4
+    sourceHandle: IsentropicAreaChange_9-port-1
+    targetHandle: SuddenAreaChange_4-port-0
+    type: flow
+    attributes:
+      index: 52
+      area: 0.0025
+  - id: edge_54
+    source: SuddenAreaChange_4
+    target: LossElement_21
+    sourceHandle: SuddenAreaChange_4-port-1
+    targetHandle: LossElement_21-port-0
+    type: flow
+    attributes:
+      index: 53
+      area: 0.006
+  - id: edge_55
+    source: LossElement_21
+    target: PressureOutlet_15
+    sourceHandle: LossElement_21-port-1
+    targetHandle: PressureOutlet_15-port-0
+    type: flow
+    attributes:
+      index: 54
+      area: 0.006
+  - id: edge_56
+    source: JunctionStaticP_2
+    target: LossElement_22
+    sourceHandle: JunctionStaticP_2-port-6
+    targetHandle: LossElement_22-port-0
+    type: flow
+    attributes:
+      index: 55
+      area: 0.003
+  - id: edge_57
+    source: LossElement_22
+    target: JunctionStaticP_3
+    sourceHandle: LossElement_22-port-1
+    targetHandle: JunctionStaticP_3-port-1
+    type: flow
+    attributes:
+      index: 56
+      area: 0.003
+  - id: edge_58
+    source: Duct_1
+    target: JunctionStaticP_1
+    sourceHandle: Duct_1-port-1
+    targetHandle: JunctionStaticP_1-port-0
+    type: flow
+    attributes:
+      index: 57
+      area: 0.02
+  - id: edge_59
+    source: Duct_2
+    target: JunctionStaticP_1
+    sourceHandle: Duct_2-port-1
+    targetHandle: JunctionStaticP_1-port-1
+    type: flow
+    attributes:
+      index: 58
+      area: 0.015
+  - id: edge_60
+    source: Duct_3
+    target: LosslessSplitter_1
+    sourceHandle: Duct_3-port-1
+    targetHandle: LosslessSplitter_1-port-0
+    type: flow
+    attributes:
+      index: 59
+      area: 0.025
+  - id: edge_61
+    source: Duct_4
+    target: JunctionStaticP_2
+    sourceHandle: Duct_4-port-1
+    targetHandle: JunctionStaticP_2-port-0
+    type: flow
+    attributes:
+      index: 60
+      area: 0.012
+  - id: edge_62
+    source: Duct_5
+    target: JunctionStaticP_3
+    sourceHandle: Duct_5-port-1
+    targetHandle: JunctionStaticP_3-port-0
+    type: flow
+    attributes:
+      index: 61
+      area: 0.012
+  - id: edge_63
+    source: Duct_6
+    target: JunctionStaticP_4
+    sourceHandle: Duct_6-port-1
+    targetHandle: JunctionStaticP_4-port-0
+    type: flow
+    attributes:
+      index: 62
+      area: 0.012
+uiAttributes:
+  nodes:
+  - id: TotalPressureInlet_1
+    position:
+      x: 0.0
+      y: 60.0
+  - id: MassFlowInlet_1
+    position:
+      x: 0.0
+      y: 260.0
+  - id: JunctionStaticP_1
+    position:
+      x: 240.0
+      y: 160.0
+  - id: IsentropicAreaChange_1
+    position:
+      x: 480.0
+      y: 160.0
+  - id: LosslessSplitter_1
+    position:
+      x: 720.0
+      y: 160.0
+  - id: LossElement_1
+    position:
+      x: 960.0
+      y: -360.0
+  - id: JunctionStaticP_2
+    position:
+      x: 1200.0
+      y: -360.0
+  - id: IsentropicAreaChange_2
+    position:
+      x: 1480.0
+      y: -560.0
+  - id: LossElement_2
+    position:
+      x: 1680.0
+      y: -560.0
+  - id: PressureOutlet_1
+    position:
+      x: 1880.0
+      y: -560.0
+  - id: LossElement_3
+    position:
+      x: 1480.0
+      y: -450.0
+  - id: PressureOutlet_2
+    position:
+      x: 1680.0
+      y: -450.0
+  - id: IsentropicAreaChange_3
+    position:
+      x: 1480.0
+      y: -340.0
+  - id: SuddenAreaChange_1
+    position:
+      x: 1680.0
+      y: -340.0
+  - id: LossElement_4
+    position:
+      x: 1880.0
+      y: -340.0
+  - id: PressureOutlet_3
+    position:
+      x: 2080.0
+      y: -340.0
+  - id: LossElement_5
+    position:
+      x: 1480.0
+      y: -230.0
+  - id: LossElement_6
+    position:
+      x: 1680.0
+      y: -230.0
+  - id: PressureOutlet_4
+    position:
+      x: 1880.0
+      y: -230.0
+  - id: IsentropicAreaChange_4
+    position:
+      x: 1480.0
+      y: -120.0
+  - id: LossElement_7
+    position:
+      x: 1680.0
+      y: -120.0
+  - id: PressureOutlet_5
+    position:
+      x: 1880.0
+      y: -120.0
+  - id: LossElement_8
+    position:
+      x: 960.0
+      y: 360.0
+  - id: JunctionStaticP_3
+    position:
+      x: 1200.0
+      y: 360.0
+  - id: LossElement_9
+    position:
+      x: 1480.0
+      y: 160.0
+  - id: PressureOutlet_6
+    position:
+      x: 1680.0
+      y: 160.0
+  - id: IsentropicAreaChange_5
+    position:
+      x: 1480.0
+      y: 270.0
+  - id: SuddenAreaChange_2
+    position:
+      x: 1680.0
+      y: 270.0
+  - id: LossElement_10
+    position:
+      x: 1880.0
+      y: 270.0
+  - id: PressureOutlet_7
+    position:
+      x: 2080.0
+      y: 270.0
+  - id: LossElement_11
+    position:
+      x: 1480.0
+      y: 380.0
+  - id: LossElement_12
+    position:
+      x: 1680.0
+      y: 380.0
+  - id: PressureOutlet_8
+    position:
+      x: 1880.0
+      y: 380.0
+  - id: IsentropicAreaChange_6
+    position:
+      x: 1480.0
+      y: 490.0
+  - id: LossElement_13
+    position:
+      x: 1680.0
+      y: 490.0
+  - id: PressureOutlet_9
+    position:
+      x: 1880.0
+      y: 490.0
+  - id: LossElement_14
+    position:
+      x: 1480.0
+      y: 600.0
+  - id: PressureOutlet_10
+    position:
+      x: 1680.0
+      y: 600.0
+  - id: LossElement_15
+    position:
+      x: 960.0
+      y: 1080.0
+  - id: JunctionStaticP_4
+    position:
+      x: 1200.0
+      y: 1080.0
+  - id: IsentropicAreaChange_7
+    position:
+      x: 1480.0
+      y: 880.0
+  - id: SuddenAreaChange_3
+    position:
+      x: 1680.0
+      y: 880.0
+  - id: LossElement_16
+    position:
+      x: 1880.0
+      y: 880.0
+  - id: PressureOutlet_11
+    position:
+      x: 2080.0
+      y: 880.0
+  - id: LossElement_17
+    position:
+      x: 1480.0
+      y: 990.0
+  - id: LossElement_18
+    position:
+      x: 1680.0
+      y: 990.0
+  - id: PressureOutlet_12
+    position:
+      x: 1880.0
+      y: 990.0
+  - id: IsentropicAreaChange_8
+    position:
+      x: 1480.0
+      y: 1100.0
+  - id: LossElement_19
+    position:
+      x: 1680.0
+      y: 1100.0
+  - id: PressureOutlet_13
+    position:
+      x: 1880.0
+      y: 1100.0
+  - id: LossElement_20
+    position:
+      x: 1480.0
+      y: 1210.0
+  - id: PressureOutlet_14
+    position:
+      x: 1680.0
+      y: 1210.0
+  - id: IsentropicAreaChange_9
+    position:
+      x: 1480.0
+      y: 1320.0
+  - id: SuddenAreaChange_4
+    position:
+      x: 1680.0
+      y: 1320.0
+  - id: LossElement_21
+    position:
+      x: 1880.0
+      y: 1320.0
+  - id: PressureOutlet_15
+    position:
+      x: 2080.0
+      y: 1320.0
+  - id: LossElement_22
+    position:
+      x: 1200.0
+      y: -120.0
+  - id: Duct_1
+    position:
+      x: 120.0
+      y: 60.0
+  - id: Duct_2
+    position:
+      x: 120.0
+      y: 260.0
+  - id: Duct_3
+    position:
+      x: 600.0
+      y: 160.0
+  - id: Duct_4
+    position:
+      x: 1080.0
+      y: -360.0
+  - id: Duct_5
+    position:
+      x: 1080.0
+      y: 360.0
+  - id: Duct_6
+    position:
+      x: 1080.0
+      y: 1080.0
+uiState:
+  counters:
+    nodeCounters:
+      TotalPressureInlet: 1
+      MassFlowInlet: 1
+      JunctionStaticP: 4
+      IsentropicAreaChange: 9
+      LosslessSplitter: 1
+      LossElement: 22
+      PressureOutlet: 15
+      SuddenAreaChange: 4
+      Duct: 6
+    totalNodeCounters:
+      TotalPressureInlet: 1
+      MassFlowInlet: 1
+      JunctionStaticP: 4
+      IsentropicAreaChange: 9
+      LosslessSplitter: 1
+      LossElement: 22
+      PressureOutlet: 15
+      SuddenAreaChange: 4
+      Duct: 6

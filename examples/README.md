@@ -9,6 +9,20 @@
   **impedance** liner outlet, with a side branch closed by a **wall** (a
   quarter-wave resonator with no mean flow). Load it, `solve()` the mean flow, then
   sweep `fns.perturbation.boundary_response(sol.problem, sol.x, omegas)`.
+- **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
+  **secondary-air / cooling** distribution), adapted from the preliminary-study
+  prototype. Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`
+  (LP) — mix at a static-pressure junction, pass a contraction, and split across
+  three sub-manifolds metering air to ~15 fixed-back-pressure sinks through
+  orifices (`IsentropicAreaChange`), dump nozzles (`+ SuddenAreaChange`) and
+  labyrinth seals (series `LossElement`s). A `LossElement` **cross-bridge** links
+  two sub-manifolds, so the graph is **not a tree**, and one sink sits above the
+  local static pressure, producing **emergent backflow** (ingestion) closed by its
+  `backflowTotalTemperature`. Six **constant-area `Duct`** sections sit on the
+  transport runs (inlet feeds, main manifold pipe, sub-manifold feeds): inert in
+  the mean flow, they carry the wave phase the perturbation network propagates. 63
+  elements / 63 edges; converges in ~13 Newton steps, fully subsonic (max `M` ≈
+  0.65).
 - **`converging_nozzle.ipynb`** — loads the UI case, solves the steady mean flow,
   prints the converged edge states, sweeps the back pressure to show emergent
   choking (mass-flow saturation at `M = 1`), and runs the full `3 x 3`
@@ -24,6 +38,16 @@
   `riemann` = `(P+, P-, σ)` flavour) against an **independent** composition of the
   analytic jumps. The machine-precision version of that check lives in
   `tests/test_perturbation_dedomenico.py`.
+- **`gas_turbine_large.ipynb`** — the companion notebook for
+  `gas_turbine_large.yaml`. Loads and solves the secondary-air network, tabulates
+  the converged edge states, checks the global **mass balance**, and charts the
+  per-sink air distribution (the lone negative bar is the **backflow** sink). It
+  then draws the whole network as a **Sankey** laid out on the UI canvas
+  coordinates, and runs the **perturbation** layer: it shows why a 2-port transfer
+  matrix is non-physical across the splitter/junctions (the `TransferMatrixWarning`)
+  and instead uses the rigorous whole-network descriptors — the **multiport
+  scattering matrix** and per-terminal **source attribution** at a chosen sink. All
+  figures are Plotly, styled with the shared FNS theme (`fns.plotting`).
 
 ## Running the notebook
 

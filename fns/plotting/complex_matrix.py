@@ -45,6 +45,10 @@ def _entry_title(row_labels, col_labels, i, j):
     """
     if row_labels is None or col_labels is None:
         return f"{i + 1}{j + 1}"
+    if not col_labels[j]:  # single-axis overlay (e.g. source attribution): title by row alone
+        return row_labels[i]
+    if not row_labels[i]:
+        return col_labels[j]
     return f"{col_labels[j]}→{row_labels[i]}"
 
 

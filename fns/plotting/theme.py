@@ -31,7 +31,14 @@ _AXIS = "#cbd2d9"  # axis lines / ticks
 _PAPER = "#ffffff"
 _PLOT = "#ffffff"
 
-_FONT_FAMILY = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
+# Default body font for all Plotly text in the FNS template.
+FONT_FAMILY = "Arial"
+
+# Figure title: centered, bold, slightly below the former 18 pt default.
+_TITLE_FONT_SIZE = 16
+_TICK_FONT_SIZE = 13
+# Default Plotly standoff is 15 px; pull axis titles closer to tick labels.
+_AXIS_TITLE_STANDOFF = 6
 
 
 # Uniform line weight shared by every axis line, mirrored border and tick, so all
@@ -54,8 +61,8 @@ def _axis():
         ticklen=5,
         tickwidth=_LINE_W,
         tickcolor=_AXIS,
-        tickfont=dict(color=_MUTED, size=12),
-        title=dict(font=dict(color=_INK, size=14)),
+        tickfont=dict(color=_MUTED, size=_TICK_FONT_SIZE),
+        title=dict(font=dict(color=_INK, size=14), standoff=_AXIS_TITLE_STANDOFF),
         automargin=True,
     )
 
@@ -65,8 +72,12 @@ def fns_template() -> go.layout.Template:
     return go.layout.Template(
         layout=dict(
             colorway=COLORWAY,
-            font=dict(family=_FONT_FAMILY, color=_INK, size=13),
-            title=dict(font=dict(family=_FONT_FAMILY, color=_INK, size=18), x=0.01, xanchor="left"),
+            font=dict(family=FONT_FAMILY, color=_INK, size=13),
+            title=dict(
+                font=dict(family=FONT_FAMILY, color=_INK, size=_TITLE_FONT_SIZE, weight="bold"),
+                x=0.5,
+                xanchor="center",
+            ),
             paper_bgcolor=_PAPER,
             plot_bgcolor=_PLOT,
             colorscale=dict(sequential=[[0, "#eef2ff"], [0.5, "#60a5fa"], [1, "#1e3a8a"]]),
@@ -81,8 +92,8 @@ def fns_template() -> go.layout.Template:
             ),
             hoverlabel=dict(
                 bgcolor="#ffffff",
-                bordercolor=_AXIS,
-                font=dict(family=_FONT_FAMILY, color=_INK, size=12),
+                bordercolor=_GRID,
+                font=dict(family=FONT_FAMILY, color=_INK, size=12),
             ),
             hovermode="x unified",
         ),

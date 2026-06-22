@@ -43,3 +43,9 @@ However, do not assume everything in there is theoretically flawless, always do 
 ## Coding style
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
+- Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
+
+## TODO.md management
+- Do NOT remove the titles
+- Erase completed items
+- When you add a new entry, be sure it is concise.

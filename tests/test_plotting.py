@@ -7,6 +7,7 @@ import pytest
 
 from fns.plotting import (
     COLORWAY,
+    FONT_FAMILY,
     FNS_TEMPLATE_NAME,
     fns_template,
     use_fns_theme,
@@ -35,6 +36,16 @@ def test_fns_template_is_well_formed():
     # hairline grid, no zero line: the deliberate "modern" choices
     assert tmpl.layout.xaxis.zeroline is False
     assert tmpl.layout.yaxis.showgrid is True
+    assert tmpl.layout.font.family == FONT_FAMILY
+    assert tmpl.layout.title.font.family == FONT_FAMILY
+    assert tmpl.layout.title.font.size == 16
+    assert tmpl.layout.title.font.weight == "bold"
+    assert tmpl.layout.title.x == 0.5
+    assert tmpl.layout.title.xanchor == "center"
+    assert tmpl.layout.xaxis.linecolor == "#cbd2d9"
+    assert tmpl.layout.xaxis.tickcolor == "#cbd2d9"
+    assert tmpl.layout.xaxis.tickfont.size == 13
+    assert tmpl.layout.xaxis.title.standoff == 6
 
 
 def test_use_fns_theme_sets_default():

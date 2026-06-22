@@ -89,14 +89,15 @@ Each single-port element (`MassFlowInlet`, `TotalPressureInlet`, `PressureOutlet
 written on the terminal, every flavor being a choice of `R` (and an excitation
 forcing `b`).
 
-**In the UI** the surface is deliberately small — each boundary node exposes only an
-*Acoustics* group with a **Rigid** checkbox (a closed wall, `u'=0`), an **Open**
-checkbox (an ideal pressure-release open end, `p'=0`, `R=−1`) and, when neither is set,
-a **specific impedance** as `impedanceMagnitude` (|Z|/ρc) and `impedancePhase`
-(degrees). Precedence is rigid → open → impedance. Defaults: inlets/outlets default to
-**open** (`p'=0`); the `Wall` node defaults to rigid. The loader maps these to
-`PerturbationBC.hard_wall()`, `PerturbationBC.open_end()`, or
-`PerturbationBC.impedance_polar(...)`. A boundary with no acoustic fields keeps its
+**In the UI** the surface is deliberately small — each boundary node's *Acoustics*
+group exposes a single **Acoustic boundary** dropdown (`boundaryType`) with three
+choices: **Rigid** (a closed wall, `u'=0`), **Open** (an ideal pressure-release open
+end, `p'=0`, `R=−1`), or **Impedance**, which reveals a **specific impedance** as
+`impedanceMagnitude` (|Z|/ρc) and `impedancePhase` (degrees). Selecting one is
+exclusive, so there is no precedence to resolve. Defaults: inlets/outlets default to
+**open** (`p'=0`); the `Wall` node defaults to rigid (and offers only Rigid/Impedance).
+The loader maps these to `PerturbationBC.hard_wall()`, `PerturbationBC.open_end()`, or
+`PerturbationBC.impedance_polar(...)`. A boundary with no `boundaryType` keeps its
 default closure (`inherit` for inlets/outlets — e.g. a pressure outlet → `p'=0`).
 
 **In Python** the full `PerturbationBC` API is available (the richer closures are

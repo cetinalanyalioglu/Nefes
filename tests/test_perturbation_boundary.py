@@ -436,34 +436,32 @@ def _load_case_dict(case, tmp_path):
 
 
 def test_loader_rigid_maps_to_hard_wall(tmp_path):
-    net = _load_case_dict(_ui_case({"rigid": True}), tmp_path)
+    net = _load_case_dict(_ui_case({"boundaryType": "rigid"}), tmp_path)
     assert net._elements[2].perturbation_bc.kind == "hard_wall"
 
 
 def test_loader_open_maps_to_open_end(tmp_path):
-    # the 'open' checkbox -> ideal pressure-release end (p'=0, R=-1)
-    net = _load_case_dict(_ui_case({"rigid": False, "open": True}), tmp_path)
+    # boundaryType 'open' -> ideal pressure-release end (p'=0, R=-1)
+    net = _load_case_dict(_ui_case({"boundaryType": "open"}), tmp_path)
     bc = net._elements[2].perturbation_bc
     assert bc.kind == "open_end"
     assert bc.reflection_coefficient(0.0, 1.2, 340.0, 0.0) == pytest.approx(-1.0)
 
 
-def test_loader_rigid_takes_precedence_over_open(tmp_path):
-    net = _load_case_dict(_ui_case({"rigid": True, "open": True}), tmp_path)
-    assert net._elements[2].perturbation_bc.kind == "hard_wall"
-
-
-def test_loader_open_takes_precedence_over_impedance(tmp_path):
-    net = _load_case_dict(_ui_case({"rigid": False, "open": True, "impedanceMagnitude": 2.0}), tmp_path)
-    assert net._elements[2].perturbation_bc.kind == "open_end"
-
-
 def test_loader_impedance_polar(tmp_path):
     # specific impedance magnitude 2, phase 0 -> zeta = 2 -> R = (2-1)/(2+1) = 1/3
-    net = _load_case_dict(_ui_case({"rigid": False, "impedanceMagnitude": 2.0, "impedancePhase": 0.0}), tmp_path)
+    net = _load_case_dict(
+        _ui_case({"boundaryType": "impedance", "impedanceMagnitude": 2.0, "impedancePhase": 0.0}),
+        tmp_path,
+    )
     bc = net._elements[2].perturbation_bc
     assert bc.kind == "impedance" and bc.specific
     assert bc.reflection_coefficient(0.0, 1.2, 340.0, 0.0) == pytest.approx(1.0 / 3.0)
+
+
+def test_loader_rejects_unknown_boundary_type(tmp_path):
+    with pytest.raises(ValueError):
+        _load_case_dict(_ui_case({"boundaryType": "bogus"}), tmp_path)
 
 
 def test_loader_no_acoustic_fields_is_inherit(tmp_path):
@@ -476,7 +474,7 @@ def test_loader_builds_wall_element(tmp_path):
     case["model"]["nodes"][2] = {
         "id": "out",
         "type": "Wall",
-        "attributes": {"index": 2, "label": "wall", "rigid": True},
+        "attributes": {"index": 2, "label": "wall", "boundaryType": "rigid"},
     }
     net = _load_case_dict(case, tmp_path)
     wall = net._elements[2]

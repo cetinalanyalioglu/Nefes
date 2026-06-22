@@ -53,30 +53,29 @@ _DEFERRED_TYPES = {"SupersonicInlet", "SupersonicOutlet"}
 def _parse_perturbation_bc(attrs: dict):
     """Build a ``PerturbationBC`` from a boundary node's UI acoustic attributes.
 
-    The UI exposes a deliberately small surface: a ``rigid`` checkbox (an infinite
-    impedance / hard wall), an ``open`` checkbox (an ideal pressure-release open end,
-    ``p'=0``) and, when neither is set, a specific acoustic impedance given by
-    ``impedanceMagnitude`` (|Z|/rho c) and ``impedancePhase`` (degrees).  ``rigid``
-    takes precedence over ``open``, which takes precedence over the impedance.  Returns
-    ``None`` when no acoustic field is present, so the element keeps its default
-    closure (``inherit`` for inlets/outlets; a hard wall for the wall element).  Richer
-    closures (reflection coefficients, excitation, mean-flow open end, frequency
-    tables) are set directly in Python via ``PerturbationBC``.
+    The UI exposes a deliberately small surface: a single ``boundaryType`` dropdown
+    selecting ``"rigid"`` (an infinite impedance / hard wall, ``u'=0``), ``"open"``
+    (an ideal pressure-release open end, ``p'=0``) or ``"impedance"`` (a specific
+    acoustic impedance given by ``impedanceMagnitude`` |Z|/rho c and ``impedancePhase``
+    in degrees).  Returns ``None`` when no ``boundaryType`` is present, so the element
+    keeps its default closure (``inherit`` for inlets/outlets; a hard wall for the wall
+    element).  Richer closures (reflection coefficients, excitation, mean-flow open
+    end, frequency tables) are set directly in Python via ``PerturbationBC``.
     """
     from ..perturbation.boundary_bc import PerturbationBC
 
-    rigid = attrs.get("rigid")
-    open_end = attrs.get("open")
-    has_impedance = "impedanceMagnitude" in attrs or "impedancePhase" in attrs
-    if rigid is None and open_end is None and not has_impedance:
-        return None  # no acoustic fields -> keep the element's default closure
-    if rigid:
+    btype = attrs.get("boundaryType")
+    if btype is None:
+        return None  # no acoustic field -> keep the element's default closure
+    if btype == "rigid":
         return PerturbationBC.hard_wall()
-    if open_end:
+    if btype == "open":
         return PerturbationBC.open_end()
-    magnitude = float(attrs.get("impedanceMagnitude", 1.0))
-    phase_deg = float(attrs.get("impedancePhase", 0.0))
-    return PerturbationBC.impedance_polar(magnitude, phase_deg, specific=True)
+    if btype == "impedance":
+        magnitude = float(attrs.get("impedanceMagnitude", 1.0))
+        phase_deg = float(attrs.get("impedancePhase", 0.0))
+        return PerturbationBC.impedance_polar(magnitude, phase_deg, specific=True)
+    raise ValueError(f"unknown boundaryType {btype!r} on a boundary node")
 
 
 def _port_of(handle: str) -> int:

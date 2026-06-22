@@ -37,7 +37,7 @@ _UI_NODE_BUILDERS = {
     "PressureOutlet": lambda a: cat.pressure_outlet(a["pressure"], a.get("backflowTotalTemperature", 300.0)),
     "Wall": lambda a: cat.wall(),
     "IsentropicAreaChange": lambda a: cat.isentropic_area_change(),
-    "SuddenAreaChange": lambda a: cat.sudden_area_change(),
+    "SuddenAreaChange": lambda a: cat.sudden_area_change(cc=a.get("contractionCoefficient", 1.0)),
     "LossElement": lambda a: cat.loss(a["lossCoefficient"]),
     "Duct": lambda a: cat.duct(a.get("length", 0.0)),
     "JunctionStaticP": lambda a: cat.junction(),

@@ -16,7 +16,7 @@ and 3x3 full perturbation networks)::
     plot_transfer_matrix(resp.transfer_matrix(0, 1), resp.freqs).show()
 """
 
-from .theme import COLORWAY, FNS_TEMPLATE_NAME, fns_template, use_fns_theme
+from .theme import COLORWAY, FONT_FAMILY, FNS_TEMPLATE_NAME, fns_template, use_fns_theme
 from .complex_matrix import (
     plot_complex_matrix,
     plot_transfer_matrix,
@@ -26,6 +26,7 @@ from .complex_matrix import (
 
 __all__ = [
     "COLORWAY",
+    "FONT_FAMILY",
     "FNS_TEMPLATE_NAME",
     "fns_template",
     "use_fns_theme",

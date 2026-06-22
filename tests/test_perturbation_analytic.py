@@ -77,6 +77,22 @@ def _r_sudden(y0, y1, A0, A1):
     return np.array([mdot1 - mdot0, ht1 - ht0, mom])
 
 
+def _r_sudden_contraction(y0, y1, A0, A1, cc):
+    """Reverse (large -> small) sudden contraction: vena-contracta loss law.
+
+    Active when ``A0 > A1`` (side 1 is the small / downstream port): mass, energy,
+    and a downstream-referenced total-pressure loss ``K_c * (1/2 rho u^2)_small``
+    with ``K_c = (1/cc - 1)^2``.  ``cc = 1`` collapses to total-pressure continuity.
+    """
+    rho0, u0, p0 = y0
+    rho1, u1, p1 = y1
+    _, _, pt0, ht0 = _derived(y0)
+    _, _, pt1, ht1 = _derived(y1)
+    K_c = (1.0 / cc - 1.0) ** 2
+    q_small = 0.5 * rho1 * u1 * u1  # small side = downstream = side 1 (A1 < A0)
+    return np.array([rho1 * u1 * A1 - rho0 * u0 * A0, ht1 - ht0, (pt0 - pt1) - K_c * q_small])
+
+
 def _r_loss(y0, y1, A0, A1, K_loss):
     rho0, u0, p0 = y0
     rho1, u1, p1 = y1
@@ -191,6 +207,20 @@ def test_sudden_area_change_independent_jump():
     assert np.allclose(T_prim, T_ref, rtol=1e-5, atol=1e-5 * np.max(np.abs(T_ref)))
 
 
+def test_sudden_contraction_independent_jump():
+    # a sudden CONTRACTION with forward flow (large -> small): the vena-contracta
+    # loss branch is active and cc < 1 makes the jump genuinely lossy.  A sharp eps
+    # (1e-7 * mdot_ref) saturates the regime switch so the assembled jump is the
+    # clean loss-law linearisation, with no switch-derivative leak from the inactive
+    # momentum branch.
+    cc = 0.62
+    prob, res = _two_port(cat.sudden_area_change(cc=cc, eps=1e-7 * 10.0), 0.09, 0.05, pt_in=120000.0)
+    T_prim, est = _assembled_prim_tm(prob, res)
+    assert est[ES_M, 1] > est[ES_M, 0]  # contracting: accelerates into the small pipe
+    T_ref = _jump_tm(_r_sudden_contraction, _prim(est, 0), _prim(est, 1), 0.09, 0.05, cc)
+    assert np.allclose(T_prim, T_ref, rtol=1e-4, atol=1e-4 * np.max(np.abs(T_ref)))
+
+
 def test_loss_element_independent_jump():
     K_loss = 2.5
     # the concentrated loss is a constant-area element (its K is referenced to the
@@ -213,6 +243,7 @@ def test_loss_element_independent_jump():
     [
         (cat.isentropic_area_change(), 0.08, 0.05),
         (cat.sudden_area_change(), 0.05, 0.08),
+        (cat.sudden_area_change(cc=0.62), 0.09, 0.05),  # lossy contraction: mass+energy still continuous
         (cat.loss(2.5), 0.08, 0.08),  # loss is constant-area (equal-area rule)
         (cat.duct(1.0), 0.06, 0.06),  # length inert at omega -> 0 (phases -> 1)
     ],

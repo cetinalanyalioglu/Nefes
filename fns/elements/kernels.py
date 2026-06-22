@@ -144,14 +144,29 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
             - est[ES_P, se] * (a1 - a0)
         )
         r_mom = -r_mom / la
-        r_isen = est[ES_PT, e0] - est[ES_PT, e1]
+        # Reverse (large -> small) contraction branch.  The jet necks to a vena
+        # contracta of area Cc*A_small, then Borda-expands back to the small pipe;
+        # that re-expansion is the only lossy step, giving a downstream-referenced
+        # total-pressure loss  K_c * (1/2 rho u^2)_small  with  K_c = (1/Cc - 1)^2.
+        # Cc = 1 (default) is the loss-free contraction and recovers exact total-
+        # pressure continuity (the historical behaviour).
+        #
+        # O(M^2) NOTE: the (1/2 rho u^2) head is the *incompressible* reduction of
+        # the Borda momentum balance, so this jump is accurate only to O(M^2).  A
+        # dedicated contraction element that resolves the vena-contracta state (and
+        # so stays exact at higher Mach) is planned -- see catalog.sudden_area_change.
+        cc = npar_f[pb + 0]
+        k_contr = (1.0 / cc - 1.0) ** 2
+        q_small = 0.5 * est[ES_RHO, se] * est[ES_U, se] * est[ES_U, se]
+        loss_dir = 1.0 if se == e1 else -1.0  # orient the PT drop onto the small port
+        r_isen = (est[ES_PT, e0] - est[ES_PT, e1]) - loss_dir * k_contr * q_small
         mdot_in_small = -ss * est[ES_MDOT, se]
-        # xi switches momentum (forward expansion: Borda loss) <-> isentropic
-        # (contraction).  NOTE: even when xi is saturated (|mdot| >> eps, so the
-        # mean flow is pure Borda), the switch's *derivative* leaks the large loss
-        # residual (r_mom - r_isen) into the frozen perturbation Jacobian, biasing
-        # the jump off the exact Borda by O(eps).  When the flow is one-directional,
-        # set this element's eps small (ElementSpec.eps) to recover the exact jump.
+        # xi switches momentum (forward expansion: Borda loss) <-> the contraction
+        # branch.  NOTE: even when xi is saturated (|mdot| >> eps, so the mean flow
+        # is one regime), the switch's *derivative* leaks the residual gap
+        # (r_mom - r_isen) into the frozen perturbation Jacobian, biasing the jump
+        # by O(eps).  When the flow is one-directional, set this element's eps small
+        # (ElementSpec.eps) to recover the exact jump.
         xi = smooth_step(mdot_in_small, eps)
         R[r0 + 1] = xi * r_mom + (1.0 - xi) * r_isen - stab_term
         return

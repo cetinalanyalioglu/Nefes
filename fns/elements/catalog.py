@@ -128,10 +128,37 @@ def sudden_area_change(name="sac", cc=1.0, eps=None):
     return ElementSpec(SUDDEN_AREA_CHANGE, [cc], name, eps=eps)
 
 
-def loss(K, name="loss", eps=None):
+def loss(K, name="loss", ref_port=0, eps=None):
+    """A concentrated total-pressure loss ``Pt_in - Pt_out = K * (1/2 rho u^2)``.
+
+    The element conserves mass and drops total pressure by ``K`` dynamic heads,
+    with the head's sign tracking the flow direction so reverse flow reverses the
+    drop (modeling-guide.md s4).  The static state on each port is reconstructed
+    from that port's own area, so the loss may straddle an area change: the result
+    is an isentropic area change (Pt-preserving static<->dynamic conversion) with
+    the concentrated ``K``-loss superposed.
+
+    Parameters
+    ----------
+    K : float
+        Loss coefficient, referenced to the dynamic head at port ``ref_port``.
+    name : str, optional
+        Element name.
+    ref_port : int, optional
+        Which incident port's area and velocity define the reference dynamic head
+        ``1/2 rho u^2`` that ``K`` multiplies -- ``0`` (default, the upstream edge
+        in the canonical orientation) or ``1``.  Only matters when the ports carry
+        different areas; tabulated ``K`` values always name their reference
+        section, so set this to match the source.
+    eps : float, optional
+        Per-element smoothing-width override (see ``ElementSpec.eps``).
+    """
     from .ids import LOSS
 
-    return ElementSpec(LOSS, [float(K)], name, eps=eps)
+    rp = int(ref_port)
+    if rp not in (0, 1):
+        raise ValueError(f"loss: ref_port must be 0 or 1; got {ref_port}")
+    return ElementSpec(LOSS, [float(K), float(rp)], name, eps=eps)
 
 
 def junction(name="junction"):
@@ -170,9 +197,10 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
     * each element's port count matches its arity -- exactly ``FIXED_NPORTS`` for
       fixed-arity elements, ``>= 2`` for the variable junction/splitter;
     * elements that do not permit an area change (``ALLOWS_AREA_CHANGE`` is
-      ``False`` -- the duct and the concentrated loss) carry one shared area
-      across all their incident edges.  An intended area change must use an
-      ``isentropic_area_change`` or ``sudden_area_change`` element.
+      ``False`` -- the constant-area duct) carry one shared area across all their
+      incident edges.  An intended area change at an area-agnostic element (e.g. a
+      sudden expansion) must use an ``isentropic_area_change`` or
+      ``sudden_area_change`` element.
 
     Parameters
     ----------

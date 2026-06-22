@@ -4,7 +4,8 @@ The compiler rejects ill-posed networks up front: non-positive areas, wrong port
 arity, and -- the headline check -- an area change across an element that does
 not permit one.  Area changes are physically carried by the dedicated
 ``isentropic_area_change`` / ``sudden_area_change`` elements; the constant-area
-elements (duct, concentrated loss) must share one area across both ports.
+duct must share one area across both ports.  The concentrated loss is
+area-agnostic and may straddle an area change.
 """
 
 import numpy as np
@@ -32,9 +33,9 @@ def test_duct_area_change_rejected():
         _build(cat.duct(0.5, name="tailpipe"), 0.02, 0.01)
 
 
-def test_loss_area_change_rejected():
-    with pytest.raises(ValueError, match="area change"):
-        _build(cat.loss(2.5, name="valve"), 0.08, 0.05)
+def test_loss_area_change_allowed():
+    # the concentrated loss is area-agnostic: it may straddle an area change
+    assert _build(cat.loss(2.5, name="valve"), 0.08, 0.05).n_nodes == 3
 
 
 def test_error_message_names_the_element():
@@ -52,9 +53,8 @@ def test_sudden_area_change_allows_jump():
     assert prob.n_nodes == 3
 
 
-def test_equal_area_duct_and_loss_ok():
+def test_equal_area_duct_ok():
     assert _build(cat.duct(1.0), 0.06, 0.06).n_nodes == 3
-    assert _build(cat.loss(2.5), 0.08, 0.08).n_nodes == 3
 
 
 def test_junction_and_splitter_allow_different_areas():

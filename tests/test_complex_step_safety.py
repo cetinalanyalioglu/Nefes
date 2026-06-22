@@ -261,8 +261,10 @@ def _probe_sudden_area_change():
 
 
 def _probe_loss():
-    els = [cat.total_pressure_inlet(PT_BC, TT), cat.loss(2.5), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    # loss straddling an area change, referenced to the downstream (smaller) port:
+    # exercises the ref_port branch and the orientation-signed through-flow.
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.loss(2.5, ref_port=1), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.8 * PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_duct():

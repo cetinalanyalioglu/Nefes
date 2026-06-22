@@ -173,9 +173,16 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
 
     if rid == LOSS:
         K = npar_f[pb + 0]
+        # ref_port selects which port's area/velocity the loss coefficient K is
+        # referenced to (catalog.loss); only matters when the ports differ in area.
+        ar = a0 if npar_f[pb + 1] < 0.5 else a1
         rho_avg = 0.5 * (est[ES_RHO, e0] + est[ES_RHO, e1])
-        denom = rho_avg * a0
-        u_ref = est[ES_MDOT, e0] / denom
+        denom = rho_avg * ar
+        # Through-flow, positive in the e0 -> e1 sense (mass balance: the inflow at
+        # port 0 equals the outflow at port 1).  Using the port orientation keeps
+        # the loss sign correct regardless of how the two edges were wired.
+        mdot_through = -s0 * est[ES_MDOT, e0]
+        u_ref = mdot_through / denom
         u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
         q_signed = 0.5 * rho_avg * u_ref * u_abs
         R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - stab_term

@@ -43,14 +43,17 @@ FIXED_NPORTS = {
 }
 
 # Whether an element permits an area change across it (its incident edges may
-# carry different areas).  Area changes are physically carried by the dedicated
-# area-change elements; the constant-area elements -- the duct (theory.md s12.3)
-# and the concentrated loss (whose K-referenced loss assumes equal up/downstream
-# area, modeling-guide.md s4) -- require one shared area across both ports.
-# Junctions/splitters are manifolds and impose no area-equality constraint.
-# Single-port boundaries are exempt (one edge, nothing to compare).  Elements
-# absent from this map default to True (unconstrained); add an entry here when a
-# new element type needs the equal-area rule enforced.
+# carry different areas).  Most elements are area-agnostic: the dedicated
+# area-change elements carry the static<->dynamic conversion, and the concentrated
+# loss reconstructs each port's static state from that port's own area, so it may
+# straddle an area change (the loss rides on top of an isentropic area change; its
+# K is pinned to a definite port via catalog.loss's ref_port).  The duct alone is
+# truly constant-area (theory.md s12.3): its mean face is equal-area continuity,
+# so its two ports must share one area.  Junctions/splitters are manifolds and
+# impose no area-equality constraint.  Single-port boundaries are exempt (one
+# edge, nothing to compare).  Elements absent from this map default to True
+# (unconstrained); add an entry here when a new element type needs the equal-area
+# rule enforced.
 ALLOWS_AREA_CHANGE = {
     MASS_FLOW_INLET: True,
     PT_INLET: True,
@@ -61,7 +64,7 @@ ALLOWS_AREA_CHANGE = {
     JUNCTION: True,
     SPLITTER: True,
     DUCT: False,
-    LOSS: False,
+    LOSS: True,
 }
 
 # Human-readable element-type names, for validation / reporting messages.

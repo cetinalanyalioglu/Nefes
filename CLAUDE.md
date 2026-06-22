@@ -26,6 +26,10 @@ However, do not assume everything in there is theoretically flawless, always do 
 - During development there is no need to keep things for backward compat.
 - Development phase goes on until we have a tagged release on the repo.
 
+### Pitfalls
+
+- Be aware of numba cache
+
 ## Hard constraints (don't violate without explicit reason)
 
 - All residual math must be **complex-step-safe**: smooth, complex-analytic, no `abs`/`min`/`max`/branches on the flow state. Jacobians come from complex-step differentiation. (See `preliminary-study/fns/smooth.py`.) Every new element kernel must get a probe in `tests/test_complex_step_safety.py` (`PROBES`); the roll-call test fails until it does, and the per-kernel sweep then checks complex-step == finite-difference across forward/reverse/near-zero/near-choke flow.
@@ -44,6 +48,7 @@ However, do not assume everything in there is theoretically flawless, always do 
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
 - Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
+
 
 ## TODO.md management
 - Do NOT remove the titles

@@ -98,6 +98,85 @@ def test_load_case_preserves_ports():
     assert list(prob.orient[sl]) == [-1, 1]  # edge1 incoming, edge2 outgoing
 
 
+def _contraction_case(tmp_path, sac_attrs):
+    """Write a minimal UI-export case: inlet -> sudden contraction -> outlet.
+
+    Edge 0 (area 0.09) enters the element at port 0, edge 1 (area 0.05) leaves it
+    at port 1, so the forward flow contracts large -> small.  ``sac_attrs`` are the
+    extra attributes carried by the SuddenAreaChange node (e.g. a contraction
+    coefficient), exactly as the UI would export them.
+    """
+    import yaml
+
+    doc = {
+        "version": "2.0.0",
+        "model": {
+            "id": "fns-flow-network",
+            "globalAttributes": {
+                "gasConstant": 287.0,
+                "heatCapacityRatio": 1.4,
+                "referencePressure": 101325.0,
+                "referenceTemperature": 300.0,
+                "referenceMassFlow": 10.0,
+            },
+            "nodes": [
+                {
+                    "id": "in",
+                    "type": "TotalPressureInlet",
+                    "attributes": {"label": "in", "index": 0, "totalPressure": 120000.0, "totalTemperature": 300.0},
+                },
+                {"id": "sac", "type": "SuddenAreaChange", "attributes": {"label": "sac", "index": 1, **sac_attrs}},
+                {
+                    "id": "out",
+                    "type": "PressureOutlet",
+                    "attributes": {"label": "out", "index": 2, "pressure": 101325.0, "backflowTotalTemperature": 300.0},
+                },
+            ],
+            "edges": [
+                {
+                    "id": "e0",
+                    "source": "in",
+                    "target": "sac",
+                    "sourceHandle": "in-port-0",
+                    "targetHandle": "sac-port-0",
+                    "type": "flow",
+                    "attributes": {"label": "big", "index": 0, "area": 0.09},
+                },
+                {
+                    "id": "e1",
+                    "source": "sac",
+                    "target": "out",
+                    "sourceHandle": "sac-port-1",
+                    "targetHandle": "out-port-0",
+                    "type": "flow",
+                    "attributes": {"label": "small", "index": 1, "area": 0.05},
+                },
+            ],
+        },
+    }
+    path = tmp_path / f"contraction_{len(sac_attrs)}.yaml"
+    path.write_text(yaml.safe_dump(doc))
+    return str(path)
+
+
+def test_load_case_sudden_contraction_coefficient(tmp_path):
+    # The UI exports the contraction coefficient as a node attribute; load_case must
+    # thread it to the kernel.  With cc = 0.62 the reverse (large -> small) flow loses
+    # total pressure K_c * (1/2 rho u^2)_small; omitting the attribute is loss-free.
+    lossy = load_case(_contraction_case(tmp_path, {"contractionCoefficient": 0.62})).solve()
+    free = load_case(_contraction_case(tmp_path, {})).solve()  # default cc = 1
+    assert lossy.converged and free.converged
+
+    up, dn = lossy.edge(0), lossy.edge(1)  # large (upstream) -> small (downstream)
+    assert dn["M"] > up["M"] and dn["M"] < 1.0  # genuinely contracting, subsonic
+    K_c = (1.0 / 0.62 - 1.0) ** 2
+    q_small = 0.5 * dn["rho"] * dn["u"] ** 2
+    assert up["p_t"] - dn["p_t"] == pytest.approx(K_c * q_small, rel=1e-5)
+
+    # the attribute-less case defaults to the historical loss-free contraction
+    assert free.edge(0)["p_t"] - free.edge(1)["p_t"] == pytest.approx(0.0, abs=1.0)
+
+
 @pytest.mark.skipif(not os.path.exists(SHOWCASE), reason="UI showcase cases not present")
 def test_load_multiport_showcase_conserves_mass():
     # A real UI export with splitters/junctions (multi-port elements) must load

@@ -88,16 +88,44 @@ def isentropic_area_change(name="iac"):
     return ElementSpec(ISEN_AREA_CHANGE, [], name)
 
 
-def sudden_area_change(name="sac", eps=None):
-    """Borda/isentropic sudden area change.
+def sudden_area_change(name="sac", cc=1.0, eps=None):
+    """Sudden area change: Borda-Carnot expansion, vena-contracta contraction.
 
-    ``eps`` optionally sharpens this element's momentum<->isentropic switch (see
-    ``ElementSpec.eps``); use a small value (e.g. ``1e-6 * mdot_ref``) when the
-    flow is firmly one-directional and an accurate perturbation jump is wanted.
+    Forward flow (small -> large) follows the Borda-Carnot momentum balance
+    (separation at the step, mixing loss).  Reverse flow (large -> small, a
+    contraction) follows a vena-contracta total-pressure loss
+    ``K_c * (1/2 rho u^2)_small`` with ``K_c = (1/cc - 1)^2``, referenced to the
+    downstream (small-port) dynamic head.  The small/large sides are identified
+    from the attached edge areas, so ``cc`` always acts on whichever direction is
+    contracting.
+
+    Parameters
+    ----------
+    name : str, optional
+        Element label.
+    cc : float, optional
+        Vena-contracta contraction coefficient for the reverse (contracting)
+        flow, in ``(0, 1]``.  ``cc = 1`` (default) is the loss-free contraction:
+        the reverse branch reduces to exact total-pressure continuity (the
+        historical behaviour).  Use a tabulated value for the geometry (e.g.
+        ~0.62 for a sharp-edged contraction at a small area ratio; Weisbach /
+        Idelchik).  Forward (expanding) flow is unaffected by ``cc``.
+
+        The loss uses the incompressible ``1/2 rho u^2`` head, so it is accurate
+        only to ``O(M^2)``; a dedicated contraction element resolving the vena-
+        contracta state (exact at higher Mach) is planned.
+    eps : float, optional
+        Optionally sharpens this element's momentum<->contraction switch (see
+        ``ElementSpec.eps``); use a small value (e.g. ``1e-6 * mdot_ref``) when
+        the flow is firmly one-directional and an accurate perturbation jump is
+        wanted.
     """
     from .ids import SUDDEN_AREA_CHANGE
 
-    return ElementSpec(SUDDEN_AREA_CHANGE, [], name, eps=eps)
+    cc = float(cc)
+    if not 0.0 < cc <= 1.0:
+        raise ValueError(f"sudden_area_change: contraction coefficient cc must be in (0, 1]; got {cc}")
+    return ElementSpec(SUDDEN_AREA_CHANGE, [cc], name, eps=eps)
 
 
 def loss(K, name="loss", eps=None):

@@ -13,8 +13,6 @@
 - [ ] Is it okay allowing area change across loss element? To me, it is perfectly fine. What is the appropriate velocity reference to K, upstream edge or downstream edge?
 
 ## To test
-- [ ] Stress test of the homotopy mechanism with many elements
-- [ ] Verify complex-step safe and continuous derivatives
 
 ## Deferred
 

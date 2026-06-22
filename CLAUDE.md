@@ -28,7 +28,7 @@ However, do not assume everything in there is theoretically flawless, always do 
 
 ## Hard constraints (don't violate without explicit reason)
 
-- All residual math must be **complex-step-safe**: smooth, complex-analytic, no `abs`/`min`/`max`/branches on the flow state. Jacobians come from complex-step differentiation. (See `preliminary-study/fns/smooth.py`.)
+- All residual math must be **complex-step-safe**: smooth, complex-analytic, no `abs`/`min`/`max`/branches on the flow state. Jacobians come from complex-step differentiation. (See `preliminary-study/fns/smooth.py`.) Every new element kernel must get a probe in `tests/test_complex_step_safety.py` (`PROBES`); the roll-call test fails until it does, and the per-kernel sweep then checks complex-step == finite-difference across forward/reverse/near-zero/near-choke flow.
 - v1 scope is **subsonic** (flowing or quiescent); supersonic/shock-seeding is deferred.
 
 ## Version control

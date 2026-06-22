@@ -1,0 +1,374 @@
+"""Complex-step safety: the analytic (complex-step) Jacobian must equal a real
+finite-difference Jacobian across every element type.
+
+The hard constraint (CLAUDE.md) is that all residual math is complex-step-safe:
+smooth, complex-analytic, no ``abs``/``min``/``max``/branch on the flow state.
+The Jacobian is built by complex-step differentiation (``x + 1j*h``), which
+returns the *correct* derivative ONLY for an analytic residual.  A real central
+finite difference, by contrast, sees the actual function value -- so the two
+agree to FD truncation accuracy for an analytic residual and *diverge* the
+moment a non-analytic operation (``abs``, ``min``, a branch on the flow state)
+slips into the residual stack.  Comparing them is therefore a direct detector
+for a complex-step-unsafe implementation.
+
+``test_cs_detector_flags_nonanalytic`` proves the detector actually fires: for
+``|x|`` the complex-step "derivative" is wrong while the finite difference is
+right, so the two disagree.  The element tests then assert agreement on the real
+residual, covering every element kernel.
+
+Two layers of coverage:
+
+* a combined network that runs every element together at a solved operating
+  point (and a random off-root state), and
+* a **per-kernel regime sweep** (``PROBES`` / ``test_kernel_complex_step_safe_
+  across_regimes``): each element gets a minimal isolated network driven across
+  forward, reverse, near-zero and near-choke flow, where a non-analytic branch
+  is most likely to be exposed.  ``test_every_element_kernel_is_swept`` is a
+  roll-call: it fails if a newly added element type has no sweep probe, so the
+  safety net cannot silently miss a kernel.
+"""
+
+import numpy as np
+import pytest
+
+from fns.thermo.configure import perfect_gas
+from fns.elements import catalog as cat
+from fns.elements.ids import (
+    MASS_FLOW_INLET,
+    PT_INLET,
+    P_OUTLET,
+    ISEN_AREA_CHANGE,
+    SUDDEN_AREA_CHANGE,
+    LOSS,
+    JUNCTION,
+    SPLITTER,
+    DUCT,
+    WALL,
+    SUPERSONIC_INLET,
+    SUPERSONIC_OUTLET,
+    RESIDUAL_NAMES,
+)
+from fns.assemble import residual, jacobian
+from fns.solver import solve
+from fns.solver.control import states_table
+from fns.derive import ES_M
+from fns.solver.linear import scaled_system, col_scale
+
+R_AIR, GAMMA = 287.0, 1.4
+CP = GAMMA * R_AIR / (GAMMA - 1.0)
+EPS = 1e-3 * 40.0
+EPS_FB = 1e-5
+CS_H = 1e-30
+
+
+def _fd_jacobian(prob, x2d, eps, eps_fb, stab=0.0, rel=1e-6):
+    """Dense real central finite-difference Jacobian (no complex step).
+
+    Column ``n_solve*e + v`` is ``dR/dx[v, e]`` from a central difference with a
+    per-variable step ``rel * var_scale[v]``.
+    """
+    n, E = prob.n_solve, prob.n_edges
+    J = np.zeros((prob.n_eq, n * E))
+    steps = np.empty(n)
+    steps[:3] = rel * prob.var_scale
+    if n > 3:
+        steps[3:] = rel  # element-storage unknowns (none for a perfect gas)
+    for e in range(E):
+        for v in range(n):
+            h = steps[v]
+            xp = x2d.copy()
+            xm = x2d.copy()
+            xp[v, e] += h
+            xm[v, e] -= h
+            Rp = residual(prob, xp, eps, eps_fb, stab)
+            Rm = residual(prob, xm, eps, eps_fb, stab)
+            J[:, n * e + v] = (Rp - Rm) / (2.0 * h)
+    return J
+
+
+def _scaled(prob, J):
+    """Nondimensionalize a dense Jacobian the way the Newton loop does."""
+    vcol = col_scale(prob.var_scale, prob.n_edges)
+    J_hat, _ = scaled_system(J, np.zeros(prob.n_eq), vcol, prob.res_scale)
+    return np.asarray(J_hat.todense())
+
+
+def _all_elements_network(inlet):
+    """A single network exercising every v1 element kernel.
+
+    Layout (areas in m^2)::
+
+        inlet -e0-> iac -e1-> splitter ==> loss -> duct -> junction -> outlet
+                                       ==> sac --------------> junction
+                                       ==> wall (dead leg, mdot = 0)
+
+    The splitter feeds two flowing branches plus an impermeable wall leg, so the
+    wall edge sits at mdot = 0 -- the C1-through-zero corner -- inside the same
+    Jacobian comparison.
+    """
+    cfg = perfect_gas(R_AIR, GAMMA)
+    A0, A1, A2 = 0.20, 0.12, 0.16
+    elements = [
+        inlet,  # 0
+        cat.isentropic_area_change(),  # 1
+        cat.splitter(),  # 2
+        cat.loss(2.5),  # 3
+        cat.duct(0.4),  # 4
+        cat.sudden_area_change(cc=0.7),  # 5
+        cat.junction(),  # 6
+        cat.pressure_outlet(1.0e5),  # 7
+        cat.wall(),  # 8
+    ]
+    edges = [
+        (0, 1, A0),  # e0  inlet -> iac
+        (1, 2, A1),  # e1  iac -> splitter (area change A0 -> A1)
+        (2, 3, A1),  # e2  splitter -> loss
+        (3, 4, A1),  # e3  loss -> duct      (loss: constant area)
+        (4, 6, A1),  # e4  duct -> junction  (duct: constant area)
+        (2, 5, A1),  # e5  splitter -> sac
+        (5, 6, A2),  # e6  sac -> junction   (area change A1 -> A2)
+        (6, 7, A2),  # e7  junction -> outlet
+        (2, 8, A1),  # e8  splitter -> wall  (dead leg, mdot = 0)
+    ]
+    return cat.build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
+
+
+INLETS = [
+    cat.mass_flow_inlet(20.0, 300.0),
+    cat.total_pressure_inlet(1.06e5, 300.0),
+]
+
+
+@pytest.mark.parametrize("inlet", INLETS, ids=["mass_flow_inlet", "pt_inlet"])
+def test_cs_jacobian_matches_finite_difference(inlet):
+    # Compare at the genuine operating point so the comparison is physical and
+    # the wall leg actually sits at mdot = 0.
+    prob = _all_elements_network(inlet)
+    res = solve(prob)
+    assert res.converged
+
+    Jcs = _scaled(prob, jacobian(prob, res.x, EPS, EPS_FB).toarray())
+    Jfd = _scaled(prob, _fd_jacobian(prob, res.x, EPS, EPS_FB))
+
+    # Central FD is good to ~1e-9 on the scaled (O(1)) entries; a non-analytic
+    # residual would blow this past any reasonable tolerance.
+    assert np.allclose(Jcs, Jfd, rtol=1e-6, atol=1e-7)
+
+
+@pytest.mark.parametrize("inlet", INLETS, ids=["mass_flow_inlet", "pt_inlet"])
+def test_cs_jacobian_matches_fd_off_operating_point(inlet):
+    # Same agreement away from the root, where residuals are large -- exercises
+    # the kernels over a broader slice of state space, including a reversed edge.
+    prob = _all_elements_network(inlet)
+    rng = np.random.default_rng(7)
+    x = np.zeros((3, prob.n_edges))
+    x[0, :] = rng.uniform(-15.0, 22.0, size=prob.n_edges)
+    x[0, 0] = 24.0  # keep the inlet edge firmly forward
+    x[1, :] = rng.uniform(9.0e4, 1.2e5, size=prob.n_edges)
+    x[2, :] = CP * rng.uniform(295.0, 320.0, size=prob.n_edges)
+
+    Jcs = _scaled(prob, jacobian(prob, x, EPS, EPS_FB).toarray())
+    Jfd = _scaled(prob, _fd_jacobian(prob, x, EPS, EPS_FB))
+    assert np.allclose(Jcs, Jfd, rtol=1e-5, atol=1e-6)
+
+
+def test_residual_c1_through_zero_flow_all_edges():
+    # The smooth-upwind enthalpy transport is the one place mdot crosses zero in
+    # the residual; its mdot-derivative must be continuous at mdot = 0 on EVERY
+    # edge (a sign()/branch would make the one-sided derivatives disagree).
+    prob = _all_elements_network(INLETS[0])
+    x = np.zeros((3, prob.n_edges))
+    x[0, :] = 6.0
+    x[1, :] = 1.0e5
+    x[2, :] = CP * 305.0
+
+    def dR_dmdot(edge, m0):
+        xc = x.astype(np.complex128)
+        xc[0, edge] = complex(m0, CS_H)
+        return residual(prob, xc, EPS, EPS_FB).imag / CS_H
+
+    # Sample close to zero: the smooth-switch curvature near mdot = 0 is
+    # O(1/eps^2), so the one-sided derivatives only coincide in the limit; a
+    # genuine kink (sign/branch) would instead leave a finite, offset-independent
+    # gap between them.
+    for e in range(prob.n_edges):
+        d_lo = dR_dmdot(e, -1e-8)
+        d_hi = dR_dmdot(e, +1e-8)
+        scale = np.abs(d_hi).max() + 1.0
+        assert np.allclose(d_lo, d_hi, atol=1e-6 * scale), f"edge {e} not C1 at mdot=0"
+
+
+def test_cs_detector_flags_nonanalytic():
+    # Guard on the guard: complex-step disagrees with finite difference for a
+    # non-analytic function, so the comparison above genuinely catches a
+    # complex-step-unsafe residual rather than passing vacuously.
+    f = np.abs
+    x0 = 0.3
+    cs = f(complex(x0, CS_H)).imag / CS_H  # == 0 for abs: the WRONG derivative
+    fd = (f(x0 + 1e-6) - f(x0 - 1e-6)) / 2e-6  # == 1: the right one
+    assert not np.isclose(cs, fd, atol=1e-3)
+
+    # ... while for an analytic function the two agree, confirming the detector
+    # does not simply reject everything.
+    g = np.exp
+    cs_g = g(complex(x0, CS_H)).imag / CS_H
+    fd_g = (g(x0 + 1e-6) - g(x0 - 1e-6)) / 2e-6
+    assert np.isclose(cs_g, fd_g, rtol=1e-6)
+
+
+# --------------------------------------------------------------------------
+# Per-kernel regime sweep: every element type, in isolation, across regimes.
+# --------------------------------------------------------------------------
+#
+# Each probe puts one element type in a minimal network.  The state is imposed
+# directly (not solved), so the sweep can drive the element through forward,
+# reverse, near-zero and near-choke flow -- the regimes where a non-analytic
+# branch (a supersonic ``if``, a directional ``abs``, ...) tends to hide.  The
+# residual stack is analytic at every (positive-p, positive-h) state regardless
+# of mass balance, so unbalanced probe states are fine and intended.
+
+PA, TT, PT_BC, P_OUT = 0.10, 300.0, 1.2e5, 1.0e5  # probe area / BCs
+H_REF = CP * TT
+
+
+def _probe_mass_flow_inlet():
+    # mass_flow_inlet -> duct -> outlet
+    els = [cat.mass_flow_inlet(18.0, TT), cat.duct(), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_pt_inlet():
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_p_outlet():
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_isen_area_change():
+    # gentle contraction so the small (downstream) edge stays subsonic at near-choke
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.isentropic_area_change(), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_sudden_area_change():
+    # forward flow expands (Borda), reverse flow contracts (vena-contracta) --
+    # the sweep's sign flip exercises BOTH branches of the momentum<->loss switch
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.sudden_area_change(cc=0.7), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.85 * PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_loss():
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.loss(2.5), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_duct():
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(0.5), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_junction():
+    # two inflow legs merging (junction: shared static pressure)
+    els = [
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.junction(),
+        cat.pressure_outlet(P_OUT),
+    ]
+    edges = [(0, 2, PA), (1, 2, PA), (2, 3, PA)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+
+
+def _probe_splitter():
+    # one inflow splitting into two legs (splitter: shared total pressure)
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.pressure_outlet(P_OUT)]
+    edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+
+
+def _probe_wall():
+    # wall on a dead leg off a splitter (mdot = 0 at the wall edge)
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.wall()]
+    edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+
+
+# focus element type -> minimal probe network
+PROBES = {
+    MASS_FLOW_INLET: _probe_mass_flow_inlet,
+    PT_INLET: _probe_pt_inlet,
+    P_OUTLET: _probe_p_outlet,
+    ISEN_AREA_CHANGE: _probe_isen_area_change,
+    SUDDEN_AREA_CHANGE: _probe_sudden_area_change,
+    LOSS: _probe_loss,
+    DUCT: _probe_duct,
+    JUNCTION: _probe_junction,
+    SPLITTER: _probe_splitter,
+    WALL: _probe_wall,
+}
+
+# Element types that are implemented in v1 (the reserved supersonic boundaries
+# are deferred -- CLAUDE.md -- and have no kernel yet, so they are exempt).
+DEFERRED_RIDS = {SUPERSONIC_INLET, SUPERSONIC_OUTLET}
+IMPLEMENTED_RIDS = set(RESIDUAL_NAMES) - DEFERRED_RIDS
+
+
+def _sweep_states(prob):
+    """Imposed states spanning forward / reverse / near-zero / near-choke flow.
+
+    Also returns, per state, the peak |M| any edge reaches, so the test can
+    assert the sweep genuinely visited a high-subsonic (choke-sensitive) regime
+    without straying supersonic (where central FD would lose accuracy).
+    """
+    E = prob.n_edges
+    levels = [38.0, 30.0, 12.0, 1e-3, -1e-3, -12.0, -30.0, -38.0]  # mdot, near-choke -> reverse
+    states = []
+    for m in levels:
+        x = np.zeros((3, E))
+        x[0, :] = m
+        x[1, :] = 1.05e5
+        x[2, :] = H_REF
+        states.append(x)
+    # a few mixed states (per-edge variation, modest range to stay subsonic)
+    rng = np.random.default_rng(2024)
+    for _ in range(4):
+        x = np.zeros((3, E))
+        x[0, :] = rng.uniform(-22.0, 22.0, size=E)
+        x[1, :] = rng.uniform(9.5e4, 1.25e5, size=E)
+        x[2, :] = CP * rng.uniform(295.0, 320.0, size=E)
+        states.append(x)
+    return states
+
+
+def test_every_element_kernel_is_swept():
+    # Roll-call: every implemented element type must appear in at least one
+    # probe network, so adding a kernel without a complex-step sweep fails here.
+    covered = set()
+    for build in PROBES.values():
+        covered |= set(int(r) for r in build().node_rid.tolist())
+    missing = IMPLEMENTED_RIDS - covered
+    assert not missing, "no complex-step sweep covers: " + ", ".join(RESIDUAL_NAMES[r] for r in sorted(missing))
+
+
+@pytest.mark.parametrize("rid", sorted(PROBES), ids=lambda r: RESIDUAL_NAMES[r])
+def test_kernel_complex_step_safe_across_regimes(rid):
+    prob = PROBES[rid]()
+    peak_subsonic_M = 0.0
+    for x in _sweep_states(prob):
+        M = np.abs(states_table(prob, x)[ES_M])
+        # keep the comparison in the regime where central FD is trustworthy;
+        # the residual is analytic beyond it, but FD truncation is not.
+        if np.any(M >= 0.97):
+            continue
+        peak_subsonic_M = max(peak_subsonic_M, float(M.max()))
+
+        Jcs = _scaled(prob, jacobian(prob, x, EPS, EPS_FB).toarray())
+        Jfd = _scaled(prob, _fd_jacobian(prob, x, EPS, EPS_FB))
+        assert np.allclose(Jcs, Jfd, rtol=1e-5, atol=1e-6), f"{RESIDUAL_NAMES[rid]} CS!=FD at mdot={x[0]}"
+
+    # the sweep must actually have reached a high-subsonic (choke-sensitive)
+    # state, else "passing" would just mean we never stressed the kernel
+    assert peak_subsonic_M > 0.8, f"{RESIDUAL_NAMES[rid]} sweep never reached near-choke (maxM={peak_subsonic_M:.2f})"

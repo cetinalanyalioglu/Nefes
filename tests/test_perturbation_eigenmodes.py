@@ -263,7 +263,39 @@ def test_eigenmode_result_api_and_plotting():
 
 
 # --------------------------------------------------------------------------
-# 5. Completeness certificate: the argument principle counts the modes in a region.
+# 5. Fixed-pattern assembly fast path == reference assembly.
+# --------------------------------------------------------------------------
+
+
+def test_assembly_fast_path_matches_reference():
+    # the cached fixed-pattern A(omega) must equal the LIL reference to round-off, across
+    # a flowing duct (entropy phase live) and a quiescent one (entropy decoupled), with and
+    # without terminal closures, at real and complex omega.
+    from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+
+    nets = [
+        # flowing: reflecting ends, driven -> mean flow, so the entropy phase is omega-dependent
+        _duct_net(
+            PerturbationBC.reflection(0.7),
+            cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.reflection(0.7)),
+            pt_in=140000.0,
+        )[1],
+        # quiescent: hard wall + wall -> entropy stationary (P0 = 1)
+        _duct_net(PerturbationBC.hard_wall(), cat.wall())[1],
+    ]
+    omegas = (0.0, 137.0, 2000.0 + 0j, 850.0 - 30.0j, 1500.0 + 12.0j)
+    for sol in nets:
+        blocks = build_acoustic_blocks(sol.problem, sol.x)
+        for wb in (True, False):
+            for omega in omegas:
+                ref = _assemble_reference(omega, blocks, wb).tocsc()
+                fast = assemble_acoustic(omega, blocks, wb)
+                scale = max(abs(ref).max() if ref.nnz else 1.0, 1.0)
+                assert abs((ref - fast)).max() <= 1e-9 * scale, f"mismatch wb={wb} omega={omega}"
+
+
+# --------------------------------------------------------------------------
+# 6. Completeness certificate: the argument principle counts the modes in a region.
 # --------------------------------------------------------------------------
 
 

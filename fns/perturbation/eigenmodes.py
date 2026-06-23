@@ -271,6 +271,7 @@ def eigenmodes(
     eps=None,
     eps_fb=1e-6,
     u_floor=1e-8,
+    isentropic=False,
     svd_tol=1e-10,
     residual_tol=1e-6,
     refine=True,
@@ -318,6 +319,12 @@ def eigenmodes(
         automatically if it saturates.
     eps, eps_fb, u_floor : float, optional
         Operator-assembly regularizers forwarded to ``build_acoustic_blocks``.
+    isentropic : bool, optional
+        Force isentropic perturbations (``rho' = p'/c^2``): the convected entropy wave is
+        pinned to zero on every edge, leaving the two acoustic waves (default False).  This
+        is the standard acoustic-stability assumption -- it drops entropy/convective modes
+        from the spectrum and removes the near-stagnant entropy-phase overflow entirely --
+        and uses the *same* solver, contour, and certificate machinery (no reconfiguration).
     svd_tol : float, optional
         Relative singular-value cutoff for the Beyn rank (mode count). Default 1e-10.
     residual_tol : float, optional
@@ -372,7 +379,7 @@ def eigenmodes(
     # decouple the entropy wave on near-stagnant ducts (tau_0 -> inf would overflow at
     # complex omega); never affects the acoustic spectrum (theory.md s12.6).
     u_floor = max(u_floor, _ENTROPY_DECOUPLE_MACH * float(np.max(est[ES_C])))
-    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     n = int(blocks.J_alg.shape[0])
 
     if not blocks.duct_stamps and blocks.M.nnz == 0:

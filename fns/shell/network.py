@@ -46,6 +46,9 @@ class Network:
         self._edges: List[Tuple[int, int, float]] = []
         self._ports: List[Tuple[Optional[int], Optional[int]]] = []
         self._edge_names: List[str] = []
+        # UI-only metadata retained when the network was loaded from a UI save
+        # file (None for networks built directly in Python); see fns.io.yaml_out.
+        self.provenance = None
 
     # -- construction -------------------------------------------------------
 
@@ -105,6 +108,23 @@ class Network:
     def initial_guess(self, **kw):
         return initial_guess(self.compile(), **kw)
 
+    def save(self, path: str, **kwargs) -> None:
+        """Write this network as a UI-readable YAML case (no result data).
+
+        Thin wrapper over :func:`fns.io.save_case`; see it for the full set of
+        keyword options (``solution``, ``fields``, ``forced``, ...).
+
+        Parameters
+        ----------
+        path : str
+            Destination ``.yaml`` path.
+        **kwargs
+            Forwarded to :func:`fns.io.save_case`.
+        """
+        from ..io import save_case
+
+        save_case(self, path, **kwargs)
+
 
 @dataclass
 class Solution:
@@ -139,3 +159,22 @@ class Solution:
 
     def field(self, name: str) -> np.ndarray:
         return self.table()[_EDGE_FIELDS[name], :]
+
+    def save(self, path: str, **kwargs) -> None:
+        """Write the network and this solution's results as a UI-readable case.
+
+        Convenience wrapper that calls :func:`fns.io.save_case` with this
+        solution attached, so the mean-flow result fields are embedded as
+        datasets the UI can load and visualize.
+
+        Parameters
+        ----------
+        path : str
+            Destination ``.yaml`` path.
+        **kwargs
+            Forwarded to :func:`fns.io.save_case` (e.g. ``fields``,
+            ``node_data``, ``forced``, ``title``).
+        """
+        from ..io import save_case
+
+        save_case(self.network, path, solution=self, **kwargs)

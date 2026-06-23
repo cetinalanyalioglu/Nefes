@@ -14,6 +14,7 @@ import yaml
 from ..connectivity import build_connectivity, Connectivity
 from ..elements import catalog as cat
 from ..thermo.configure import perfect_gas
+from .provenance import UIProvenance
 
 _PORT_RE = re.compile(r"port-(\d+)$")
 
@@ -206,4 +207,12 @@ def load_case(path: str):
 
     for ei, s, t, area, name in parsed:
         net.connect(s, t, area, name=name, tail_port=local_port[(ei, "tail")], head_port=local_port[(ei, "head")])
+
+    # Retain the UI-only metadata (positions, counters, ids, title) so the case
+    # can be saved back for the UI verbatim -- see fns.io.yaml_out.
+    net.provenance = UIProvenance(
+        doc=doc,
+        node_ids=[n["id"] for n in nodes_sorted],
+        edge_ids=[e.get("id", f"edge_{i + 1}") for i, e in enumerate(edges_sorted)],
+    )
     return net

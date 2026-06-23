@@ -27,7 +27,7 @@ from .characteristics import edge_transforms, basis_block_from_state
 from ..solver.control import states_table
 
 
-def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8):
+def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
     """Solve the perturbation field under each terminal's declared boundary condition.
 
     Parameters
@@ -42,6 +42,10 @@ def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8
         Frequencies (Hz) to solve at.
     eps, eps_fb, u_floor : float, optional
         Operator-assembly regularizers forwarded to :func:`build_acoustic_blocks`.
+    isentropic : bool, optional
+        Force isentropic perturbations (``rho' = p'/c^2``): the entropy wave is pinned to
+        zero on every edge, leaving the two acoustic waves (default False).  Standard
+        acoustic analysis; uses the same operator and solve path.
 
     Returns
     -------
@@ -50,7 +54,7 @@ def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8
     """
     freqs = np.asarray(freqs, dtype=float)
     omegas = 2.0 * np.pi * freqs  # operator assembly works in angular frequency (rad/s)
-    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
     _, L = edge_transforms(est, K)

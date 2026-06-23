@@ -101,7 +101,7 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True):
     fast path that reuses it once to capture the (omega-independent) sparsity pattern.
     """
     A = (blocks.J_alg + 1j * omega * blocks.M).tolil()
-    stamp_propagation(A, omega, blocks.duct_stamps, blocks.u_floor)
+    stamp_propagation(A, omega, blocks.duct_stamps, blocks.u_floor, skip_entropy=blocks.isentropic)
     stamp_sources(A, omega, blocks.prob, blocks.x_bar)
     if with_boundaries:
         stamp_boundaries(A, omega, blocks.prob, blocks.x_bar)

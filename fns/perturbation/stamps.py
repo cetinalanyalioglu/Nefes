@@ -119,7 +119,7 @@ def _set_row(A, row, cols0, coeff0, cols1, coeff1):
         A[row, c] = v
 
 
-def stamp_propagation(A, omega, duct_stamps, u_floor=1e-8):
+def stamp_propagation(A, omega, duct_stamps, u_floor=1e-8, skip_entropy=False):
     """Apply the duct phase relations ``P(omega)`` to LIL matrix ``A`` in place.
 
     For each duct (tail station ``0`` -> head station ``1``):
@@ -127,17 +127,23 @@ def stamp_propagation(A, omega, duct_stamps, u_floor=1e-8):
     with ``Pp = exp(-i w tau_+)``, ``Pm = exp(-i w tau_-)``, ``P0 = exp(-i w
     tau_0)``.  At a quiescent duct (u ~ 0) the entropy wave is stationary and
     decoupled, so ``P0 = 1``.
+
+    ``skip_entropy`` (set under isentropic assembly) omits the entropy (h) phase row
+    entirely: it would only be overwritten by :func:`stamp_isentropic` with ``h = 0``,
+    and at a complex ``omega`` its ``exp(-i w tau_0)`` can overflow needlessly.
     """
     for st in duct_stamps:
         Pp = np.exp(-1j * omega * st.tau_p)
         Pm = np.exp(-1j * omega * st.tau_m)
-        P0 = np.exp(-1j * omega * st.tau_0) if abs(st.u) > u_floor else 1.0 + 0.0j
 
         # Row f:  f1 - Pp*f0 = 0
         _set_row(A, st.row_f, st.cols0, -Pp * st.L0[0, :], st.cols1, st.L1[0, :])
         # Row g:  g0 - Pm*g1 = 0
         _set_row(A, st.row_g, st.cols0, st.L0[1, :], st.cols1, -Pm * st.L1[1, :])
+        if skip_entropy:
+            continue  # isentropic: stamp_isentropic pins this edge's entropy row to h = 0
         # Row h:  h1 - P0*h0 = 0
+        P0 = np.exp(-1j * omega * st.tau_0) if abs(st.u) > u_floor else 1.0 + 0.0j
         _set_row(A, st.row_h, st.cols0, -P0 * st.L0[2, :], st.cols1, st.L1[2, :])
 
 

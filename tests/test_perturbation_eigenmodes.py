@@ -17,6 +17,8 @@ and a mode is unstable iff ``Im(omega) < 0``.  This is pinned directly: a lossy 
 must come out with ``Im(omega) > 0`` (decaying).
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -363,6 +365,82 @@ def test_certification_recovers_with_explicit_contour_and_tiny_probe():
     assert res.expected == 3
     assert res.n_modes == 3 and res.certified
     _match(res.freqs, [f1, 2.0 * f1, 3.0 * f1], rtol=1e-4)
+
+
+# --------------------------------------------------------------------------
+# 7. Isentropic option (rho' = p'/c^2): the entropy wave is pinned to zero.
+# --------------------------------------------------------------------------
+
+
+def test_isentropic_fast_path_matches_reference():
+    # the fixed-pattern fast path must equal the reference assembly with isentropic on too.
+    from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+
+    _, sol = _duct_net(
+        PerturbationBC.reflection(0.7),
+        cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.reflection(0.7)),
+        pt_in=140000.0,
+    )
+    blocks = build_acoustic_blocks(sol.problem, sol.x, isentropic=True)
+    for wb in (True, False):
+        for omega in (0.0, 137.0, 2000.0 + 0j, 850.0 - 30.0j):
+            ref = _assemble_reference(omega, blocks, wb).tocsc()
+            fast = assemble_acoustic(omega, blocks, wb)
+            scale = max(abs(ref).max() if ref.nnz else 1.0, 1.0)
+            assert abs((ref - fast)).max() <= 1e-9 * scale, f"mismatch wb={wb} omega={omega}"
+
+
+def test_isentropic_preserves_acoustic_modes():
+    # a flowing duct: isentropic leaves the acoustic spectrum unchanged (still
+    # f1 = c/2L (1 - M^2)) -- pinning the entropy wave does not touch the acoustic waves.
+    _, sol = _duct_net(
+        PerturbationBC.reflection(0.7),
+        cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.reflection(0.7)),
+        pt_in=140000.0,
+    )
+    u, c = _uc(sol)
+    M = u / c
+    f0 = c / (2 * LDUCT)
+    full = eigenmodes(sol.problem, sol.x, (0.4 * f0, 1.3 * f0))
+    isen = eigenmodes(sol.problem, sol.x, (0.4 * f0, 1.3 * f0), isentropic=True)
+    assert isen.certified
+    fa = f0 * (1 - M**2)  # convective-shifted fundamental
+    assert isen.freqs[np.argmin(np.abs(isen.freqs - fa))] == pytest.approx(fa, rel=2e-3)
+    # every isentropic mode is one of the full-model acoustic modes
+    for f in isen.freqs:
+        assert np.any(np.abs(full.freqs - f) < 1e-4 * max(f, 1.0))
+
+
+def test_isentropic_zeroes_entropy_and_removes_convective_modes():
+    # a sudden area change with mean flow generates entropy/convective modes; isentropic
+    # drops them (a strict subset remains) and every isentropic mode carries zero entropy.
+    net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=2.0)
+    A1, A2 = 0.01, 0.05
+    net.add(cat.total_pressure_inlet(112000.0, 300.0, perturbation_bc=PerturbationBC.hard_wall()))
+    net.add(cat.duct(0.3))
+    net.add(cat.sudden_area_change(name="exp"))
+    net.add(cat.duct(0.4))
+    net.add(cat.sudden_area_change(name="con"))
+    net.add(cat.duct(0.3))
+    net.add(cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.reflection(0.5)))
+    for a, b, ar in [(0, 1, A1), (1, 2, A1), (2, 3, A2), (3, 4, A2), (4, 5, A1), (5, 6, A1)]:
+        net.connect(a, b, ar)
+    sol = net.solve()
+    assert sol.converged
+
+    band = (50.0, 700.0)
+    with warnings.catch_warnings():
+        # the full (entropy-laden) spectrum is dense and may graze the band edge -- that
+        # clutter is exactly what isentropic removes; only its mode count is needed here.
+        warnings.simplefilter("ignore", EigenmodeWarning)
+        full = eigenmodes(sol.problem, sol.x, band)
+    isen = eigenmodes(sol.problem, sol.x, band, isentropic=True)
+    assert isen.certified
+    assert isen.n_modes < full.n_modes  # entropy / convective modes removed
+    # every isentropic mode has a vanishing entropy characteristic (h) on every edge
+    for i in range(isen.n_modes):
+        shape = isen.mode_shape(i, basis="char")
+        assert np.max(np.abs(shape[:, 2])) < 1e-10 * np.max(np.abs(shape[:, :2]))
 
 
 def test_eigenmodes_warns_without_frequency_dependence():

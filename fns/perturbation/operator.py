@@ -25,6 +25,7 @@ from .stamps import (
     stamp_propagation,
     stamp_sources,
     stamp_boundaries,
+    stamp_isentropic,
     _terminal_closure,
 )
 
@@ -40,17 +41,26 @@ class AcousticBlocks:
     x_bar: np.ndarray  # frozen mean state
     n: int
     u_floor: float = 1e-8
+    # force isentropic perturbations (rho' = p'/c^2): the entropy wave is pinned to zero
+    # on every edge (stamps.stamp_isentropic).  Reduces the 3-wave system to the two
+    # acoustic waves -- standard acoustic analysis -- with no change in operator size.
+    isentropic: bool = False
     # cached fixed-pattern assemblers keyed by with_boundaries (lazy; see _build_plan)
     _plans: dict = field(default_factory=dict, repr=False, compare=False)
 
 
-def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8):
+def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
     """Build the frozen blocks at the mean state ``x_bar`` (shape (n_solve, E)).
 
     ``J_alg`` is assembled with the regularizations turned down (the
     un-regularized variant of theory.md s12.6) at ``stab = 0``.  ``M`` is the
     storage block (zero in v1).  The duct phase data is precomputed here and
     restamped cheaply per frequency.
+
+    ``isentropic`` (default False) pins the entropy characteristic to zero on every
+    edge (``rho' = p'/c^2``), reducing the operator to the two acoustic waves -- the
+    standard acoustic assumption -- without changing its size; see
+    :func:`stamps.stamp_isentropic`.
     """
     if eps is None:
         eps = 1e-4 * prob.var_scale[0]
@@ -68,6 +78,7 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8):
         x_bar=x_bar,
         n=n,
         u_floor=u_floor,
+        isentropic=bool(isentropic),
     )
 
 
@@ -94,6 +105,12 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True):
     stamp_sources(A, omega, blocks.prob, blocks.x_bar)
     if with_boundaries:
         stamp_boundaries(A, omega, blocks.prob, blocks.x_bar)
+    if blocks.isentropic:
+        # pin the entropy wave to zero on every edge (rho' = p'/c^2); overrides the
+        # entropy rows the duct/boundary stamps wrote.  omega-independent.
+        est = states_table(blocks.prob, blocks.x_bar)
+        K = float(blocks.prob.tf[0]) / float(blocks.prob.tf[1])
+        stamp_isentropic(A, blocks.prob, est, K)
     return A.tocsc()
 
 
@@ -171,7 +188,9 @@ class _AssemblyPlan:
             data[self.phase_slots] = self.phase_coeff * np.exp(-1j * omega * self.phase_tau)
         for t, bc, rowslots in self.bnd:
             for row, coeff, _rhs in _terminal_closure(self.prob, self.est, self.K, t, bc, omega):
-                data[rowslots[row]] = coeff
+                slots = rowslots.get(row)
+                if slots is not None:  # entropy rows are dropped under isentropic mode
+                    data[slots] = coeff
         A = sp.csc_matrix((data, self.indices, self.indptr), shape=self.shape)
         A.has_sorted_indices = True  # indices/indptr come canonical and are reused unchanged
         return A
@@ -182,10 +201,14 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
     prob = blocks.prob
     ns = int(prob.n_solve)
 
+    tr0 = int(prob.transport_row0)
+
     # The omega-dependent duct entries, as (row, col, constant coeff, tau).  Structural
     # zeros (exactly-zero L entries) never enter the pattern, so they are skipped.  The
     # entropy (h) phase is omega-dependent only on a *flowing* duct; on a quiescent one it
-    # is the stationary P0 = 1 (a constant already folded into base).
+    # is the stationary P0 = 1 (a constant already folded into base).  Under isentropic
+    # mode the entropy rows are pinned to the constant h = 0 (in base), so the entropy phase
+    # is dropped entirely.
     duct_entries = []
     for st in blocks.duct_stamps:
         flowing = abs(st.u) > blocks.u_floor
@@ -194,7 +217,7 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
                 duct_entries.append((st.row_f, st.cols0[j], -st.L0[0, j], st.tau_p))
             if st.L1[1, j] != 0.0:
                 duct_entries.append((st.row_g, st.cols1[j], -st.L1[1, j], st.tau_m))
-            if flowing and st.L0[2, j] != 0.0:
+            if flowing and not blocks.isentropic and st.L0[2, j] != 0.0:
                 duct_entries.append((st.row_h, st.cols0[j], -st.L0[2, j], st.tau_0))
 
     # Boundary terminals.  A frequency-dependent closure entry can vanish at the
@@ -211,6 +234,10 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
                 continue
             cols = tuple(ns * t.edge + v for v in range(3))
             rows = [row for row, _c, _r in _terminal_closure(prob, est, K, t, bc, _PLAN_OMEGA)]
+            if blocks.isentropic:
+                # entropy (transport) rows are pinned to h = 0 in base; the boundary fill
+                # must not overwrite them, so keep only the acoustic (node) closure rows.
+                rows = [row for row in rows if row < tr0]
             bnd_meta.append((t, bc, [(row, cols) for row in rows]))
             forced_rc.extend((row, c) for row in rows for c in cols)
 

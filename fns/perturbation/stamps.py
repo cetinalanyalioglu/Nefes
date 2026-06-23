@@ -207,6 +207,36 @@ def stamp_boundaries(A, omega, prob, x_bar):
             _set_row(A, row, cols, coeff, (), ())
 
 
+def stamp_isentropic(A, prob, est, K):
+    """Pin the entropy characteristic to zero on every edge: ``rho' = p'/c^2`` (isentropic).
+
+    The entropy characteristic is ``h = rho' - p'/c^2`` (theory.md s9.1), so enforcing
+    ``h_e = L_e[2, :] @ dx_e = 0`` on each edge ``e`` removes the convected entropy wave
+    from ``A(omega)`` entirely -- the standard isentropic acoustic assumption, where density
+    perturbations follow pressure alone.  Each edge's transport (entropy) row is overwritten
+    with this constraint, so the operator keeps its size and the *same* solver / contour
+    machinery applies unchanged.
+
+    The constraint is ``omega``-independent (no phase), so applied after the duct and
+    boundary stamps it cleanly overrides whatever they wrote on the entropy rows, and it is
+    folded into the frozen base of the fast assembler (:class:`operator._AssemblyPlan`).
+    """
+    ns = int(prob.n_solve)
+    tr0 = int(prob.transport_row0)
+    for e in range(int(prob.n_edges)):
+        L_e = dx_to_char(
+            float(est[ES_RHO, e]),
+            float(est[ES_C, e]),
+            float(est[ES_U, e]),
+            float(est[ES_P, e]),
+            float(est[ES_AREA, e]),
+            K,
+        )
+        cols = tuple(ns * e + v for v in range(3))
+        # transport row of edge e becomes  h_e = L_e[2, :] . dx_e = 0
+        _set_row(A, tr0 + e, cols, L_e[2, :].astype(np.complex128), (), ())
+
+
 def boundary_forcing(prob, x_bar, omega):
     """Right-hand side ``b(omega)`` for the explicitly-closed terminals.
 

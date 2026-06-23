@@ -25,10 +25,15 @@ However, do not assume everything in there is theoretically flawless, always do 
 - Whenever applicable, create tests. Especially for scientific implementations.
 - During development there is no need to keep things for backward compat.
 - Development phase goes on until we have a tagged release on the repo.
+- Do NOT save the output of Jupyter notebooks (filesize concerns) - except very small ones.
 
 ### Pitfalls
 
 - Be aware of numba cache
+
+## Conventions
+
+- Always prefer frequency over angular frequency for user input and graph axes
 
 ## Hard constraints (don't violate without explicit reason)
 
@@ -48,7 +53,6 @@ However, do not assume everything in there is theoretically flawless, always do 
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
 - Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
-
 
 ## TODO.md management
 - Do NOT remove the titles

@@ -13,8 +13,12 @@ This is more than acoustics: it is the linear-response twin of the mean-flow
 network, sharing its equations exactly.
 
 All Python/SciPy, no new @njit kernel.  v1 implements the transfer / scattering
-matrix analysis (theory s12.7 (i)); the storage ``M`` and source ``S`` faces are
-wired but inert (no producing element yet).
+matrix analysis (theory s12.7 (i), :func:`perturbation_response`) and the linear
+stability analysis (s12.7 (ii), :func:`eigenmodes` -- the nonlinear eigenproblem
+``det A(omega) = 0`` by Beyn's contour-integral method).  Both operate on the
+*same* assembled operator ``A(omega)``; the storage ``M`` and source ``S`` faces
+are wired but inert (no producing element yet), and drop into both analyses with no
+change once an element produces them.
 """
 
 from .characteristics import (
@@ -52,6 +56,8 @@ from .matrices import (
 )
 from .duct import duct_modes, DuctAcoustics
 from .drivers import modes_from_det, scattering_2port
+from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
+from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning
 
 # perturbation-network primary names (thin aliases over the original spellings)
 build_blocks = build_acoustic_blocks
@@ -104,4 +110,14 @@ __all__ = [
     "DuctAcoustics",
     "modes_from_det",
     "scattering_2port",
+    # stability / eigenmodes (nonlinear eigenproblem det A(omega) = 0)
+    "eigenmodes",
+    "EigenmodeResult",
+    "EigenmodeWarning",
+    "Contour",
+    "ellipse_contour",
+    "circle_contour",
+    "beyn",
+    "winding_count",
+    "lu_logdet_phase",
 ]

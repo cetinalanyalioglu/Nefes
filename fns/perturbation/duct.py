@@ -33,8 +33,13 @@ class DuctAcoustics:
     def system(self, omega, R0, R1):
         """4x4 acoustic system in wave amplitudes ``(f0, g0, f1, g1)``.
 
-        Rows: downstream phase, upstream phase, tail reflection ``g0 = R0 f0``,
-        head reflection ``f1 = R1 g1``.
+        Rows: downstream phase ``f1 = Pp f0``, upstream phase ``g0 = Pm g1``, and the
+        two end reflections expressed as *reflected = R x incident* at each
+        termination -- the standard convention, matching the network operator: at
+        the tail the upstream ``g0`` is incident and ``f0`` reflected (``f0 = R0
+        g0``); at the head the downstream ``f1`` is incident and ``g1`` reflected
+        (``g1 = R1 f1``).  The free modes then satisfy ``Pp Pm = 1/(R0 R1)``, so a
+        passive end (``|R| < 1``) decays (``Im(omega) > 0`` under ``e^{+i*omega*t}``).
         """
         Pp = np.exp(-1j * omega * self.tau_plus)
         Pm = np.exp(-1j * omega * self.tau_minus)
@@ -45,12 +50,12 @@ class DuctAcoustics:
         # g0 - Pm*g1 = 0
         A[1, 1] = 1.0
         A[1, 3] = -Pm
-        # g0 - R0*f0 = 0
-        A[2, 1] = 1.0
-        A[2, 0] = -R0
-        # f1 - R1*g1 = 0
-        A[3, 2] = 1.0
-        A[3, 3] = -R1
+        # tail reflection: f0 - R0*g0 = 0   (incident g0 -> reflected f0)
+        A[2, 0] = 1.0
+        A[2, 1] = -R0
+        # head reflection: g1 - R1*f1 = 0   (incident f1 -> reflected g1)
+        A[3, 3] = 1.0
+        A[3, 2] = -R1
         return A
 
     def det(self, omega, R0, R1):

@@ -9,8 +9,8 @@ homotopy coefficient added to interior pressure rows.
 
 from numba import njit
 
-from ..smooth import smooth_step, smooth_pos, fischer_burmeister
-from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA
+from ..smooth import smooth_step, smooth_pos, smooth_abs, fischer_burmeister
+from ..derive import ES_MDOT, ES_P, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA
 from .ids import (
     MASS_FLOW_INLET,
     PT_INLET,
@@ -22,34 +22,68 @@ from .ids import (
     JUNCTION,
     SPLITTER,
     DUCT,
+    FLAME_HEAT_RELEASE,
+    FLAME_EQUILIBRIUM,
+    MASS_SOURCE,
 )
 
 
 @njit(cache=True)
-def node_donor(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, est):
-    """Total enthalpy this element offers to an edge drawing from it."""
+def node_donor(n, rid, s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e):
+    """Value of advected scalar ``s`` this element offers to an edge drawing from it.
+
+    The advected scalars are band-1 rows ``2 .. 2 + n_scalars`` -- ``s = 0`` is
+    total enthalpy ``h_t``, ``s >= 1`` are the conserved composition scalars
+    ``Z_el[s-1]`` (reactive-flow D-2/D-4).  ``mdot_e`` and ``phi_e`` are the per-edge
+    mass-flow and scalar-``s`` rows; element float params hold the boundary value
+    (``Tt`` then the per-element feed/backflow composition, in order).
+    """
     base = row_ptr[n]
     deg = row_ptr[n + 1] - base
-    cp = tf[0]
+    pb = npar_fptr[n]
     if rid == WALL:
-        # Enthalpy-transparent: the wall offers the edge its own total enthalpy, so
-        # the smooth-upwind transport row (theta = 1/2 at mdot = 0) collapses to the
+        # Scalar-transparent: the wall offers the edge its own scalar value, so the
+        # smooth-upwind transport row (theta = 1/2 at mdot = 0) collapses to the
         # interior donor -- the stagnant leg simply inherits it (theory.md s12.6).
-        return est[ES_HT, col_edge[base]]
+        return phi_e[col_edge[base]]
     if rid == MASS_FLOW_INLET or rid == PT_INLET or rid == P_OUTLET:
-        return cp * npar_f[npar_fptr[n] + 1]  # cp * Tt(_backflow)
-    # interior: mass-weighted smooth-upwind mix of the incoming port enthalpies
-    acc = est[ES_MDOT, col_edge[base]] * 0.0
+        # boundary params carry the absolute total enthalpy h_t at pb+1 (converted
+        # from Tt at build time, per backend) then the feed/backflow composition.
+        return npar_f[pb + 1 + s]
+    # interior: mass-weighted smooth-upwind mix of the incoming port scalar values
+    acc = phi_e[col_edge[base]] * 0.0
     w_sum = acc
-    wh_sum = acc
+    wphi_sum = acc
     for i in range(deg):
         ei = col_edge[base + i]
         si = orient[base + i]
-        mdot_in = -si * est[ES_MDOT, ei]
+        mdot_in = -si * mdot_e[ei]
         w = smooth_pos(mdot_in, eps)
         w_sum = w_sum + w
-        wh_sum = wh_sum + w * est[ES_HT, ei]
-    return wh_sum / w_sum
+        wphi_sum = wphi_sum + w * phi_e[ei]
+    if rid == MASS_SOURCE:
+        # Inline injection: the outflow scalar is the mass-weighted mix of the
+        # interior incoming flow and the injected stream (mass-flow npar_f[pb+0],
+        # scalar value npar_f[pb+2+s]: s=0 is the injected total enthalpy h_t,src,
+        # s>=1 the injected elemental composition Z_src[s-1]).  The injected mass is
+        # always incoming, so it adds a constant positive weight -- which conserves
+        # the advected scalar across the source: mdot_out*phi_out = mdot_in*phi_in
+        # + mdot_src*phi_src.  Complex-step-safe (npar_f are fixed real params).
+        msrc = npar_f[pb + 0]
+        w_sum = w_sum + msrc
+        wphi_sum = wphi_sum + msrc * npar_f[pb + 2 + s]
+        return wphi_sum / w_sum
+    mix = wphi_sum / w_sum
+    if rid == FLAME_HEAT_RELEASE and s == 0:
+        # Heat-addition flame: raise the outflow's total enthalpy by Q_dot / |mdot|.
+        # |mdot| is floored by smooth_abs so the jump stays bounded and smooth at
+        # zero flow (complex-step-safe); at the operating point |mdot| >> eps the
+        # floor is inert and the rise is exactly Q_dot / mdot.  Composition scalars
+        # (s >= 1) pass through unchanged.
+        Qdot = npar_f[pb + 0]
+        mdot_mag = smooth_abs(mdot_e[col_edge[base]], eps)
+        return mix + Qdot / mdot_mag
+    return mix
 
 
 @njit(cache=True)
@@ -126,6 +160,43 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
 
     if rid == DUCT:
         R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - stab_term
+        return
+
+    if rid == FLAME_HEAT_RELEASE or rid == FLAME_EQUILIBRIUM:
+        # Constant-area flame: mass balance + the **momentum** equation
+        # (rho u^2 + p) A = const, i.e. the exact thin-flame jump (no low-Mach
+        # static-/total-pressure shortcut).  Orientation-robust: s_i signs the net
+        # (momentum + pressure) flux out of the element to zero;  mom_i = mdot_i
+        # u_i / A = rho_i u_i^2 is analytic, so complex step stays clean.  The
+        # areas are equal (constant-area flame), so a0 normalizes both ports.
+        #
+        # FLAME_HEAT_RELEASE: the perfect-gas closure carries kinetic energy, so
+        #   mass + momentum + (energy with the Q_dot donor source) are all exact.
+        # FLAME_EQUILIBRIUM: energy (h_t) and mass are exact; the reacting closure
+        #   currently uses h ~ h_t (drops u^2/2), so the recovered rho/u carry an
+        #   O(M^2) bias and the momentum jump is exact to O(M^4) -- the residual KE
+        #   coupling is the documented next refinement.
+        # No heat-release source sits on this row -> acoustically passive in J_alg.
+        mom0 = est[ES_MDOT, e0] * est[ES_U, e0] / a0
+        mom1 = est[ES_MDOT, e1] * est[ES_U, e1] / a0
+        R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - stab_term
+        return
+
+    if rid == MASS_SOURCE:
+        # Inline mass injection (constant area).  Mass: the net outflow exceeds the
+        # inflow by the injected mass-flow mdot_src (npar_f[pb+0]).  Momentum: the
+        # exact constant-area balance (rho u^2 + p) carries the injected axial
+        # momentum mdot_src * u_inj (npar_f[pb+1]); u_inj = 0 is normal (transverse)
+        # injection -- mass added with no axial momentum (momentum flux still
+        # continuous).  Energy and composition enter through the donor mix above, so
+        # the source is the conserved-scalar injection the dynamic S(omega) phase
+        # will later modulate.  mom_i = mdot_i u_i / a0 = rho u^2 is analytic.
+        mdot_src = npar_f[pb + 0]
+        u_inj = npar_f[pb + 1]
+        R[r0] = R[r0] - mdot_src  # mass balance: s0*mdot0 + s1*mdot1 = mdot_src
+        mom0 = est[ES_MDOT, e0] * est[ES_U, e0] / a0
+        mom1 = est[ES_MDOT, e1] * est[ES_U, e1] / a0
+        R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - mdot_src * u_inj / a0 - stab_term
         return
 
     if rid == ISEN_AREA_CHANGE:

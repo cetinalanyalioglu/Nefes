@@ -19,7 +19,11 @@ dev = ["pytest", "flake8", "black"]
 jupyter = ["jupyterlab", "notebook", "ipykernel", "nbformat>=4.2.0", "plotly>=5.0"]
 
 [tool.setuptools.packages.find]
-include = ["fns*"]
+include = ["fns*", "thermolib*"]
+
+[tool.setuptools.package-data]
+# ship the vendored NASA Glenn / CEA thermo database and the native species YAMLs
+"thermolib" = ["data/*.inp", "data/*.yaml"]
 
 [tool.black]
 line-length = 120

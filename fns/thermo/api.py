@@ -2,7 +2,9 @@
 
 ``thermo_update`` dispatches on an integer ``model_id`` to a model kernel that
 fills band-2 fields ``(T, rho, c, W)`` from a thermodynamic point
-``(Z_el, h, p)``.  Only ``PerfectGas`` is implemented in v1, but the signature
+``(Z_el, h, p)`` -- ``Z_el`` being the transported composition vector (the
+feed-stream mixture fractions ``xi`` for the reacting model, which the equilibrium
+kernels map to elements / feed-species moles).  Only ``PerfectGas`` is implemented in v1, but the signature
 and the integer dispatch are fixed so an equilibrium ``thermolib`` backend drops
 in later as an extra branch -- without touching the registry, the assembly
 kernel, or the solver (reactive-flow AD-3).
@@ -10,12 +12,14 @@ kernel, or the solver (reactive-flow AD-3).
 
 from numba import njit
 
+from .equilibrium import eq_frozen_state, eq_kernel_state, eq_total_pressure
 from .perfect_gas import pg_update, pg_state, pg_total_pressure
 
 # --- model ids -------------------------------------------------------------
 PERFECT_GAS = 0
-EQ_KERNEL = 1  # reserved: thermolib element-potential equilibrium
+EQ_KERNEL = 1  # thermolib element-potential HP equilibrium (burnt side)
 EQ_TABLE = 2  # reserved: precomputed equilibrium table
+EQ_FROZEN = 3  # thermolib frozen real-gas of the reactant composition (unburnt side)
 
 # --- evaluation modes (how much of `out` to fill) --------------------------
 MODE_STATE = 0  # T, rho, c, W
@@ -44,12 +48,23 @@ def thermo_state(model_id, tf, ti, Z_el, h, p):
     """Return scalar ``(T, rho, c, W)`` from a thermodynamic point (hot path)."""
     if model_id == PERFECT_GAS:
         return pg_state(tf, h, p)
+    if model_id == EQ_KERNEL:
+        return eq_kernel_state(tf, ti, Z_el, h, p)
+    if model_id == EQ_FROZEN:
+        return eq_frozen_state(tf, ti, Z_el, h, p)
     raise ValueError("unknown thermo model_id")
 
 
 @njit(cache=True)
-def thermo_total_pressure(model_id, tf, ti, Z_el, M, p):
-    """Return total pressure from static pressure and Mach (isentropic)."""
+def thermo_total_pressure(model_id, tf, ti, Z_el, M, p, T, c, W):
+    """Return total pressure from static pressure and Mach (isentropic).
+
+    ``(T, c, W)`` are the already-recovered band-2 fields; a variable-gamma gas
+    (equilibrium/frozen) needs them to form ``gamma`` -- the perfect gas ignores
+    them and uses its constant-gamma closed form, so its result is unchanged.
+    """
     if model_id == PERFECT_GAS:
         return pg_total_pressure(tf, M, p)
+    if model_id == EQ_KERNEL or model_id == EQ_FROZEN:
+        return eq_total_pressure(M, p, T, c, W)
     raise ValueError("unknown thermo model_id")

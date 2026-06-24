@@ -10,8 +10,10 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
+from ..composition import build_streams, enthalpy_mass, species_mass_fractions
 from ..connectivity import connectivity_from_directed_edges, build_jacobian_pattern, Connectivity
 from ..problem import CompiledProblem
+from ..thermo.api import EQ_FROZEN, EQ_KERNEL, PERFECT_GAS
 from ..thermo.configure import ThermoConfig
 from .ids import (
     MASS_FLOW_INLET,
@@ -20,6 +22,7 @@ from .ids import (
     WALL,
     JUNCTION,
     SPLITTER,
+    MASS_SOURCE,
     ACOUSTIC_DEFAULT,
     ACOUSTIC_DUCT,
     FIXED_NPORTS,
@@ -53,18 +56,60 @@ class ElementSpec:
     acoustic_id: int = ACOUSTIC_DEFAULT
     eps: Optional[float] = None
     perturbation_bc: Optional[object] = None  # PerturbationBC (None -> inherit)
+    # Composition of the stream this element introduces (inlets, mass sources) or
+    # would draw on backflow (outlets).  For the equilibrium model it is a named
+    # species mixture -- ``{species: fraction}`` (or a full species array) in
+    # ``basis`` units (``"mole"`` or ``"mass"``) -- resolved to the transported
+    # elemental ``Z`` (and the ``Tt -> h_t`` datum) at build time.  For a perfect
+    # gas with passive scalars it is the raw scalar values.  ``None`` -> zeros.
+    composition_spec: object = None
+    basis: str = "mole"
+    # optional dynamic-source descriptor (fns.elements.dynamic_source.DynamicSource);
+    # a forward-compatibility provision for the S(omega) perturbation phase -- the
+    # mean flow ignores it.
+    dynamic_source: object = None
 
 
-def mass_flow_inlet(mdot, Tt, name="inlet", perturbation_bc=None):
-    return ElementSpec(MASS_FLOW_INLET, [float(mdot), float(Tt)], name, perturbation_bc=perturbation_bc)
+def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", perturbation_bc=None):
+    """Prescribed mass-flow inlet feeding a stream of the given ``composition``.
+
+    ``composition`` is a named species mixture (``{species: fraction}``) for the
+    equilibrium model -- e.g. air as ``{"O2": 0.21, "N2": 0.79}`` with
+    ``basis="mole"`` -- resolved to the transported elemental ``Z`` and the feed
+    enthalpy at ``Tt`` during ``build_problem``.
+    """
+    return ElementSpec(
+        MASS_FLOW_INLET,
+        [float(mdot), float(Tt)],
+        name,
+        perturbation_bc=perturbation_bc,
+        composition_spec=composition,
+        basis=basis,
+    )
 
 
-def total_pressure_inlet(pt, Tt, name="pt-inlet", perturbation_bc=None):
-    return ElementSpec(PT_INLET, [float(pt), float(Tt)], name, perturbation_bc=perturbation_bc)
+def total_pressure_inlet(pt, Tt, composition=None, basis="mole", name="pt-inlet", perturbation_bc=None):
+    """Prescribed total-pressure inlet feeding a stream of the given ``composition``."""
+    return ElementSpec(
+        PT_INLET,
+        [float(pt), float(Tt)],
+        name,
+        perturbation_bc=perturbation_bc,
+        composition_spec=composition,
+        basis=basis,
+    )
 
 
-def pressure_outlet(p, Tt_backflow=300.0, name="outlet", perturbation_bc=None):
-    return ElementSpec(P_OUTLET, [float(p), float(Tt_backflow)], name, perturbation_bc=perturbation_bc)
+def pressure_outlet(p, Tt_backflow=300.0, composition=None, basis="mole", name="outlet", perturbation_bc=None):
+    """Static-pressure outlet; ``composition`` is the backflow stream (on ingestion)."""
+    return ElementSpec(
+        P_OUTLET,
+        [float(p), float(Tt_backflow)],
+        name,
+        perturbation_bc=perturbation_bc,
+        composition_spec=composition,
+        basis=basis,
+    )
 
 
 def wall(name="wall", perturbation_bc=None):
@@ -159,6 +204,99 @@ def loss(K, name="loss", ref_port=0, eps=None):
     if rp not in (0, 1):
         raise ValueError(f"loss: ref_port must be 0 or 1; got {ref_port}")
     return ElementSpec(LOSS, [float(K), float(rp)], name, eps=eps)
+
+
+def heat_release_flame(Qdot, name="flame"):
+    """A compact constant-area flame that adds heat power ``Qdot`` [W] to the flow.
+
+    The perfect-gas counterpart of the reacting (equilibrium) flame: it conserves
+    mass and total pressure (a low-Mach compact-flame idealization, neglecting the
+    ``O(M^2)`` Rayleigh total-pressure loss) while raising the through-flow's total
+    enthalpy by ``Q_dot / mdot`` -- so the downstream total temperature rises by
+    ``Q_dot / (mdot * cp)``.  With ``Q_dot`` fixed the linearized jump carries no
+    fluctuating heat release, so the flame is acoustically passive (its active
+    ``n-tau`` response ``S(omega)`` is a later, dynamic-flame phase).
+
+    Parameters
+    ----------
+    Qdot : float
+        Heat-release rate [W] added across the flame (``> 0`` heats the flow).
+    name : str, optional
+        Element label.
+    """
+    from .ids import FLAME_HEAT_RELEASE
+
+    return ElementSpec(FLAME_HEAT_RELEASE, [float(Qdot)], name)
+
+
+def equilibrium_flame(name="flame"):
+    """A compact reacting flame: frozen unburnt inflow -> equilibrium products.
+
+    The reacting (headline) flame and counterpart of :func:`heat_release_flame`.
+    It conserves mass, **static pressure** (a low-Mach compact-flame idealization)
+    and total enthalpy (adiabatic), and conserves the elemental composition ``Z``.
+    "Ignition" is the per-edge closure switch: the approach edge uses the frozen
+    (``EQ_FROZEN``) closure and the product edge the equilibrium (``EQ_KERNEL``)
+    closure (set via ``build_problem(..., edge_models=...)``), so the temperature
+    rise emerges from the equilibrium solve at the shared ``(Z, h_t, p)`` -- no
+    heat-release source, so the flame is acoustically passive.
+
+    Parameters
+    ----------
+    name : str, optional
+        Element label.
+    """
+    from .ids import FLAME_EQUILIBRIUM
+
+    return ElementSpec(FLAME_EQUILIBRIUM, [], name)
+
+
+def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dynamic_source=None):
+    """A 2-port inline mass-injection element (e.g. a fuel injector).
+
+    Injects a stream of mass-flow ``mdot`` [kg/s], total temperature ``T`` [K] and
+    the given species ``composition`` into the through-flow, conserving mass,
+    momentum and energy *with the appropriate source terms*:
+
+    * **mass**: the outflow exceeds the inflow by ``mdot``;
+    * **momentum**: the constant-area balance ``(rho u^2 + p)`` carries the
+      injected axial momentum ``mdot * u_inj`` -- ``u_inj = 0`` (default) is normal
+      (transverse) injection, which adds mass with no axial momentum;
+    * **energy / composition**: the injected total enthalpy and elemental ``Z`` mix
+      in mass-weighted with the through-flow (donor override).
+
+    A fuel injector is just this element with a fuel ``composition``.  It performs
+    no reaction -- *ignition is the flame element's job*; the source only sets the
+    mixture the downstream flame then burns.
+
+    Parameters
+    ----------
+    mdot : float
+        Injected mass-flow [kg/s] (``> 0`` adds mass).
+    T : float
+        Injected stream total temperature [K] (sets its enthalpy datum).
+    composition : dict or array_like
+        Injected species mixture, e.g. ``{"CH4": 1.0}`` or ``{"O2": 0.21, "N2": 0.79}``.
+    u_inj : float, optional
+        Axial injection velocity [m/s] for the momentum source (default 0: normal
+        injection).
+    basis : {"mole", "mass"}, optional
+        Units of ``composition``.
+    name : str, optional
+        Element label.
+    dynamic_source : DynamicSource, optional
+        Forward-compatibility provision for the dynamic ``S(omega)`` phase (e.g. a
+        fuel-flow that fluctuates with an upstream ``u'``).  Ignored by the mean
+        flow.
+    """
+    return ElementSpec(
+        MASS_SOURCE,
+        [float(mdot), float(u_inj), float(T)],
+        name,
+        composition_spec=composition,
+        basis=basis,
+        dynamic_source=dynamic_source,
+    )
 
 
 def junction(name="junction"):
@@ -256,6 +394,145 @@ def _row_kinds(rid: int, deg: int, mdot_ref, p_ref):
     return [mdot_ref] + [p_ref] * (deg - 1)
 
 
+def _onehot(k: int, n: int):
+    """Mixture-fraction unit vector: all mass from stream ``k`` (``[]`` if ``n==0``)."""
+    xi = [0.0] * n
+    if 0 <= k < n:
+        xi[k] = 1.0
+    return xi
+
+
+def _boundary_scalars(thermo: ThermoConfig, el: ElementSpec, Tt: float, n_elem: int, label: str, stream: int):
+    """Resolve a boundary's advected-scalar params ``[h_t, xi_0, ..., xi_{n_elem-1}]``.
+
+    Converts the element's total temperature to the absolute total-enthalpy datum
+    (D-1) and tags the stream it introduces with the mixture-fraction unit vector
+    ``xi = e_stream``.  For a perfect gas ``h_t = cp*Tt`` and the composition (if
+    any) is the raw passive-scalar values; for the equilibrium model the
+    composition is a named species mixture whose own enthalpy at ``Tt`` is used.
+    """
+    if thermo.model_id == PERFECT_GAS:
+        h_t = float(thermo.tf[0]) * Tt  # cp * Tt
+        if n_elem == 0:
+            return [h_t]
+        comp = el.composition_spec
+        if comp is None:
+            return [h_t] + [0.0] * n_elem
+        zvals = [float(c) for c in comp]
+        if len(zvals) != n_elem:
+            raise ValueError(f"{label} carries {len(zvals)} scalar(s) but the model has {n_elem}")
+        return [h_t] + zvals
+
+    # equilibrium / reacting backend: an explicit species composition is required
+    # for any stream that introduces mass (inlets, mass sources); an outlet may
+    # omit it (its backflow scalars are used only on ingestion).
+    comp = el.composition_spec
+    if comp is None:
+        if el.residual_id in (MASS_FLOW_INLET, PT_INLET):
+            raise ValueError(
+                f"{label}: the equilibrium model requires an explicit species composition "
+                f"(e.g. composition={{'O2': 0.21, 'N2': 0.79}})"
+            )
+        return [0.0] + [0.0] * n_elem  # inert backflow placeholder
+    Y = species_mass_fractions(thermo.library, comp, el.basis)
+    h_t = enthalpy_mass(thermo.library, Y, Tt)
+    return [h_t] + _onehot(stream, n_elem)
+
+
+def _mass_source_params(thermo: ThermoConfig, el: ElementSpec, n_elem: int, label: str, stream: int):
+    """Resolve a mass source's params ``[mdot_src, u_inj, h_t_src, xi_src_0, ...]``.
+
+    The injected total enthalpy carries the stream's enthalpy at ``T_src`` plus the
+    injection kinetic energy ``0.5 u_inj^2`` (D-1 datum); the injected composition is
+    the mixture-fraction unit vector of its feed stream (kernel donor index
+    ``pb+2+s``).
+    """
+    mdot_src = float(el.fparams[0])
+    u_inj = float(el.fparams[1])
+    T_src = float(el.fparams[2])
+    ke = 0.5 * u_inj * u_inj
+    if thermo.model_id == PERFECT_GAS:
+        h_t_src = float(thermo.tf[0]) * T_src + ke
+        if n_elem == 0:
+            return [mdot_src, u_inj, h_t_src]
+        comp = el.composition_spec
+        zvals = [float(c) for c in comp] if comp is not None else [0.0] * n_elem
+        if len(zvals) != n_elem:
+            raise ValueError(f"{label} carries {len(zvals)} scalar(s) but the model has {n_elem}")
+        return [mdot_src, u_inj, h_t_src] + zvals
+
+    comp = el.composition_spec
+    if comp is None:
+        raise ValueError(
+            f"{label}: a mass source must specify its injected species composition "
+            f"(e.g. composition={{'CH4': 1.0}})"
+        )
+    Y = species_mass_fractions(thermo.library, comp, el.basis)
+    h_t_src = enthalpy_mass(thermo.library, Y, T_src) + ke
+    return [mdot_src, u_inj, h_t_src] + _onehot(stream, n_elem)
+
+
+# elements that introduce a feed stream (a distinct injected composition)
+_STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
+
+
+def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec]):
+    """Discover the network's feed streams and pack the equilibrium bundle.
+
+    For the reacting (``EQ_KERNEL``) model the **streams are the distinct injected
+    compositions** of the network's inlets, mass sources and (backflow-bearing)
+    outlets.  This scans them in node order, auto-merges identical compositions, and
+    packs the per-stream forward-blend maps -- so the user only ever names species at
+    the elements that introduce them, and the transported scalar count equals the
+    number of distinct feeds (never the chemical-element count, never the product
+    species).  The deferred ``equilibrium(library)`` config is finalized here.
+
+    Returns
+    -------
+    thermo : ThermoConfig
+        The finalized config (unchanged for a perfect gas / passive-scalar model).
+    node_stream : dict or None
+        ``node -> stream index`` for every stream-introducing node (``-1`` if that
+        element carries no composition, e.g. an inert-backflow outlet); ``None`` for
+        a non-reacting model.
+    """
+    if thermo.model_id != EQ_KERNEL or thermo.library is None:
+        return thermo, None
+
+    from ..thermo.equilibrium import pack_equilibrium
+
+    comps = []
+    comp_nodes = []
+    for n, el in enumerate(elements):
+        if el.residual_id in _STREAM_INTRODUCING:
+            comps.append((el.composition_spec, el.basis))
+            comp_nodes.append(n)
+    stream_Y, assignment = build_streams(thermo.library, comps)
+    node_stream = {comp_nodes[i]: assignment[i] for i in range(len(comp_nodes))}
+
+    # label each stream by the first element that introduces it (for reporting)
+    K = stream_Y.shape[0]
+    labels = [f"stream{k}" for k in range(K)]
+    for i, k in enumerate(assignment):
+        if k >= 0 and labels[k] == f"stream{k}":
+            nm = elements[comp_nodes[i]].name
+            if nm:
+                labels[k] = nm
+
+    tf, ti = pack_equilibrium(thermo.library, stream_Y, thermo.t_init, thermo.t_init_frozen)
+    finalized = ThermoConfig(
+        model_id=EQ_KERNEL,
+        tf=tf,
+        ti=ti,
+        element_names=labels,
+        species_names=thermo.species_names,
+        library=thermo.library,
+        t_init=thermo.t_init,
+        t_init_frozen=thermo.t_init_frozen,
+    )
+    return finalized, node_stream
+
+
 def build_problem(
     thermo: ThermoConfig,
     elements: List[ElementSpec],
@@ -263,18 +540,23 @@ def build_problem(
     mdot_ref: float,
     p_ref: float,
     h_ref: float,
+    edge_models=None,
 ) -> CompiledProblem:
     """Assemble a CompiledProblem from elements and directed (tail, head, area) edges.
 
     Ports are auto-assigned in attachment order.  Use
     ``build_problem_from_connectivity`` to supply explicit ports (e.g. a UI
-    export where the port ordinals carry meaning).
+    export where the port ordinals carry meaning).  ``edge_models`` optionally
+    overrides the per-edge thermo model id (default: the config's model on every
+    edge) -- e.g. frozen upstream, equilibrium downstream of a flame.
     """
     n_nodes = len(elements)
     directed = [(t, h) for (t, h, _a) in edges]
     area = np.array([a for (_t, _h, a) in edges], dtype=np.float64)
     conn = connectivity_from_directed_edges(n_nodes, directed)
-    return build_problem_from_connectivity(thermo, elements, conn, area, mdot_ref, p_ref, h_ref)
+    return build_problem_from_connectivity(
+        thermo, elements, conn, area, mdot_ref, p_ref, h_ref, edge_models=edge_models
+    )
 
 
 def build_problem_from_connectivity(
@@ -285,6 +567,7 @@ def build_problem_from_connectivity(
     mdot_ref: float,
     p_ref: float,
     h_ref: float,
+    edge_models=None,
 ) -> CompiledProblem:
     """Assemble a CompiledProblem from elements and a prebuilt Connectivity.
 
@@ -295,16 +578,33 @@ def build_problem_from_connectivity(
     area = np.ascontiguousarray(area, dtype=np.float64)
     validate_network(elements, conn, area)
 
+    # discover the feed streams from the network and finalize the (reacting) thermo
+    # bundle: the transported mixture fractions are the distinct injected compositions.
+    thermo, node_stream = finalize_thermo(thermo, elements)
+
     degrees = [conn.degree(n) for n in range(n_nodes)]
     node_rid = np.array([el.residual_id for el in elements], dtype=np.int64)
     node_acoustic_id = np.array([el.acoustic_id for el in elements], dtype=np.int64)
 
-    # pack node float params in node order
+    # pack node float params in node order.  A boundary element that prescribes
+    # advected scalars carries [base, h_t, Z_el...]: slot 0 is the prescribed
+    # mdot/pt/p, slot 1 the absolute total enthalpy datum (converted from Tt), and
+    # the remaining n_elem slots the feed/backflow elemental composition -- so the
+    # donor kernel indexes npar_f[pb + 1 + s] for advected scalar s (s = 0 is h_t).
+    n_elem = thermo.n_elem
+    boundary_rids = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
     npar_f = []
     npar_fptr = np.zeros(n_nodes + 1, dtype=np.int64)
     for n, el in enumerate(elements):
-        npar_f.extend(el.fparams)
-        npar_fptr[n + 1] = npar_fptr[n] + len(el.fparams)
+        fp = list(el.fparams)
+        k = -1 if node_stream is None else node_stream.get(n, -1)
+        if el.residual_id in boundary_rids and len(fp) >= 2:
+            base, Tt = float(fp[0]), float(fp[1])
+            fp = [base] + _boundary_scalars(thermo, el, Tt, n_elem, _node_label(n, el), k)
+        elif el.residual_id == MASS_SOURCE:
+            fp = _mass_source_params(thermo, el, n_elem, _node_label(n, el), k)
+        npar_f.extend(fp)
+        npar_fptr[n + 1] = npar_fptr[n] + len(fp)
     npar_f = np.array(npar_f, dtype=np.float64)
 
     # per-element smoothing-eps override (< 0 -> follow the global solve-time eps)
@@ -316,16 +616,44 @@ def build_problem_from_connectivity(
     # per-node human-readable name (label); for plotting / reporting only
     node_names = tuple(getattr(el, "name", "") or "" for el in elements)
 
-    pat = build_jacobian_pattern(conn, degrees, n_solve=3)
+    # per-node dynamic-source descriptor (S(omega) provision; mean flow ignores it)
+    node_dynamic_source = tuple(getattr(el, "dynamic_source", None) for el in elements)
 
-    # residual scales
+    n_solve = 3 + thermo.n_elem
+    pat = build_jacobian_pattern(conn, degrees, n_solve=n_solve)
+
+    # residual scales: node rows, then the advected-scalar transport rows
+    # (h_t for every edge, then each composition scalar for every edge).
+    # Composition scalars are elemental mass fractions, O(1), so scale = 1.
+    z_scale = 1.0
     res_scale = []
     for n, el in enumerate(elements):
         res_scale.extend(_row_kinds(el.residual_id, degrees[n], mdot_ref, p_ref))
     res_scale.extend([h_ref] * conn.n_edges)
+    for _ in range(thermo.n_elem):
+        res_scale.extend([z_scale] * conn.n_edges)
     res_scale = np.array(res_scale, dtype=np.float64)
 
-    var_scale = np.array([mdot_ref, p_ref, h_ref], dtype=np.float64)
+    var_scale = np.array([mdot_ref, p_ref, h_ref] + [z_scale] * thermo.n_elem, dtype=np.float64)
+
+    # per-edge thermo model (default: the config's model on every edge)
+    if edge_models is None:
+        edge_model = np.full(conn.n_edges, thermo.model_id, dtype=np.int64)
+    else:
+        edge_model = np.ascontiguousarray(edge_models, dtype=np.int64)
+        if edge_model.shape[0] != conn.n_edges:
+            raise ValueError(f"edge_models has {edge_model.shape[0]} entries but the network has {conn.n_edges} edges")
+
+    # an unburnt (EQ_FROZEN) edge reconstructs its species from the feed streams; at
+    # least one stream must exist (an inlet / mass source must inject a composition).
+    if thermo.model_id != PERFECT_GAS and np.any(edge_model == EQ_FROZEN):
+        n_streams = int(thermo.ti[5]) if thermo.ti.shape[0] > 5 else 0
+        if n_streams == 0:
+            raise ValueError(
+                "the network has EQ_FROZEN (unburnt) edges but no feed streams were "
+                "found; an inlet or mass source must inject an explicit species "
+                "composition for the frozen closure to reconstruct from"
+            )
 
     return CompiledProblem(
         model_id=thermo.model_id,
@@ -352,7 +680,10 @@ def build_problem_from_connectivity(
         indices=pat.indices,
         var_scale=var_scale,
         res_scale=res_scale,
+        edge_model=edge_model,
         node_eps=node_eps,
         node_bc=node_bc,
         node_names=node_names,
+        node_dynamic_source=node_dynamic_source,
+        scalar_names=tuple(thermo.element_names),
     )

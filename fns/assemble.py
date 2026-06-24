@@ -12,7 +12,7 @@ import numpy as np
 import scipy.sparse as sp
 from numba import njit
 
-from .derive import recover_all, recover_edge, NS_EST, ES_MDOT, ES_HT
+from .derive import recover_all, recover_edge, NS_EST, ES_MDOT
 from .smooth import smooth_step
 from .elements.kernels import node_residual, node_donor
 
@@ -21,7 +21,7 @@ CS_H = 1e-30
 
 @njit(cache=True)
 def assemble_residual(
-    model_id,
+    edge_model,
     tf,
     ti,
     n_elem,
@@ -47,7 +47,7 @@ def assemble_residual(
     """Fill the full residual vector R (length n_eq) and the est table."""
     N = node_rid.shape[0]
     E = x.shape[1]
-    recover_all(model_id, tf, ti, x, area, n_elem, est)
+    recover_all(edge_model, tf, ti, x, area, n_elem, est)
 
     for n in range(N):
         eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
@@ -55,14 +55,18 @@ def assemble_residual(
             n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps_n, eps_fb, stab, est, R, node_row_ptr
         )
 
+    # advected scalars: band-1 rows 2.. (s=0 is h_t, s>=1 are composition Z_el)
+    n_scalars = x.shape[0] - 2
+    mdot_e = est[ES_MDOT]
     Hd = R[:N] * 0.0
-    for n in range(N):
-        Hd[n] = node_donor(n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, est)
-
-    for e in range(E):
-        theta = smooth_step(est[ES_MDOT, e], eps)
-        h_up = theta * Hd[tail_node[e]] + (1.0 - theta) * Hd[head_node[e]]
-        R[transport_row0 + e] = est[ES_HT, e] - h_up
+    for s in range(n_scalars):
+        phi_e = x[2 + s]
+        for n in range(N):
+            Hd[n] = node_donor(n, node_rid[n], s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e)
+        for e in range(E):
+            theta = smooth_step(est[ES_MDOT, e], eps)
+            phi_up = theta * Hd[tail_node[e]] + (1.0 - theta) * Hd[head_node[e]]
+            R[transport_row0 + s * E + e] = phi_e[e] - phi_up
 
 
 @njit(cache=True)
@@ -80,7 +84,7 @@ def _find_slot(c, row, indptr, indices):
 
 @njit(cache=True)
 def jacobian_fill(
-    model_id,
+    edge_model,
     tf,
     ti,
     n_elem,
@@ -108,11 +112,12 @@ def jacobian_fill(
     """Fill the CSC ``Jdata`` array against the fixed (indptr, indices) pattern."""
     n_solve = x.shape[0]
     E = x.shape[1]
+    n_scalars = n_solve - 2  # advected scalars: h_t (s=0) + composition Z_el (s>=1)
     H = CS_H
 
     xc = x.astype(np.complex128)
     est = np.zeros((NS_EST, E), dtype=np.complex128)
-    recover_all(model_id, tf, ti, xc, area, n_elem, est)
+    recover_all(edge_model, tf, ti, xc, area, n_elem, est)
     Rc = np.zeros(n_eq, dtype=np.complex128)
 
     for e in range(E):
@@ -123,7 +128,7 @@ def jacobian_fill(
         for v in range(n_solve):
             c = n_solve * e + v
             xc[v, e] = x[v, e] + 1j * H
-            recover_edge(model_id, tf, ti, xc[0, e], xc[1, e], xc[2, e], area[e], xc[3 : 3 + n_elem, e], est[:, e])
+            recover_edge(edge_model[e], tf, ti, xc[0, e], xc[1, e], xc[2, e], area[e], xc[3 : 3 + n_elem, e], est[:, e])
 
             # (a) the two endpoint node-equation blocks
             node_residual(
@@ -164,41 +169,49 @@ def jacobian_fill(
                 for r in range(node_row_ptr[nh], node_row_ptr[nh + 1]):
                     Jdata[_find_slot(c, r, indptr, indices)] = Rc[r].imag / H
 
-            # (b) transport rows of every edge incident to nt or nh (donor coupling)
+            # (b) transport rows of every edge incident to nt or nh (donor coupling),
+            #     one set per advected scalar s
+            mdot_e = est[ES_MDOT]
             for nd in (nt, nh):
                 for k in range(row_ptr[nd], row_ptr[nd + 1]):
                     e2 = col_edge[k]
-                    h_t2 = node_donor(
-                        tail_node[e2],
-                        node_rid[tail_node[e2]],
-                        row_ptr,
-                        col_edge,
-                        orient,
-                        npar_f,
-                        npar_fptr,
-                        tf,
-                        eps,
-                        est,
-                    )
-                    h_h2 = node_donor(
-                        head_node[e2],
-                        node_rid[head_node[e2]],
-                        row_ptr,
-                        col_edge,
-                        orient,
-                        npar_f,
-                        npar_fptr,
-                        tf,
-                        eps,
-                        est,
-                    )
                     theta = smooth_step(est[ES_MDOT, e2], eps)
-                    val = est[ES_HT, e2] - (theta * h_t2 + (1.0 - theta) * h_h2)
-                    Jdata[_find_slot(c, transport_row0 + e2, indptr, indices)] = val.imag / H
+                    for s in range(n_scalars):
+                        phi_e = xc[2 + s]
+                        d_t = node_donor(
+                            tail_node[e2],
+                            node_rid[tail_node[e2]],
+                            s,
+                            row_ptr,
+                            col_edge,
+                            orient,
+                            npar_f,
+                            npar_fptr,
+                            tf,
+                            eps,
+                            mdot_e,
+                            phi_e,
+                        )
+                        d_h = node_donor(
+                            head_node[e2],
+                            node_rid[head_node[e2]],
+                            s,
+                            row_ptr,
+                            col_edge,
+                            orient,
+                            npar_f,
+                            npar_fptr,
+                            tf,
+                            eps,
+                            mdot_e,
+                            phi_e,
+                        )
+                        val = phi_e[e2] - (theta * d_t + (1.0 - theta) * d_h)
+                        Jdata[_find_slot(c, transport_row0 + s * E + e2, indptr, indices)] = val.imag / H
 
             # restore
             xc[v, e] = x[v, e]
-            recover_edge(model_id, tf, ti, xc[0, e], xc[1, e], xc[2, e], area[e], xc[3 : 3 + n_elem, e], est[:, e])
+            recover_edge(edge_model[e], tf, ti, xc[0, e], xc[1, e], xc[2, e], area[e], xc[3 : 3 + n_elem, e], est[:, e])
 
 
 # --------------------------------------------------------------------------
@@ -218,7 +231,7 @@ def residual(prob, x2d, eps, eps_fb, stab=0.0):
     R = np.zeros(prob.n_eq, dtype=x2d.dtype)
     est = np.zeros((NS_EST, prob.n_edges), dtype=x2d.dtype)
     assemble_residual(
-        prob.model_id,
+        prob.edge_model,
         prob.tf,
         prob.ti,
         prob.n_elem,
@@ -248,7 +261,7 @@ def jacobian(prob, x2d, eps, eps_fb, stab=0.0):
     """Assemble the sparse Jacobian (scipy CSC) for state ``x2d``."""
     Jdata = np.zeros(len(prob.indices), dtype=np.float64)
     jacobian_fill(
-        prob.model_id,
+        prob.edge_model,
         prob.tf,
         prob.ti,
         prob.n_elem,

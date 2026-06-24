@@ -44,6 +44,10 @@ class CompiledProblem:
     # nondimensionalization (filled by the solver layer; may be all-ones)
     var_scale: np.ndarray  # float64[n_solve]
     res_scale: np.ndarray  # float64[n_eq]
+    # per-edge thermo model id (int64[E]); selects the closure/equilibrium kernel
+    # edge-by-edge so a frozen approach edge and an equilibrium edge can coexist.
+    # Defaults to the global ``model_id`` on every edge.
+    edge_model: np.ndarray = None  # int64[E]
     # per-element smoothing-eps override (< 0 -> use the global eps); see ElementSpec.eps
     node_eps: np.ndarray = None  # float64[N]
     # per-node perturbation boundary condition (Python objects, read only above the
@@ -53,6 +57,15 @@ class CompiledProblem:
     # human-readable element name per node (the YAML/UI label); for labelling only,
     # never touched by the kernels.  length N, or empty -> nameless.
     node_names: tuple = ()
+    # label of each transported composition scalar (the feed-stream / mixture-fraction
+    # names for the reacting model, or the passive-scalar names); length n_elem, for
+    # reporting only.  Empty when there are no composition scalars.
+    scalar_names: tuple = ()
+    # per-node dynamic-source descriptor (Python objects; fns.elements.dynamic_source
+    # .DynamicSource).  Carried for the later S(omega) perturbation phase; the mean
+    # flow ignores it (a constant mean source is acoustically passive).  length N,
+    # or empty -> none.
+    node_dynamic_source: tuple = ()
 
     @property
     def n_col(self) -> int:

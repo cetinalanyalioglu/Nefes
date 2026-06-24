@@ -414,7 +414,11 @@ def _prov_title(prov):
 
 
 def _build_model(network, prov):
+    from ..elements.catalog import ensure_unique_names
+
     elements = network._elements
+    # display labels must identify a node uniquely in the exported case
+    ensure_unique_names(elements)
     edges = network._edges
     ids = _node_ids(network, prov)
     prov_nodes = {n["id"]: n for n in prov.doc["model"].get("nodes", [])} if prov else {}

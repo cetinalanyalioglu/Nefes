@@ -326,8 +326,44 @@ def _node_label(n: int, el: ElementSpec) -> str:
     return f"element {n}{name} ({typ})"
 
 
+def ensure_unique_names(elements: List[ElementSpec]) -> None:
+    """Make element display names unique, in place, by suffixing clashes.
+
+    Names are display/reporting labels only (never touched by the kernels), but
+    several surfaces -- the UI export, plot legends, the LaTeX reports -- assume
+    they identify an element unambiguously.  Manually built networks routinely
+    repeat the factory defaults (two ``duct`` elements both named ``"duct"``), so
+    this normalizes them: the first occurrence of a name is kept, and each later
+    duplicate is renamed ``<name>-1``, ``<name>-2``, ... (skipping any suffix
+    already taken).  Idempotent -- a list whose names are already unique is left
+    untouched.
+
+    Parameters
+    ----------
+    elements : list of ElementSpec
+        The network elements, in node order.  Mutated in place.
+    """
+    seen = set()
+    for el in elements:
+        name = el.name or ""
+        if name not in seen:
+            seen.add(name)
+            continue
+        k = 1
+        candidate = f"{name}-{k}"
+        while candidate in seen:
+            k += 1
+            candidate = f"{name}-{k}"
+        el.name = candidate
+        seen.add(candidate)
+
+
 def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.ndarray) -> None:
     """Check structural and area-consistency invariants before compiling.
+
+    Also normalizes element display names to be unique (see
+    :func:`ensure_unique_names`) -- duplicates, common with the factory defaults,
+    are suffixed in place rather than rejected.
 
     Raises ``ValueError`` (naming the offending element) on the first violation:
 
@@ -349,6 +385,7 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
     area : ndarray
         Per-edge cross-sectional area, indexed by global edge id.
     """
+    ensure_unique_names(elements)
     area = np.asarray(area, dtype=np.float64)
     if area.size != conn.n_edges:
         raise ValueError(f"area has {area.size} entries but the network has {conn.n_edges} edges")

@@ -12,9 +12,6 @@
 
 ## To verify
 
-- [ ] Do we enforce unique element names? If not, we should. The external UI already takes care of that, manually built networks should also respect that. If we have a central "verification" procedure, this is something we should add there.
-- [ ] For reversed flow in pressure outlets, do we use the same pressure value as static pressure when reversal happens, or do we use the prescribed static pressure value as backflow total pressure?
-
 ## To brainstorm
 
 ## To test

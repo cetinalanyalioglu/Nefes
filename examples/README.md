@@ -49,6 +49,31 @@
   scattering matrix** and per-terminal **source attribution** at a chosen sink. All
   figures are Plotly, styled with the shared FNS theme (`fns.plotting`).
 
+- **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The standalone
+  `thermolib` HP-equilibrium solver (adiabatic flame temperature vs equivalence ratio
+  for H2/air, straight from the NASA `thermo.inp` data), the perfect-gas **heat-release
+  flame** (`Qdot` total-enthalpy jump with the Rayleigh static-pressure drop), and the
+  reacting **equilibrium flame** (unburnt `EQ_FROZEN` approach → `EQ_KERNEL` products,
+  "ignition" by a per-edge closure switch). The network flame T matches the standalone
+  equilibrium across an equivalence-ratio sweep. Self-contained `matplotlib`.
+- **`gas_turbine_combustor.ipynb`** — a **complete gas-turbine combustor**:
+  compressor-discharge air → a **fuel mass source** (the injector) → an **equilibrium
+  flame** → a **dilution-air mass source** (cooling to the turbine-inlet temperature) →
+  the turbine-inlet outlet. Streams are named by **species** (`{"O2": 0.21, ...}`,
+  `{"CH4": 1.0}`); the network transports one conserved **mixture fraction** per
+  distinct injected composition, discovered automatically at build time. Tabulates the converged edge states, charts the axial temperature
+  (flame jump then dilution cooling), and sweeps fuel flow (equivalence ratio) and
+  dilution air against the flame / turbine-inlet temperatures. Tweak `mdot_fuel`,
+  `mdot_dilution`, `Tair`, `p`.
+- **`multiple_fuels.ipynb`** — **two very different fuels at different positions**:
+  n-octane (`C8H18`) burned in the primary zone, then hydrogen (`H2`) injected into the
+  hot products as a **reheat** stage (it re-equilibrates and releases more heat, no
+  extra flame element). Shows the chemistry plumbing is fuel-agnostic — each injected
+  composition is its own transported **mixture fraction**, reconstructed exactly by a
+  forward blend (no element bookkeeping, no distinguishability restriction, so even two
+  carbon-bearing fuels can co-mix unburnt). Prints the per-edge mixture-fraction flow
+  and sweeps the H2 reheat.
+
 ## Running the notebook
 
 The notebook adds the repo root to `sys.path`, so no install of `fns` is needed —

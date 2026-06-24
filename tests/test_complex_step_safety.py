@@ -44,6 +44,9 @@ from fns.elements.ids import (
     SPLITTER,
     DUCT,
     WALL,
+    FLAME_HEAT_RELEASE,
+    FLAME_EQUILIBRIUM,
+    MASS_SOURCE,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
@@ -298,6 +301,26 @@ def _probe_wall():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
+def _probe_heat_release_flame():
+    # heat-addition flame (constant area): the smooth-abs |mdot| floor in the
+    # h_t donor must stay analytic through the reverse / near-zero flow sweep.
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.heat_release_flame(5.0e5), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_mass_source():
+    # inline mass injection (constant area) with a nonzero injection velocity, so
+    # both the mass source on the balance row and the momentum source term are
+    # exercised; the donor mixes the injected h_t with the smooth-upwind interior
+    # flow, which must stay analytic through reverse / near-zero flow.
+    els = [
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.mass_source(6.0, 320.0, None, u_inj=40.0),
+        cat.pressure_outlet(P_OUT),
+    ]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
 # focus element type -> minimal probe network
 PROBES = {
     MASS_FLOW_INLET: _probe_mass_flow_inlet,
@@ -310,12 +333,19 @@ PROBES = {
     JUNCTION: _probe_junction,
     SPLITTER: _probe_splitter,
     WALL: _probe_wall,
+    FLAME_HEAT_RELEASE: _probe_heat_release_flame,
+    MASS_SOURCE: _probe_mass_source,
 }
 
 # Element types that are implemented in v1 (the reserved supersonic boundaries
 # are deferred -- CLAUDE.md -- and have no kernel yet, so they are exempt).
 DEFERRED_RIDS = {SUPERSONIC_INLET, SUPERSONIC_OUTLET}
-IMPLEMENTED_RIDS = set(RESIDUAL_NAMES) - DEFERRED_RIDS
+# The reacting equilibrium flame needs the absolute-enthalpy datum and a physical
+# reacting state, so the perfect-gas regime sweep here (which imposes h_t = cp*T
+# states) cannot drive it.  It is complex-step-validated against a real
+# finite-difference Jacobian at the converged operating point in tests/test_flame.py.
+REACTIVE_RIDS = {FLAME_EQUILIBRIUM}
+IMPLEMENTED_RIDS = set(RESIDUAL_NAMES) - DEFERRED_RIDS - REACTIVE_RIDS
 
 
 def _sweep_states(prob):

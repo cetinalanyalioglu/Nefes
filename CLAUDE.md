@@ -26,6 +26,7 @@ However, do not assume everything in there is theoretically flawless, always do 
 - During development there is no need to keep things for backward compat.
 - Development phase goes on until we have a tagged release on the repo.
 - Do NOT save the output of Jupyter notebooks (filesize concerns) - except very small ones.
+- For notebooks, always prefer plotly
 
 ### Pitfalls
 

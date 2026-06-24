@@ -33,10 +33,10 @@ NS_EST = 10
 def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out):
     """Recover one edge's full state into ``out[0:NS_EST]`` (dtype-generic)."""
     rho, h = closure_solve(model_id, tf, ti, mdot, p, ht, Z_el, area)
-    T, _rho2, c, _W = thermo_state(model_id, tf, ti, Z_el, h, p)
+    T, _rho2, c, W = thermo_state(model_id, tf, ti, Z_el, h, p)
     u = mdot / (rho * area)
     M = u / c
-    pt = thermo_total_pressure(model_id, tf, ti, Z_el, M, p)
+    pt = thermo_total_pressure(model_id, tf, ti, Z_el, M, p, T, c, W)
     out[ES_MDOT] = mdot
     out[ES_P] = p
     out[ES_HT] = ht
@@ -50,9 +50,14 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out):
 
 
 @njit(cache=True)
-def recover_all(model_id, tf, ti, x, area, n_elem, est):
-    """Recover every edge state into the table ``est[NS_EST, E]``."""
+def recover_all(edge_model, tf, ti, x, area, n_elem, est):
+    """Recover every edge state into ``est[NS_EST, E]`` (per-edge thermo model).
+
+    ``edge_model[e]`` selects the thermo model for edge ``e`` -- so a frozen
+    (unburnt) approach edge and an equilibrium (burnt) edge can coexist in one
+    network, with the flame element bridging them.
+    """
     E = x.shape[1]
     for e in range(E):
         Z_el = x[3 : 3 + n_elem, e]
-        recover_edge(model_id, tf, ti, x[0, e], x[1, e], x[2, e], area[e], Z_el, est[:, e])
+        recover_edge(edge_model[e], tf, ti, x[0, e], x[1, e], x[2, e], area[e], Z_el, est[:, e])

@@ -16,6 +16,9 @@ DUCT = 8
 SUPERSONIC_INLET = 9  # reserved (deferred)
 SUPERSONIC_OUTLET = 10  # reserved (deferred)
 WALL = 11  # impermeable single-port termination (mdot = 0); acoustic hard wall
+FLAME_HEAT_RELEASE = 12  # 2-port heat-addition flame (perfect-gas): h_t jump from a power source
+FLAME_EQUILIBRIUM = 13  # 2-port reacting flame: frozen inflow -> equilibrium products (closure switch)
+MASS_SOURCE = 14  # 2-port mass-injection element: adds mass/momentum/energy + composition source
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
 # element overrides its default CSD face with.  Only DUCT is active in v1;
@@ -40,6 +43,9 @@ FIXED_NPORTS = {
     SUDDEN_AREA_CHANGE: 2,
     LOSS: 2,
     DUCT: 2,
+    FLAME_HEAT_RELEASE: 2,
+    FLAME_EQUILIBRIUM: 2,
+    MASS_SOURCE: 2,
 }
 
 # Whether an element permits an area change across it (its incident edges may
@@ -65,6 +71,9 @@ ALLOWS_AREA_CHANGE = {
     SPLITTER: True,
     DUCT: False,
     LOSS: True,
+    FLAME_HEAT_RELEASE: False,  # constant-area compact flame (Pt-continuity pressure row)
+    FLAME_EQUILIBRIUM: False,  # constant-area compact reacting flame (static-p continuity)
+    MASS_SOURCE: False,  # constant-area inline injection (momentum balance with a source)
 }
 
 # Human-readable element-type names, for validation / reporting messages.
@@ -81,4 +90,7 @@ RESIDUAL_NAMES = {
     SUPERSONIC_INLET: "SupersonicInlet",
     SUPERSONIC_OUTLET: "SupersonicOutlet",
     WALL: "Wall",
+    FLAME_HEAT_RELEASE: "HeatReleaseFlame",
+    FLAME_EQUILIBRIUM: "EquilibriumFlame",
+    MASS_SOURCE: "MassSource",
 }

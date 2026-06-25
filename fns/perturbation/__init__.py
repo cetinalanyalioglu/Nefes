@@ -55,6 +55,13 @@ from .matrices import (
     wave_signs,
 )
 from .duct import duct_modes, DuctAcoustics
+from .power import (
+    acoustic_intensity,
+    acoustic_energy_density,
+    passive_reflection_bound,
+    boundary_power,
+    BoundaryPower,
+)
 from .drivers import modes_from_det, scattering_2port
 from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning
@@ -110,6 +117,12 @@ __all__ = [
     "DuctAcoustics",
     "modes_from_det",
     "scattering_2port",
+    # acoustic-power diagnostics
+    "acoustic_intensity",
+    "acoustic_energy_density",
+    "passive_reflection_bound",
+    "boundary_power",
+    "BoundaryPower",
     # stability / eigenmodes (nonlinear eigenproblem det A(omega) = 0)
     "eigenmodes",
     "EigenmodeResult",

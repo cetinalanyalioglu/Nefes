@@ -19,6 +19,8 @@ WALL = 11  # impermeable single-port termination (mdot = 0); acoustic hard wall
 FLAME_HEAT_RELEASE = 12  # 2-port heat-addition flame (perfect-gas): h_t jump from a power source
 FLAME_EQUILIBRIUM = 13  # 2-port reacting flame: frozen inflow -> equilibrium products (closure switch)
 MASS_SOURCE = 14  # 2-port mass-injection element: adds mass/momentum/energy + composition source
+MASS_FLOW_OUTLET = 15  # 1-port outlet: prescribed outflow mass rate (acoustic mdot' = 0 by inheritance)
+CHOKED_NOZZLE_OUTLET = 16  # 1-port outlet: compact choked nozzle of throat area A* (critical mass flux)
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
 # element overrides its default CSD face with.  Only DUCT is active in v1;
@@ -38,6 +40,8 @@ FIXED_NPORTS = {
     MASS_FLOW_INLET: 1,
     PT_INLET: 1,
     P_OUTLET: 1,
+    MASS_FLOW_OUTLET: 1,
+    CHOKED_NOZZLE_OUTLET: 1,
     WALL: 1,
     ISEN_AREA_CHANGE: 2,
     SUDDEN_AREA_CHANGE: 2,
@@ -64,6 +68,8 @@ ALLOWS_AREA_CHANGE = {
     MASS_FLOW_INLET: True,
     PT_INLET: True,
     P_OUTLET: True,
+    MASS_FLOW_OUTLET: True,
+    CHOKED_NOZZLE_OUTLET: True,
     WALL: True,
     ISEN_AREA_CHANGE: True,
     SUDDEN_AREA_CHANGE: True,
@@ -93,4 +99,6 @@ RESIDUAL_NAMES = {
     FLAME_HEAT_RELEASE: "HeatReleaseFlame",
     FLAME_EQUILIBRIUM: "EquilibriumFlame",
     MASS_SOURCE: "MassSource",
+    MASS_FLOW_OUTLET: "MassFlowOutlet",
+    CHOKED_NOZZLE_OUTLET: "ChokedNozzleOutlet",
 }

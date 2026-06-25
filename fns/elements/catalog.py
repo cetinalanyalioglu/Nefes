@@ -19,6 +19,8 @@ from .ids import (
     MASS_FLOW_INLET,
     PT_INLET,
     P_OUTLET,
+    MASS_FLOW_OUTLET,
+    CHOKED_NOZZLE_OUTLET,
     WALL,
     JUNCTION,
     SPLITTER,
@@ -110,6 +112,79 @@ def pressure_outlet(p, Tt_backflow=300.0, composition=None, basis="mole", name="
         composition_spec=composition,
         basis=basis,
     )
+
+
+def mass_flow_outlet(mdot, name="outlet", perturbation_bc=None):
+    """Prescribed-mass-flow outlet: the outflow rate is pinned to ``mdot``.
+
+    The static pressure floats (it is whatever the interior produces); useful for a
+    metered exhaust or as the mean-flow partner of a downstream choked throat whose
+    critical mass flow is known.  Left at ``perturbation_bc=None`` the acoustic
+    termination is the *inherited* linearization of this row, ``mdot' = 0`` -- the
+    constant-mass-flow acoustic boundary condition (also available standalone as
+    :meth:`~fns.perturbation.boundary_bc.PerturbationBC.constant_mass_flow`).
+
+    This is an **outflow-only** boundary: ``mdot`` must be positive and the element does
+    not model ingestion (use :func:`mass_flow_inlet`, which permits suction, for a
+    reversing boundary).
+
+    Parameters
+    ----------
+    mdot : float
+        Prescribed outflow mass rate [kg/s] (must be > 0, leaving the domain).
+    name : str, optional
+        Element label.
+    perturbation_bc : PerturbationBC, optional
+        Acoustic termination; ``None`` inherits ``mdot' = 0`` from this row.
+    """
+    if not float(mdot) > 0.0:
+        raise ValueError(
+            f"mass_flow_outlet is an outflow boundary; mdot must be > 0 (got {mdot}). "
+            "Use mass_flow_inlet (which permits suction) for an injecting/reversing boundary."
+        )
+    return ElementSpec(MASS_FLOW_OUTLET, [float(mdot)], name, perturbation_bc=perturbation_bc)
+
+
+def choked_nozzle_outlet(throat_area, name="outlet", perturbation_bc=None):
+    """Compact choked-nozzle outlet of throat area ``throat_area`` lumped downstream.
+
+    Models a sonic (M=1) throat just beyond the outlet plane: the outflow is the
+    critical mass flux for the interior stagnation state and the throat area, so the
+    static pressure floats (the choked mass flow is set by the upstream total state, not
+    a back-pressure).  Because the nozzle is *compact* (lumped), the application plane
+    stays **subsonic** -- the sonic point is in the throat, not the domain -- so the
+    acoustic operator is non-degenerate.  Left at ``perturbation_bc=None`` the acoustic
+    termination is the *inherited* linearization of the critical-mass-flux row, which is
+    the compact choked-nozzle (Marble--Candel) reflection with its entropy -> acoustic
+    coupling -- no separately specified boundary condition needed.
+
+    Use it when the convergent section is acoustically compact; resolving the higher-Mach
+    part of the contraction explicitly and lumping only the near-throat remainder makes
+    the compact assumption progressively better.  A choked throat is one-way, so this is
+    an **outflow-only** boundary: it does not model ingestion (the critical mass flux is
+    always positive, so the converged flow cannot reverse here).
+
+    This element **asserts** the nozzle is choked: it imposes the critical mass flux
+    unconditionally (the mass flow scales with the interior total pressure and stays
+    sonic-throat-consistent at any total pressure -- there is no back-pressure to detect
+    unchoking).  ``throat_area`` must be smaller than the outlet edge area (a contraction;
+    enforced at build time).  If the nozzle may be unchoked at low pressure ratio, use
+    :func:`pressure_outlet` instead -- its emergent complementarity handles the
+    choked/unchoked transition against a prescribed back-pressure.
+
+    Parameters
+    ----------
+    throat_area : float
+        Sonic-throat area ``A*`` [m^2] of the lumped nozzle (``A* < A_outlet`` so the
+        approach stays subsonic).  Must be > 0.
+    name : str, optional
+        Element label.
+    perturbation_bc : PerturbationBC, optional
+        Acoustic termination; ``None`` inherits the linearized choked-nozzle reflection.
+    """
+    if not float(throat_area) > 0.0:
+        raise ValueError(f"choked_nozzle_outlet throat area must be > 0 (got {throat_area})")
+    return ElementSpec(CHOKED_NOZZLE_OUTLET, [float(throat_area)], name, perturbation_bc=perturbation_bc)
 
 
 def wall(name="wall", perturbation_bc=None):
@@ -425,6 +500,20 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
             if deg < 2:
                 raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
 
+        if rid == CHOKED_NOZZLE_OUTLET:
+            # the compact choked nozzle is a *contraction* to a sonic throat; the throat
+            # area A* must be smaller than the outlet edge area so the approach plane stays
+            # subsonic (A_out/A* > 1 has a unique subsonic area-Mach root).  A* >= A_out has
+            # no subsonic choked solution (that is a converging-diverging / supersonic case).
+            a_out = float(area[conn.incident_edges(n)[0]])
+            a_star = float(el.fparams[0])
+            if not a_star < a_out:
+                raise ValueError(
+                    f"{label}: choked-nozzle throat area A* = {a_star:g} m^2 must be smaller than "
+                    f"the outlet area {a_out:g} m^2 (a contraction). A* >= A_out has no subsonic "
+                    "choked approach; a converging-diverging (supersonic) nozzle is out of v1 scope."
+                )
+
         if not ALLOWS_AREA_CHANGE.get(rid, True) and deg >= 2:
             inc = conn.incident_edges(n)
             a0 = float(area[inc[0]])
@@ -437,11 +526,42 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
                         f"isentropic_area_change or sudden_area_change element"
                     )
 
+    _check_pressure_reference(elements)
+
+
+# Boundaries that fix an *absolute pressure* (total_pressure_inlet, pressure_outlet) or tie
+# the pressure level via a flow<->pressure relation (choked_nozzle_outlet).  At least one is
+# needed or the mean-flow pressure level is a free gauge.
+_PRESSURE_REFERENCE_RIDS = (PT_INLET, P_OUTLET, CHOKED_NOZZLE_OUTLET)
+
+
+def _check_pressure_reference(elements: List[ElementSpec]) -> None:
+    """Reject a boundary set with no absolute-pressure reference (a singular gauge).
+
+    The steady residual fixes pressure only through *differences* (momentum, area-change
+    and loss rows) plus the absolute pin a pressure boundary supplies.  If **every**
+    boundary merely prescribes a mass flow (``mass_flow_inlet`` / ``mass_flow_outlet`` /
+    ``wall``), the pressure level is undetermined: adding a constant to every pressure
+    leaves the residual unchanged to leading order, so the Jacobian is singular and the
+    solve cannot converge.  A ``total_pressure_inlet`` or ``pressure_outlet`` pins the
+    level directly; a ``choked_nozzle_outlet`` pins it via its critical-mass-flux
+    relation (the interior stagnation pressure is fixed once the flow is).
+    """
+    if any(el.residual_id in _PRESSURE_REFERENCE_RIDS for el in elements):
+        return
+    raise ValueError(
+        "ill-posed boundary conditions: the network has no absolute-pressure reference. "
+        "Every boundary fixes a mass flow (mass_flow_inlet / mass_flow_outlet / wall), so the "
+        "pressure level is a free gauge and the steady solve is singular. Add a pressure_outlet "
+        "or total_pressure_inlet (an absolute-pressure pin), or a choked_nozzle_outlet "
+        "(a flow<->pressure relation), to set the level."
+    )
+
 
 def _row_kinds(rid: int, deg: int, mdot_ref, p_ref):
     """Residual-row scale magnitudes for one element."""
-    if rid == MASS_FLOW_INLET or rid == WALL:
-        return [mdot_ref]  # WALL pins mdot = 0
+    if rid in (MASS_FLOW_INLET, WALL, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET):
+        return [mdot_ref]  # WALL pins mdot = 0; the outlets pin a mass-flux residual
     if rid in (PT_INLET, P_OUTLET):
         return [p_ref]
     # interior: mass balance + (deg-1) pressure rows
@@ -646,6 +766,9 @@ def build_problem_from_connectivity(
     # the remaining n_elem slots the feed/backflow elemental composition -- so the
     # donor kernel indexes npar_f[pb + 1 + s] for advected scalar s (s = 0 is h_t).
     n_elem = thermo.n_elem
+    # boundaries that prescribe an advected-scalar (h_t + composition) donor on ingestion.
+    # The mass-flow / choked-nozzle outlets are outflow-only (no backflow), so they carry no
+    # such donor -- their edge inherits the interior scalars (scalar-transparent, see node_donor).
     boundary_rids = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
     npar_f = []
     npar_fptr = np.zeros(n_nodes + 1, dtype=np.int64)

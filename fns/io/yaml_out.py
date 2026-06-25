@@ -43,6 +43,8 @@ from ..elements.ids import (
     MASS_FLOW_INLET,
     PT_INLET,
     P_OUTLET,
+    MASS_FLOW_OUTLET,
+    CHOKED_NOZZLE_OUTLET,
     ISEN_AREA_CHANGE,
     SUDDEN_AREA_CHANGE,
     LOSS,
@@ -58,7 +60,7 @@ SAVE_FILE_VERSION = "2.0.0"
 DEFAULT_TITLE = "FNS case"
 
 # Single-port boundary elements that carry an acoustic boundary-condition group.
-_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, WALL)
+_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)
 
 # Mean-flow edge field -> (UI display name, unit).  Order defines the "all" set.
 _FIELD_META = {
@@ -525,6 +527,10 @@ def _spec_to_ui(spec):
         return "TotalPressureInlet", {"totalPressure": float(fp[0]), "totalTemperature": float(fp[1])}
     if rid == P_OUTLET:
         return "PressureOutlet", {"pressure": float(fp[0]), "backflowTotalTemperature": float(fp[1])}
+    if rid == MASS_FLOW_OUTLET:
+        return "MassFlowOutlet", {"massFlowRate": float(fp[0])}
+    if rid == CHOKED_NOZZLE_OUTLET:
+        return "ChokedNozzleOutlet", {"throatArea": float(fp[0])}
     if rid == ISEN_AREA_CHANGE:
         return "IsentropicAreaChange", {}
     if rid == SUDDEN_AREA_CHANGE:

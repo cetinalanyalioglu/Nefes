@@ -66,6 +66,17 @@ def _reload(net, sol, tmp_path, **kw):
     return load_case(str(path)), yaml.safe_load(open(path).read())
 
 
+def _single_outlet_net(outlet):
+    """[pt inlet] - duct - <outlet>, for the round-trip of a flow-fixing outlet."""
+    net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=6.0)
+    net.add(cat.total_pressure_inlet(160000.0, 300.0, name="res"))
+    net.add(cat.duct(0.4, name="pipe"))
+    net.add(outlet)
+    net.connect(0, 1, 0.02)
+    net.connect(1, 2, 0.02)
+    return net
+
+
 # --------------------------------------------------------------------------
 # 1. Round-trip preserves the physics (synthesized and provenance paths).
 # --------------------------------------------------------------------------
@@ -89,6 +100,25 @@ def test_synthesized_manifold_roundtrip_resolves(tmp_path):
     jct = next(n for n in doc["model"]["nodes"] if n["type"] == "JunctionStaticP")
     assert jct["attributes"]["leftPorts"] == 2
     assert jct["attributes"]["rightPorts"] == 1
+    sol2 = net2.solve()
+    assert sol2.converged
+    assert np.allclose(sol.field("mdot"), sol2.field("mdot"), rtol=1e-9, atol=1e-9)
+
+
+@pytest.mark.parametrize(
+    "outlet, ui_type",
+    [
+        (cat.mass_flow_outlet(5.0, name="out"), "MassFlowOutlet"),
+        (cat.choked_nozzle_outlet(0.012, name="out"), "ChokedNozzleOutlet"),
+    ],
+)
+def test_outlet_elements_roundtrip(tmp_path, outlet, ui_type):
+    """The two new outflow boundaries survive the UI-format round-trip and re-solve."""
+    net = _single_outlet_net(outlet)
+    sol = net.solve()
+    assert sol.converged
+    net2, doc = _reload(net, sol, str(tmp_path))
+    assert any(n["type"] == ui_type for n in doc["model"]["nodes"]), f"{ui_type} not serialized"
     sol2 = net2.solve()
     assert sol2.converged
     assert np.allclose(sol.field("mdot"), sol2.field("mdot"), rtol=1e-9, atol=1e-9)

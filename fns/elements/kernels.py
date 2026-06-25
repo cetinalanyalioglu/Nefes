@@ -10,11 +10,13 @@ homotopy coefficient added to interior pressure rows.
 from numba import njit
 
 from ..smooth import smooth_step, smooth_pos, smooth_abs, fischer_burmeister
-from ..derive import ES_MDOT, ES_P, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA
+from ..derive import ES_MDOT, ES_P, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA, ES_C
 from .ids import (
     MASS_FLOW_INLET,
     PT_INLET,
     P_OUTLET,
+    MASS_FLOW_OUTLET,
+    CHOKED_NOZZLE_OUTLET,
     WALL,
     ISEN_AREA_CHANGE,
     SUDDEN_AREA_CHANGE,
@@ -41,10 +43,12 @@ def node_donor(n, rid, s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
     base = row_ptr[n]
     deg = row_ptr[n + 1] - base
     pb = npar_fptr[n]
-    if rid == WALL:
-        # Scalar-transparent: the wall offers the edge its own scalar value, so the
+    if rid == WALL or rid == MASS_FLOW_OUTLET or rid == CHOKED_NOZZLE_OUTLET:
+        # Scalar-transparent: the element offers the edge its own scalar value, so the
         # smooth-upwind transport row (theta = 1/2 at mdot = 0) collapses to the
-        # interior donor -- the stagnant leg simply inherits it (theory.md s12.6).
+        # interior donor -- the stagnant/wall leg simply inherits it (theory.md s12.6).
+        # The mass-flow and choked-nozzle outlets are outflow-only (no backflow), so they
+        # prescribe no external scalar -- the edge keeps the interior value either way.
         return phi_e[col_edge[base]]
     if rid == MASS_FLOW_INLET or rid == PT_INLET or rid == P_OUTLET:
         # boundary params carry the absolute total enthalpy h_t at pb+1 (converted
@@ -124,6 +128,42 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         p_spec = npar_f[pb + 0]
         choked = fischer_burmeister(1.0 - m_in, (est[ES_P, e0] - p_spec) / p_spec, eps_fb) * p_spec
         R[r0] = xi * choked + (1.0 - xi) * (est[ES_PT, e0] - p_spec)
+        return
+
+    if rid == MASS_FLOW_OUTLET:
+        # Prescribed outflow mass rate: -s0*mdot is the mass leaving the domain.  The
+        # acoustic counterpart (inherited J_alg row) is mdot' = 0 -- a constant-mass-flow
+        # acoustic termination.
+        e0 = col_edge[base]
+        s0 = orient[base]
+        R[r0] = -s0 * est[ES_MDOT, e0] - npar_f[pb + 0]
+        return
+
+    if rid == CHOKED_NOZZLE_OUTLET:
+        # Compact choked nozzle of throat area A* (= npar_f[pb+0]) lumped just downstream:
+        # the throat is sonic, so the outflow equals the critical mass flux for the
+        # (interior, isentropic) total state.  The application plane stays subsonic -- the
+        # M = 1 point is in the lumped throat, not the domain -- so the acoustic operator
+        # is non-degenerate, and the inherited linearization is the compact choked-nozzle
+        # (Marble--Candel) reflection, entropy coupling included.
+        #   mdot_out = rho_t c_t A* (2/(gamma+1))^((gamma+1)/(2(gamma-1)))
+        # with rho_t, c_t the stagnation density/sound-speed from the local (rho, c, M) and
+        # gamma = rho c^2 / p (the local isentropic exponent; the equilibrium one when reacting).
+        e0 = col_edge[base]
+        s0 = orient[base]
+        rho = est[ES_RHO, e0]
+        c = est[ES_C, e0]
+        p = est[ES_P, e0]
+        A_star = npar_f[pb + 0]
+        mdot_out = -s0 * est[ES_MDOT, e0]
+        M = -s0 * est[ES_M, e0]  # outflow-positive approach Mach
+        gamma = rho * c * c / p
+        stag = 1.0 + 0.5 * (gamma - 1.0) * M * M  # 1 + (g-1)/2 M^2
+        rho_t = rho * stag ** (1.0 / (gamma - 1.0))
+        c_t = c * stag**0.5
+        expc = (gamma + 1.0) / (2.0 * (gamma - 1.0))
+        mdot_crit = rho_t * c_t * A_star * (2.0 / (gamma + 1.0)) ** expc
+        R[r0] = mdot_out - mdot_crit
         return
 
     if rid == JUNCTION or rid == SPLITTER:

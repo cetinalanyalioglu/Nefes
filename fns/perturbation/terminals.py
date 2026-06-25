@@ -12,10 +12,17 @@ from typing import List
 
 from ..solver.control import states_table
 from ..derive import ES_MDOT
-from ..elements.ids import MASS_FLOW_INLET, PT_INLET, P_OUTLET, WALL
+from ..elements.ids import (
+    MASS_FLOW_INLET,
+    PT_INLET,
+    P_OUTLET,
+    MASS_FLOW_OUTLET,
+    CHOKED_NOZZLE_OUTLET,
+    WALL,
+)
 
 # Residual ids that terminate one edge (one equation row, one incident edge).
-_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, WALL)
+_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)
 
 
 @dataclass

@@ -47,6 +47,8 @@ from fns.elements.ids import (
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
+    MASS_FLOW_OUTLET,
+    CHOKED_NOZZLE_OUTLET,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
@@ -308,6 +310,21 @@ def _probe_heat_release_flame():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
+def _probe_mass_flow_outlet():
+    # prescribed-mass-flow outlet: R = mdot_out - mdot_spec (linear, but the sweep still
+    # exercises the recovery on its edge through reverse / near-zero / near-choke flow).
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.mass_flow_outlet(18.0)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
+def _probe_choked_nozzle_outlet():
+    # compact choked-nozzle outlet: the critical-mass-flux residual carries stagnation
+    # ratios stag^p and (2/(g+1))^p that must stay analytic through reverse / near-zero /
+    # near-choke flow (stag = 1 + (g-1)/2 M^2 > 0 for any sign of M).  Throat < outlet area.
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.choked_nozzle_outlet(0.7 * PA)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
 def _probe_mass_source():
     # inline mass injection (constant area) with a nonzero injection velocity, so
     # both the mass source on the balance row and the momentum source term are
@@ -335,6 +352,8 @@ PROBES = {
     WALL: _probe_wall,
     FLAME_HEAT_RELEASE: _probe_heat_release_flame,
     MASS_SOURCE: _probe_mass_source,
+    MASS_FLOW_OUTLET: _probe_mass_flow_outlet,
+    CHOKED_NOZZLE_OUTLET: _probe_choked_nozzle_outlet,
 }
 
 # Element types that are implemented in v1 (the reserved supersonic boundaries

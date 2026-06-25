@@ -36,6 +36,8 @@ _UI_NODE_BUILDERS = {
     "MassFlowInlet": lambda a: cat.mass_flow_inlet(a["massFlowRate"], a["totalTemperature"]),
     "TotalPressureInlet": lambda a: cat.total_pressure_inlet(a["totalPressure"], a["totalTemperature"]),
     "PressureOutlet": lambda a: cat.pressure_outlet(a["pressure"], a.get("backflowTotalTemperature", 300.0)),
+    "MassFlowOutlet": lambda a: cat.mass_flow_outlet(a["massFlowRate"]),
+    "ChokedNozzleOutlet": lambda a: cat.choked_nozzle_outlet(a["throatArea"]),
     "Wall": lambda a: cat.wall(),
     "IsentropicAreaChange": lambda a: cat.isentropic_area_change(),
     "SuddenAreaChange": lambda a: cat.sudden_area_change(cc=a.get("contractionCoefficient", 1.0)),
@@ -46,7 +48,14 @@ _UI_NODE_BUILDERS = {
 }
 
 # Boundary types that carry a perturbation BC group in the UI schema.
-_BOUNDARY_TYPES = {"MassFlowInlet", "TotalPressureInlet", "PressureOutlet", "Wall"}
+_BOUNDARY_TYPES = {
+    "MassFlowInlet",
+    "TotalPressureInlet",
+    "PressureOutlet",
+    "MassFlowOutlet",
+    "ChokedNozzleOutlet",
+    "Wall",
+}
 
 _DEFERRED_TYPES = {"SupersonicInlet", "SupersonicOutlet"}
 
@@ -55,17 +64,24 @@ def _parse_perturbation_bc(attrs: dict):
     """Build a ``PerturbationBC`` from a boundary node's UI acoustic attributes.
 
     The UI exposes a deliberately small surface: a single ``boundaryType`` dropdown
-    selecting ``"rigid"`` (an infinite impedance / hard wall, ``u'=0``), ``"open"``
-    (an ideal pressure-release open end, ``p'=0``) or ``"impedance"`` (a specific
-    acoustic impedance given by ``impedanceMagnitude`` |Z|/rho c and ``impedancePhase``
-    in degrees).  Returns ``None`` when no ``boundaryType`` is present, so the element
-    keeps its default closure (``inherit`` for inlets/outlets; a hard wall for the wall
-    element).  Richer closures (reflection coefficients, excitation, mean-flow open
-    end, frequency tables) are set directly in Python via ``PerturbationBC``.
+    selecting ``"inherit"`` (the element's natural closure -- its linearized mean
+    boundary row, e.g. ``mdot'=0`` for a mass-flow outlet or the compact choked-nozzle
+    reflection for a choked-nozzle outlet), ``"rigid"`` (an infinite impedance / hard
+    wall, ``u'=0``), ``"open"`` (an ideal pressure-release open end, ``p'=0``) or
+    ``"impedance"`` (a specific acoustic impedance given by ``impedanceMagnitude``
+    |Z|/rho c and ``impedancePhase`` in degrees).  Returns ``None`` for ``"inherit"`` or
+    when no ``boundaryType`` is present, so the element keeps its default closure
+    (``inherit`` for inlets/outlets; a hard wall for the wall element).  Richer closures
+    (reflection coefficients, excitation, mean-flow open end, frequency tables) are set
+    directly in Python via ``PerturbationBC``.
     """
     from ..perturbation.boundary_bc import PerturbationBC
 
     btype = attrs.get("boundaryType")
+    if btype == "inherit":
+        # the element's natural closure: its linearized mean boundary row (e.g. mdot' = 0 for
+        # a mass-flow outlet, the compact choked-nozzle reflection for a choked-nozzle outlet).
+        return None
     if btype is None:
         return None  # no acoustic field -> keep the element's default closure
     if btype == "rigid":

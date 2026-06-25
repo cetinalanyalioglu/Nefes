@@ -74,6 +74,7 @@ KINDS = (
     "impedance",
     "excitation",
     "choked_nozzle",
+    "constant_mass_flow",
 )
 
 # Characteristic indices (theory.md s9.1): f downstream, g upstream, h entropy.
@@ -191,6 +192,8 @@ class PerturbationBC:
         if k == "choked_nozzle":  # compact choked outlet: delta_M = 0 (Marble--Candel)
             gm1 = _gamma_minus_one(K)
             return complex((2.0 - gm1 * M) / (2.0 + gm1 * M))
+        if k == "constant_mass_flow":  # mdot' = 0: g = (1+M)/(1-M) f + R_s h
+            return complex((1.0 + M) / (1.0 - M))
         raise ValueError(f"unhandled perturbation BC kind {k!r}")  # pragma: no cover
 
     def entropy_coupling_coefficient(self, freq, rho, c, M, K=None) -> complex:
@@ -202,6 +205,8 @@ class PerturbationBC:
         if self.kind == "choked_nozzle":
             gm1 = _gamma_minus_one(K)
             return complex((c / rho) * M / (2.0 + gm1 * M))
+        if self.kind == "constant_mass_flow":  # mdot' = 0 -> R_s = u / (rho (1 - M)) = c M / (rho (1 - M))
+            return complex((c * M) / (rho * (1.0 - M)))
         if self.entropy_coupling is not None:
             return _eval(self.entropy_coupling, freq)
         return 0.0 + 0.0j
@@ -221,8 +226,8 @@ class PerturbationBC:
         such that ``w[specify] = A @ w[arriving] + b``.  The scalar reflection sits on
         the acoustic-acoustic entry; the off-diagonals carry entropy <-> acoustic coupling.
         """
-        if self.kind == "choked_nozzle" and _H not in arriving:
-            raise ValueError("choked_nozzle is an outlet termination (entropy must be an arriving wave)")
+        if self.kind in ("choked_nozzle", "constant_mass_flow") and _H not in arriving:
+            raise ValueError(f"{self.kind} is an outlet termination (entropy must be an arriving wave)")
         spos = {ch: i for i, ch in enumerate(specify)}
         apos = {ch: i for i, ch in enumerate(arriving)}
         if (_F in spos) == (_G in spos):  # exactly one acoustic wave must be on each side
@@ -317,6 +322,25 @@ class PerturbationBC:
     def compact_nozzle(cls, entropy_in=None) -> "PerturbationBC":
         """Alias of :meth:`choked_nozzle`."""
         return cls.choked_nozzle(entropy_in=entropy_in)
+
+    @classmethod
+    def constant_mass_flow(cls, entropy_in=None) -> "PerturbationBC":
+        """Constant-mass-flow outlet termination -- pins ``mdot' = 0`` acoustically.
+
+        The linearization of a fixed-mass-flow boundary: the unsteady mass flux vanishes,
+        ``A(u rho' + rho u') = 0``, which in characteristics is::
+
+            g = R f + R_s h,
+            R   = (1 + M) / (1 - M),
+            R_s = u / (rho (1 - M)) = c M / (rho (1 - M)),
+
+        with ``M`` the outlet mean Mach.  At ``M -> 0`` this is a hard wall (``R = +1``,
+        ``R_s = 0``).  This is the closure a :func:`~fns.elements.catalog.mass_flow_outlet`
+        inherits automatically; use it to impose a constant-mass-flow termination on any
+        other outlet (e.g. a choked upstream injector seen from downstream).  Must
+        terminate an outlet (entropy must be an arriving wave).
+        """
+        return cls("constant_mass_flow", entropy_in=entropy_in)
 
     @classmethod
     def impedance(cls, Z, specific=False, entropy_in=None) -> "PerturbationBC":

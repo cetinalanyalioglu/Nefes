@@ -34,6 +34,8 @@ As project matures, these documents should serve more as a guideline than of a r
 
 - Be aware of numba cache
 
+## Documentation
+
 ## Conventions
 
 - Always prefer frequency over angular frequency for user input and graph axes

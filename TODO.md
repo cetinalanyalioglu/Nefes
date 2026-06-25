@@ -3,16 +3,16 @@
 - [ ] Kinetic-energy coupling for the reacting closure: `EQ_KERNEL`/`EQ_FROZEN` currently drop `u^2/2` (h ~ h_t), O(M^2) at low Mach. Restore the outer KE fixed point (R-B2.2) with the 2-inner-solve IFT (closure ift, analogous to `perfect_gas._attach_density_imag`). Note the perturbation caloric map (`characteristics.edge_caloric`) drops the KE term (`m=0`) to match this closure; restore `m=u` there too when the closure carries KE.
 - [ ] Element-dropping in the `@njit` equilibrium kernel (`fns/thermo/_chem.equilibrate_hp`) for burnt edges whose elemental abundance (`Z = xi @ Zfeed`) has a zero element (e.g. a parallel branch whose products lack carbon). Mirror thermolib's keep_el/keep_sp compaction (locate-on-real). Series injection (all elements present downstream) avoids it today.
 - [ ] Warm-start the per-edge equilibrium solve from the previous converged composition (and avoid the double solve in `closure_solve` + `thermo_state`) to cut the reacting-network cost.
+- [ ] We need a robust and nice framework to create analytically continuous curves from the tabulated transfer function and reflection coefficient inputs for subsequent stability analysis.
 - [ ] Cut-on frequency analysis for ducts - we'd like to stay below that
 - [ ] Need some way to plot network topology and element indices in Jupyter environment
 - [ ] We are now considering "convenience" elements, that will transform into multiple elements when added to network. We should be careful to preserve proper numbering. I am not certain yet, maybe we re-run the re-numbering algorithm, or just insert the new "serial" portion as incremental numbers to the correct position and shift the rest?
 - [ ] Dedicated sudden-contraction element resolving the vena-contracta state (composite: isentropic to vena contracta + Borda re-expansion) for exact loss and minimum static pressure at higher Mach. The current `sudden_area_change` `cc`-loss uses the incompressible 1/2 rho u^2 head, accurate only to O(M^2).
 - [ ] Extend acoustic-power diagnostics (`perturbation/power.py`): full-domain energy integral E (integrate the per-duct energy density along its length) to close `2 sigma E = net boundary power` *quantitatively* (now only sign-checked), plus a `boundary_power` for `ForcedResponse` (driven-case power balance) and an intensity-along-ducts field.
+- [ ] Nyquist / real-frequency-sweep stability driver for the entropy/reacting regime where the contour eigensolver overflows (long convective entropy delays `e^{-i w tau}` blow up at complex omega). Open-loop return ratio `L(w) = F(w) b^T A0^{-1} a`, count encirclements of `+1`. Design notes in `scratch/nyquist_plan.md` (local).
 
 ## To verify
 
-- [ ] Does our framework support entropy wave generation at the flame front due to upstream fluctuations?
-- [ ] Do we have an eaxmple where we explicitly demonstrate frequency dependent, tabulated reflection coefficient/impedance for a boundary is demonstrated?
 - [ ] Make sure the default BC for mass flow inlet in the UI is "inherited"
 - [ ] Make sure the default BC for total pressure inlet in the UI is "inherited"
 - [ ] Total pressure inlet can allow reverse flow, the total pressure value would be used as static pressure - do we already support this?

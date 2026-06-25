@@ -125,6 +125,20 @@ def test_frequency_dependent_reflection_table():
     assert np.allclose(fr.reflection_at(0), R_at * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-9)
 
 
+def test_frequency_dependent_reflection_callable():
+    # A reflection coefficient given as a callable R(freq_hz) -- a frequency-domain
+    # boundary model (here a single-pole low-pass with a phase lag).  The terminated-duct
+    # input reflection must track R(f) * roundtrip at every frequency.
+    def R_of_f(f):
+        return (0.6 / (1.0 + 1j * f / 800.0)) * np.exp(-1j * 2.0 * np.pi * f * 2.0e-4)
+
+    _, sol = _duct_case(PerturbationBC.excitation(1.0), PerturbationBC.reflection(R_of_f))
+    u, c = _uc(sol)
+    fr = boundary_response(sol.problem, sol.x, FREQS)
+    R_at = np.array([R_of_f(f) for f in FREQS])
+    assert np.allclose(fr.reflection_at(0), R_at * _roundtrip(LDUCT, u, c, OMEGAS), atol=1e-9)
+
+
 def test_excitation_pins_incoming_wave_and_propagates():
     amp = 0.7 - 0.2j
     _, sol = _duct_case(PerturbationBC.excitation(amp), PerturbationBC.anechoic())

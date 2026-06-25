@@ -221,6 +221,38 @@ def test_pt_inlet_and_mass_flow_outlet_is_well_posed():
     assert res.converged
 
 
+def test_pt_inlet_linearizes_to_convective_open_end():
+    """The inherited total-pressure inlet row IS the energy-neutral convective open end.
+
+    A stagnation reservoir fixes ``p_t`` and ``T_t``, so it seeds no entropy wave
+    (``h_in = 0``); its single ``J_alg`` row then reduces to a pure acoustic reflection
+    ``f = R g`` with ``R = -c_g/c_f``.  That equals ``-(1-M)/(1+M)`` -- identical to
+    ``mean_flow_open_end`` and sitting exactly on the inlet energy-neutral bound
+    ``|R| = (1-M)/(1+M)`` (so the reservoir does no net acoustic work).
+    """
+    els = [cat.total_pressure_inlet(2.5e5, 300.0), cat.duct(0.5), cat.choked_nozzle_outlet(0.03)]
+    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 1e5, CP * 300.0)
+    res = solve(prob)
+    assert res.converged
+    est = states_table(prob, res.x)
+    blocks = build_acoustic_blocks(prob, res.x)
+    ns, e = int(prob.n_solve), 0  # inlet edge
+    r0 = int(prob.node_row_ptr[0])  # inlet node row
+    row = np.asarray(blocks.J_alg[r0, ns * e : ns * e + 3].todense()).ravel()
+    rho, c, u, p, area = (float(est[k, e]) for k in (ES_RHO, ES_C, ES_U, ES_P, ES_AREA))
+    M = float(est[ES_M, e])
+    # inlet row in characteristic coordinates: cf f + cg g + ch h = 0; with h_in = 0 -> f = -(cg/cf) g
+    cf, cg, ch = row @ char_to_dx(rho, c, u, p, area, K)
+    R_inherit = -cg / cf
+    R_open = -(1.0 - M) / (1.0 + M)
+    assert R_inherit == pytest.approx(R_open, abs=1e-9)
+    # it is the energy-neutral inlet reflection (does no net acoustic work)
+    assert abs(R_inherit) == pytest.approx((1.0 - M) / (1.0 + M), rel=1e-9)
+    # the standalone mean_flow_open_end closure reproduces the same R
+    bc = PerturbationBC.mean_flow_open_end()
+    assert bc.reflection_coefficient(0.0, rho, c, M) == pytest.approx(R_open, rel=1e-12)
+
+
 def test_choked_nozzle_outlet_linearizes_to_marble_candel():
     """The inherited choked-outlet row IS the compact choked-nozzle (Marble--Candel) reflection.
 

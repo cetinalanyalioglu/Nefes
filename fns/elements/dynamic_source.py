@@ -121,6 +121,49 @@ class NTau(TransferFunction):
         return f"NTau(n={self.n!r}, tau={self.tau!r})"
 
 
+class NTauLowpass(TransferFunction):
+    """The ``n-tau`` flame with a first-order gain roll-off ``F(f) = n e^{-i 2 pi f tau} / (1 + i f / f_c)``.
+
+    The bare :class:`NTau` model has a frequency-independent gain ``n``, which lets a
+    lossless duct destabilize an unbounded comb of high-frequency modes -- unphysical.
+    A real flame is a **low-pass** responder: its gain rolls off above a cutoff ``f_c``
+    (the flame cannot follow forcing faster than its own response time), bounding the
+    instability to a finite band.  This is the canonical model for a converged
+    (Nyquist) stability count.
+
+    Entire in the unstable (lower-half ``omega``) plane -- the low-pass pole sits at
+    ``f = i f_c`` (the *stable* upper half), so it is analytically continuable for the
+    eigenproblem as long as the search region does not reach down to growth
+    ``-2 pi f_c``.
+
+    Parameters
+    ----------
+    n : float or complex
+        Low-frequency interaction index (DC gain).
+    tau : float
+        Time lag [s] (``>= 0`` for a causal response).
+    fc : float
+        Roll-off cutoff frequency [Hz] (``> 0``).
+    """
+
+    analytic = True
+
+    def __init__(self, n, tau, fc):
+        self.n = complex(n)
+        self.tau = float(tau)
+        self.fc = float(fc)
+        if self.fc <= 0.0:
+            raise ValueError(f"roll-off cutoff fc must be positive; got {fc}")
+        self.max_delay = abs(float(tau))
+
+    def __call__(self, f):
+        f = np.asarray(f, dtype=np.complex128)
+        return self.n * np.exp(-2j * np.pi * f * self.tau) / (1.0 + 1j * f / self.fc)
+
+    def __repr__(self):
+        return f"NTauLowpass(n={self.n!r}, tau={self.tau!r}, fc={self.fc!r})"
+
+
 class Tabulated(TransferFunction):
     """A measured transfer function interpolated from a table ``F(freqs) = values``.
 
@@ -219,6 +262,11 @@ class _CallableTF(TransferFunction):
 def n_tau(n, tau) -> NTau:
     """The ``n-tau`` flame model ``F(f) = n * exp(-i 2 pi f tau)`` (see :class:`NTau`)."""
     return NTau(n, tau)
+
+
+def n_tau_lowpass(n, tau, fc) -> NTauLowpass:
+    """The ``n-tau`` flame with a first-order gain roll-off (see :class:`NTauLowpass`)."""
+    return NTauLowpass(n, tau, fc)
 
 
 def constant(value) -> Constant:

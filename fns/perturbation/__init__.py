@@ -65,6 +65,7 @@ from .power import (
 from .drivers import modes_from_det, scattering_2port
 from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning
+from .nyquist import open_loop_response, nyquist_stability, NyquistResponse, NyquistWarning
 
 # perturbation-network primary names (thin aliases over the original spellings)
 build_blocks = build_acoustic_blocks
@@ -133,4 +134,9 @@ __all__ = [
     "beyn",
     "winding_count",
     "lu_logdet_phase",
+    # Nyquist open-loop stability (real-frequency sweep; entropy/reacting regime)
+    "open_loop_response",
+    "nyquist_stability",
+    "NyquistResponse",
+    "NyquistWarning",
 ]

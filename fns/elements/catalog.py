@@ -206,16 +206,20 @@ def loss(K, name="loss", ref_port=0, eps=None):
     return ElementSpec(LOSS, [float(K), float(rp)], name, eps=eps)
 
 
-def heat_release_flame(Qdot, name="flame"):
+def heat_release_flame(Qdot, name="flame", dynamic_source=None):
     """A compact constant-area flame that adds heat power ``Qdot`` [W] to the flow.
 
     The perfect-gas counterpart of the reacting (equilibrium) flame: it conserves
     mass and total pressure (a low-Mach compact-flame idealization, neglecting the
     ``O(M^2)`` Rayleigh total-pressure loss) while raising the through-flow's total
     enthalpy by ``Q_dot / mdot`` -- so the downstream total temperature rises by
-    ``Q_dot / (mdot * cp)``.  With ``Q_dot`` fixed the linearized jump carries no
-    fluctuating heat release, so the flame is acoustically passive (its active
-    ``n-tau`` response ``S(omega)`` is a later, dynamic-flame phase).
+    ``Q_dot / (mdot * cp)``.
+
+    With ``Q_dot`` fixed the linearized jump carries no fluctuating heat release, so
+    the mean flame is acoustically passive.  Attach a ``dynamic_source`` (a
+    :class:`~fns.elements.dynamic_source.DynamicSource`, e.g. an ``n-tau`` flame
+    transfer function) to give it an active unsteady heat release ``S(omega)`` --
+    the term that drives thermoacoustic instability (theory.md s12.4).
 
     Parameters
     ----------
@@ -223,13 +227,18 @@ def heat_release_flame(Qdot, name="flame"):
         Heat-release rate [W] added across the flame (``> 0`` heats the flow).
     name : str, optional
         Element label.
+    dynamic_source : DynamicSource, optional
+        Unsteady heat-release response ``S(omega)`` for the perturbation analysis;
+        ignored by the mean flow.  Build one with
+        :func:`fns.elements.dynamic_source.n_tau_flame` or
+        :func:`~fns.elements.dynamic_source.heat_release_response`.
     """
     from .ids import FLAME_HEAT_RELEASE
 
-    return ElementSpec(FLAME_HEAT_RELEASE, [float(Qdot)], name)
+    return ElementSpec(FLAME_HEAT_RELEASE, [float(Qdot)], name, dynamic_source=dynamic_source)
 
 
-def equilibrium_flame(name="flame"):
+def equilibrium_flame(name="flame", dynamic_source=None):
     """A compact reacting flame: frozen unburnt inflow -> equilibrium products.
 
     The reacting (headline) flame and counterpart of :func:`heat_release_flame`.
@@ -238,17 +247,25 @@ def equilibrium_flame(name="flame"):
     "Ignition" is the per-edge closure switch: the approach edge uses the frozen
     (``EQ_FROZEN``) closure and the product edge the equilibrium (``EQ_KERNEL``)
     closure (set via ``build_problem(..., edge_models=...)``), so the temperature
-    rise emerges from the equilibrium solve at the shared ``(Z, h_t, p)`` -- no
-    heat-release source, so the flame is acoustically passive.
+    rise emerges from the equilibrium solve at the shared ``(Z, h_t, p)``.
+
+    The mean flame is acoustically passive (no explicit heat-release source -- the
+    chemistry is quasi-steady).  Attach a ``dynamic_source`` to model the unsteady
+    heat release ``S(omega)`` that lags the flow (the FTF), which makes the operator
+    active and can drive instability.
 
     Parameters
     ----------
     name : str, optional
         Element label.
+    dynamic_source : DynamicSource, optional
+        Unsteady heat-release response ``S(omega)`` for the perturbation analysis;
+        ignored by the mean flow.  Its mean heat release ``Q_bar`` auto-derives from
+        the converged flame (``mdot * cp * dT``) unless given explicitly.
     """
     from .ids import FLAME_EQUILIBRIUM
 
-    return ElementSpec(FLAME_EQUILIBRIUM, [], name)
+    return ElementSpec(FLAME_EQUILIBRIUM, [], name, dynamic_source=dynamic_source)
 
 
 def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dynamic_source=None):

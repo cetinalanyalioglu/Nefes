@@ -23,6 +23,7 @@ from .complex_matrix import (
     plot_scattering_matrix,
     scattering_axis_labels,
 )
+from .transfer_function import plot_transfer_function
 from .spectrum import plot_spectrum, plot_mode_shape
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "plot_transfer_matrix",
     "plot_scattering_matrix",
     "scattering_axis_labels",
+    "plot_transfer_function",
     "plot_spectrum",
     "plot_mode_shape",
 ]

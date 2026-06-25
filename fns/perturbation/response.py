@@ -60,8 +60,12 @@ class TransferMatrixWarning(UserWarning):
     """
 
 
-def _edge_transforms(prob, x_bar, K):
-    """Per-edge L_e = dx_to_char at the frozen mean state."""
+def _edge_transforms(prob, x_bar, K, cals=None):
+    """Per-edge L_e = dx_to_char at the frozen mean state.
+
+    ``cals`` (optional): per-edge caloric rows (:func:`characteristics.edge_caloric`);
+    when given, edge ``e`` uses ``cals[e]`` instead of the perfect-gas ``K`` form.
+    """
     est = states_table(prob, x_bar)
     L = []
     for e in range(prob.n_edges):
@@ -73,6 +77,7 @@ def _edge_transforms(prob, x_bar, K):
                 float(est[ES_P, e]),
                 float(est[ES_AREA, e]),
                 K,
+                None if cals is None else cals[e],
             )
         )
     return L
@@ -210,6 +215,7 @@ class _ExcitationContext:
     n_solve: int
     n_col: int
     u_floor: float  # speed below which a station is treated as quiescent
+    cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
 
 
 def _build_excitation_context(prob, x_bar, freqs, forcing, *, eps, eps_fb, u_floor) -> _ExcitationContext:
@@ -219,7 +225,7 @@ def _build_excitation_context(prob, x_bar, freqs, forcing, *, eps, eps_fb, u_flo
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
-    L = _edge_transforms(prob, x_bar, K)
+    L = _edge_transforms(prob, x_bar, K, blocks.cals)
     all_terms = find_terminals(prob, x_bar)
     sel = _select_forcing(all_terms, forcing)
     pres = _prescriptions(prob, all_terms, est, u_floor)  # neutralize *every* terminal into a pure source
@@ -235,7 +241,7 @@ def _build_excitation_context(prob, x_bar, freqs, forcing, *, eps, eps_fb, u_flo
             for v in range(3):
                 A[p.row, ns * p.edge + v] = L[p.edge][p.char, v]
         lus.append(spla.splu(sp.csc_matrix(A)))
-    return _ExcitationContext(freqs, L, est, K, sel, all_terms, pres, lus, ns, n_col, float(u_floor))
+    return _ExcitationContext(freqs, L, est, K, sel, all_terms, pres, lus, ns, n_col, float(u_floor), blocks.cals)
 
 
 def _validate_modes(modes):
@@ -471,6 +477,7 @@ def perturbation_response(
         cidx=cidx,
         terminals=ctx.terminals,
         node_names=tuple(getattr(prob, "node_names", ()) or ()),
+        cals=ctx.cals,
     )
 
 
@@ -489,6 +496,7 @@ class PerturbationResponse:
     cidx: tuple = (0, 1, 2)  # characteristic indices spanned by the driven waves
     terminals: Optional[List[Terminal]] = None  # all terminals (for the multiport matrix)
     node_names: tuple = ()  # per-node element label (for plot labels); empty -> id only
+    cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
 
     @property
     def n(self) -> int:
@@ -628,8 +636,10 @@ class PerturbationResponse:
                 f"flavor {basis!r} mixes characteristics, so it needs the full response; "
                 f"re-run with excite=('acoustic', 'entropy', ...) or use 'char'/'riemann'"
             )
-        Ba = basis_block_from_state(basis, self.est[:, a], self.K)[np.ix_(ci, ci)]
-        Bb = basis_block_from_state(basis, self.est[:, b], self.K)[np.ix_(ci, ci)]
+        cal_a = None if self.cals is None else self.cals[a]
+        cal_b = None if self.cals is None else self.cals[b]
+        Ba = basis_block_from_state(basis, self.est[:, a], self.K, cal_a)[np.ix_(ci, ci)]
+        Bb = basis_block_from_state(basis, self.est[:, b], self.K, cal_b)[np.ix_(ci, ci)]
         return mat.tm_in_basis(T, Ba, Bb)
 
     def scattering_matrix(self, a, b, basis="char"):
@@ -664,7 +674,8 @@ class PerturbationResponse:
     def _wave_scale(self, basis, station, i, a, b):
         """Diagonal scale factor of characteristic ``i`` at the chosen station."""
         e = a if station == "a" else b
-        B = basis_block_from_state(basis, self.est[:, e], self.K)
+        cal = None if self.cals is None else self.cals[e]
+        B = basis_block_from_state(basis, self.est[:, e], self.K, cal)
         return B[i, i]
 
     def scattering_labels(self, a, b):

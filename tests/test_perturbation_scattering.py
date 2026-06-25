@@ -563,15 +563,22 @@ def test_acoustic_id_provisions():
     assert cat.total_pressure_inlet(1e5, 300.0).acoustic_id == ACOUSTIC_DEFAULT
 
 
-def test_flame_face_is_wired_but_unimplemented():
+def test_source_face_keys_off_the_descriptor_not_the_acoustic_id():
+    """The S(omega) face is driven by an attached DynamicSource, not by ``acoustic_id``.
+
+    A network with no dynamic-source descriptor has an inert source face (no stamps,
+    assembly succeeds); merely tagging an element ``ACOUSTIC_FLAME`` does nothing.  The
+    active-source behaviour is exercised in ``test_dynamic_source`` /
+    ``test_rijke_stability``.
+    """
     net = [cat.total_pressure_inlet(110000.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
-    net[1].acoustic_id = ACOUSTIC_FLAME  # pretend the duct is a flame
+    net[1].acoustic_id = ACOUSTIC_FLAME  # a bare tag, with no DynamicSource attached
     prob = cat.build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged  # acoustic_id never touches the mean-flow residual
     blocks = build_acoustic_blocks(prob, res.x)
-    with pytest.raises(NotImplementedError, match="flame"):
-        assemble_acoustic(100.0, blocks)
+    assert not blocks.has_sources  # no descriptor -> inert source face
+    assemble_acoustic(100.0, blocks)  # assembles without error
 
 
 # -- 9-11. multi-element networks (ducts joined by an area change) -----------

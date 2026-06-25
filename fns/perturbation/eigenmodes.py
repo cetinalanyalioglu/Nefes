@@ -41,7 +41,7 @@ import numpy as np
 import scipy.sparse.linalg as spla
 
 from .operator import build_acoustic_blocks, assemble_acoustic
-from .characteristics import edge_transforms, basis_block_from_state
+from .characteristics import edge_transforms, basis_block_from_state, edge_caloric
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
 from ..solver.control import states_table
 from ..derive import ES_C
@@ -78,12 +78,20 @@ _MAX_REFINE_ROUNDS = 3
 
 
 def _max_tau(blocks) -> float:
-    """Largest finite duct transit time across the network (0 if no ducts)."""
+    """Largest finite delay across the network: duct transit times + source FTF lags.
+
+    The contour clamp uses this so ``e^{-i omega tau}`` (duct phases and an ``n-tau``
+    source) does not overflow at large growth/decay rates; a flame's transport lag
+    counts the same as a duct's transit time.
+    """
     taus = []
     for st in blocks.duct_stamps:
         taus.extend([st.tau_p, st.tau_m])
         if np.isfinite(st.tau_0):
             taus.append(st.tau_0)
+    for st in getattr(blocks, "source_stamps", []):
+        if np.isfinite(st.max_delay) and st.max_delay > 0.0:
+            taus.append(float(st.max_delay))
     return max(taus) if taus else 0.0
 
 
@@ -375,19 +383,27 @@ def eigenmodes(
     """
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
-    _, L = edge_transforms(est, K)
+    cals = edge_caloric(prob, x_bar)
+    _, L = edge_transforms(est, K, cals)
     # decouple the entropy wave on near-stagnant ducts (tau_0 -> inf would overflow at
     # complex omega); never affects the acoustic spectrum (theory.md s12.6).
     u_floor = max(u_floor, _ENTROPY_DECOUPLE_MACH * float(np.max(est[ES_C])))
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     n = int(blocks.J_alg.shape[0])
 
-    if not blocks.duct_stamps and blocks.M.nnz == 0:
+    if not blocks.duct_stamps and blocks.M.nnz == 0 and not blocks.has_sources:
         warnings.warn(
             "no duct (length-bearing element) and no storage: A(omega) has no frequency "
             "dependence beyond the boundary conditions, so the spectrum is empty or ill-posed.",
             EigenmodeWarning,
             stacklevel=2,
+        )
+    if blocks.has_sources and not all(st.analytic for st in blocks.source_stamps):
+        raise ValueError(
+            "the stability eigenproblem searches complex frequencies, but a dynamic source "
+            "carries a transfer function that is not analytically continuable (e.g. a table "
+            "interpolated on a real grid). Supply a closed-form model (e.g. n_tau) for stability, "
+            "or use the forced response for a real-frequency sweep."
         )
 
     rng = np.random.default_rng(0) if rng is None else rng
@@ -501,6 +517,7 @@ def eigenmodes(
         L=L,
         est=est,
         K=K,
+        cals=cals,
         n_solve=int(prob.n_solve),
         n_edges=int(prob.n_edges),
         contour=bound,
@@ -561,6 +578,8 @@ class EigenmodeResult:
     contour: Optional[Contour] = None
     node_names: tuple = field(default=())
     expected: Optional[int] = None
+    # per-edge caloric rows (characteristics.edge_caloric) for the reacting "network" flavor
+    cals: Optional[list] = None
 
     def __len__(self) -> int:
         return int(self.omega.size)
@@ -641,7 +660,8 @@ class EigenmodeResult:
         for e in range(self.n_edges):
             w = self.mode_waves(i, e)
             if basis != "char":
-                w = basis_block_from_state(basis, self.est[:, e], self.K) @ w
+                cal = None if self.cals is None else self.cals[e]
+                w = basis_block_from_state(basis, self.est[:, e], self.K, cal) @ w
             out[e] = w
         return out
 

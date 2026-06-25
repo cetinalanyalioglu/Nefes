@@ -16,7 +16,7 @@ resonance it is well posed.
 """
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import scipy.sparse.linalg as spla
@@ -57,14 +57,15 @@ def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
-    _, L = edge_transforms(est, K)
+    cals = blocks.cals
+    _, L = edge_transforms(est, K, cals)
 
     X = np.zeros((omegas.size, int(prob.n_col)), dtype=np.complex128)
     for i, omega in enumerate(omegas):
         A = assemble_acoustic(omega, blocks, with_boundaries=True)
-        b = boundary_forcing(prob, x_bar, omega)
+        b = boundary_forcing(prob, x_bar, omega, cals)
         X[i] = spla.spsolve(A.tocsc(), b)
-    return ForcedResponse(freqs=freqs, X=X, L=L, est=est, K=K, n_solve=int(prob.n_solve))
+    return ForcedResponse(freqs=freqs, X=X, L=L, est=est, K=K, n_solve=int(prob.n_solve), cals=cals)
 
 
 @dataclass
@@ -77,6 +78,7 @@ class ForcedResponse:
     est: np.ndarray  # frozen mean edge-state table
     K: float  # cp / R
     n_solve: int
+    cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
 
     @property
     def n_char(self) -> int:
@@ -96,7 +98,8 @@ class ForcedResponse:
         the solver's own ``(mdot', p', h_t')``).
         """
         w = self.waves(edge)  # (n_omega, n_char)
-        B = basis_block_from_state(basis, self.est[:, edge], self.K)
+        cal = None if self.cals is None else self.cals[edge]
+        B = basis_block_from_state(basis, self.est[:, edge], self.K, cal)
         return np.einsum("ij,oj->oi", B, w)
 
     def reflection_at(self, edge):

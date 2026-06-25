@@ -325,14 +325,44 @@ def build_source_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
             factors = np.array([-delta], dtype=float)  # residual: h_t - H_donor - q'/mdot
             edges = (e_out,)
             flame_edges.add(e_out)
-        else:  # target == "mdot": injected mass-flow modulation on the node rows
+        else:  # target == "mdot": injected mass-flow modulation (a fluctuating injector)
+            if deg != 2:
+                raise ValueError(f"mass-flow dynamic source at node {n} must be a 2-port inline injector")
             a0 = float(est[ES_AREA, int(prob.col_edge[base])])
             mdot_src = desc.q_mean if desc.q_mean is not None else float(prob.npar_f[pb + 0])
             u_inj = float(prob.npar_f[pb + 1]) if int(prob.npar_fptr[n + 1]) - pb > 1 else 0.0
-            # mass row r0: residual ... - mdot_src';  momentum row r0+1: ... - mdot_src' u_inj / a0
-            rows = (r0, r0 + 1)
-            factors = np.array([-mdot_src, -mdot_src * u_inj / a0], dtype=float)
-            edges = ()
+            # outflow port (oriented mdot leaving the node): the injected stream mixes into it
+            ports = [(int(prob.col_edge[base + i]), int(prob.orient[base + i])) for i in range(2)]
+            outs = [(e, s) for (e, s) in ports if s * float(est[ES_MDOT, e]) > 0.0]
+            if len(outs) != 1:
+                raise ValueError(
+                    f"mass-flow dynamic source at node {n} needs a single through-flow direction "
+                    "(one inflow, one outflow edge) at the mean state"
+                )
+            e_out, s_out = outs[0]
+            mdot_out = s_out * float(est[ES_MDOT, e_out])  # > 0 (= inflow + injected, the mix weight)
+            # mass row r0: residual ... - mdot_src';  momentum row r0+1: ... - mdot_src' u_inj / a0.
+            rows = [r0, r0 + 1]
+            factors = [-mdot_src, -mdot_src * u_inj / a0]
+            # conserved-scalar mixing: a fuel pulse mdot_src' drags every advected scalar at the
+            # outflow toward the injected stream.  The outflow mix is phi_out = (sum w_i phi_i +
+            # mdot_src phi_src) / mdot_out, so d(mix)/d(mdot_src) = (phi_src - phi_out)/mdot_out and
+            # the transport residual (phi_out - mix) gains  -mdot_src (phi_src - phi_out)/mdot_out.
+            # s = 0 is the injected total enthalpy h_t,src (an enthalpy/entropy spot); s >= 1 are the
+            # injected composition scalars (the equivalence-ratio wave the downstream flame burns).
+            n_scalars = ns - 2
+            E = int(prob.n_edges)
+            for s in range(n_scalars):
+                phi_src = float(prob.npar_f[pb + 2 + s])
+                phi_out = float(x_bar[2 + s, e_out])
+                rows.append(tr0 + s * E + e_out)
+                factors.append(-mdot_src * (phi_src - phi_out) / mdot_out)
+            rows = tuple(rows)
+            factors = np.array(factors, dtype=float)
+            # the injected enthalpy modulates the outflow entropy row; keep it physical under the
+            # isentropic assembly (an active source edge, like a flame's heat-release row).
+            edges = (e_out,)
+            flame_edges.add(e_out)
 
         stamps.append(
             SourceStamp(

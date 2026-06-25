@@ -19,6 +19,7 @@ prototype (package `fns`) that validated the design, plus the authoritative spec
 Prototype implementation: `preliminary-study/fns/`; runnable demos + validation: `preliminary-study/{examples,tests}/`.
 
 However, do not assume everything in there is theoretically flawless, always do your sanity checks.
+As project matures, these documents should serve more as a guideline than of a rigid constraint.
 
 ## Development guidelines
 
@@ -27,6 +28,7 @@ However, do not assume everything in there is theoretically flawless, always do 
 - Development phase goes on until we have a tagged release on the repo.
 - Do NOT save the output of Jupyter notebooks (filesize concerns) - except very small ones.
 - For notebooks, always prefer plotly
+- During active development and model implementation, deviations from theory docs is possible - do not blindly assume they are up-to-date.
 
 ### Pitfalls
 

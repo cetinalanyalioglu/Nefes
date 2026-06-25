@@ -11,13 +11,20 @@
 
 ## To verify
 
+- [ ] Does our framework support entropy wave generation at the flame front due to upstream fluctuations?
+- [ ] Do we have an eaxmple where we explicitly demonstrate frequency dependent, tabulated reflection coefficient/impedance for a boundary is demonstrated?
+- [ ] Make sure the default BC for mass flow inlet in the UI is "inherited"
+- [ ] Make sure the default BC for total pressure inlet in the UI is "inherited"
+- [ ] Total pressure inlet can allow reverse flow, the total pressure value would be used as static pressure - do we already support this?
+
 ## To brainstorm
 
 - [ ] We reject BC's when there is no absolute pressure reference from any of them. For such cases, would it work if we had an absolute pressure reference at some arbitrary edge state in the domain? If so, we could let the user enforce absolute pressure at exactly one edge.
 
 ## To discuss
 
-- [ ] outlet_boundaries.ipynb - the claim is that inlet needs to have a an R=.64 for neutrality. If I was setting this case up myself, I would probably put p'=0 for the reservoir inlet, but you choose R=0.8 arbitrarily. A boundary being neutral in terms of acoustic energy balance is *something*, is it commonly used as a boundary condition or as a special point in literature?
+- [ ] It could make sense to add a realistic frequency-dependent BC representing a open outlet or a reservoir, what would be the options here? What is available in the literature?
+- [ ] Is Marble-Candel BC frequency depentdent - if so why?
 
 ## To test
 

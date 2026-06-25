@@ -43,6 +43,7 @@ import scipy.sparse.linalg as spla
 from .operator import build_acoustic_blocks, assemble_acoustic
 from .characteristics import edge_transforms, basis_block_from_state, edge_caloric
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
+from .terminals import find_terminals
 from ..solver.control import states_table
 from ..derive import ES_C
 
@@ -385,6 +386,7 @@ def eigenmodes(
     est = states_table(prob, x_bar)
     cals = edge_caloric(prob, x_bar)
     _, L = edge_transforms(est, K, cals)
+    terminals = find_terminals(prob, x_bar)
     # decouple the entropy wave on near-stagnant ducts (tau_0 -> inf would overflow at
     # complex omega); never affects the acoustic spectrum (theory.md s12.6).
     u_floor = max(u_floor, _ENTROPY_DECOUPLE_MACH * float(np.max(est[ES_C])))
@@ -518,6 +520,7 @@ def eigenmodes(
         est=est,
         K=K,
         cals=cals,
+        terminals=terminals,
         n_solve=int(prob.n_solve),
         n_edges=int(prob.n_edges),
         contour=bound,
@@ -580,6 +583,8 @@ class EigenmodeResult:
     expected: Optional[int] = None
     # per-edge caloric rows (characteristics.edge_caloric) for the reacting "network" flavor
     cals: Optional[list] = None
+    # 1-port boundary terminals (terminals.find_terminals) for acoustic-power diagnostics
+    terminals: Optional[list] = None
 
     def __len__(self) -> int:
         return int(self.omega.size)
@@ -720,3 +725,33 @@ class EigenmodeResult:
             f"Mode {i}: f = {self.freqs[i]:.4g} Hz, growth = {self.growth_rates[i]:.4g} 1/s"
         )
         return _plot(shape, labels=labels, title=title, **kwargs)
+
+    def boundary_power(self, i=0):
+        """Acoustic-power budget across the boundaries for mode ``i``.
+
+        Attributes a mode's growth to the boundaries that feed or drain its acoustic
+        energy (Myers flux through each terminal face).
+
+        Parameters
+        ----------
+        i : int, optional
+            Mode index (default 0).
+
+        Returns
+        -------
+        fns.perturbation.power.BoundaryPower
+            Per-terminal signed power shares; ``.net`` is the energy growth ``dE/dt``
+            and ``.sign_consistent`` cross-checks it against the growth rate.
+        """
+        from .power import boundary_power as _bp
+
+        return _bp(self, i, terminals=self.terminals)
+
+    def plot_boundary_power(self, i=0, **kwargs):
+        """Bar chart of each boundary's signed acoustic-power share for mode ``i``.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        return self.boundary_power(i).plot(**kwargs)

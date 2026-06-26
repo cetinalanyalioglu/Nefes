@@ -149,10 +149,14 @@ class PerturbationBC:
         Off-diagonal: arriving acoustic -> specified entropy at an **inlet**.  Default
         ``0``.  Ignored at an outlet.
     driven : tuple of str
-        Wave families injected at this boundary, a subset of :data:`DRIVABLE_FAMILIES`
-        (``"acoustic"``, ``"entropy"``).  Empty (the default) is a passive, unforced
-        terminal.  A family listed here drives a **unit** incoming wave unless
-        ``amplitudes`` overrides it.
+        Wave families injected at this boundary.  ``"acoustic"`` and ``"entropy"`` (the
+        :data:`DRIVABLE_FAMILIES`) plus, at a genuine inflow, any transported reacting scalar
+        named in ``prob.scalar_names`` (a composition / equivalence-ratio wave) -- scalar names
+        are resolved at stamp time, since the BC has no problem context yet.  Empty (the default)
+        is a passive, unforced terminal.  A family listed here drives a **unit** incoming wave
+        unless ``amplitudes`` overrides it.  Note: a driven scalar convects and feeds
+        composition-sensitive elements but does *not* scatter into sound (compositional / indirect
+        noise is not modelled).
     amplitudes : dict, optional
         Per-family complex amplitude (constant, table, or callable), keyed by a family in
         ``driven``.  Families in ``driven`` but absent here drive a unit wave.
@@ -173,12 +177,10 @@ class PerturbationBC:
             raise ValueError(f"unknown perturbation BC kind {self.kind!r}; choose from {KINDS}")
         self.driven = tuple(self.driven) if self.driven else ()
         for fam in self.driven:
-            if fam not in DRIVABLE_FAMILIES:
-                raise ValueError(
-                    f"cannot drive wave family {fam!r}: only {DRIVABLE_FAMILIES} can be driven. Driving a "
-                    "reacting-scalar wave (named by prob.scalar_names) is not implemented yet -- compositional "
-                    "scattering is deferred; read the convected scalar response from ForcedResponse.waves() instead."
-                )
+            if not isinstance(fam, str):
+                raise TypeError(f"driven families must be strings; got {fam!r}")
+        # "acoustic"/"entropy" are validated here; a reacting-scalar family (any other name) is
+        # resolved against prob.scalar_names at stamp time, since the BC has no problem context yet.
         if len(set(self.driven)) != len(self.driven):
             raise ValueError(f"duplicate family in driven={self.driven!r}")
         if self.amplitudes is not None:

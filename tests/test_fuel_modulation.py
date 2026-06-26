@@ -186,17 +186,18 @@ def test_forced_response_surfaces_scalar_waves():
     assert np.allclose(fr.reflection_at(E_AIR), fr.waves(E_AIR)[:, 1] / fr.waves(E_AIR)[:, 0])
 
 
-def test_scalar_wave_driving_is_deferred():
-    """*Driving* a reacting-scalar wave is a deferred capability and must fail loudly.
+def test_scalar_scattering_matrix_port_is_deferred():
+    """A scalar *port* in the scattering measurement is deferred and must fail loudly.
 
-    Surfacing the convected scalar (above) is supported, but injecting one as an incoming wave
-    needs the compositional-scattering closure that is deferred -- so every entry point that
-    would reach it (the measurement driver and the boundary condition) raises rather than
-    silently dropping the request.  A genuine typo still raises the ordinary ``ValueError``.
+    Driving a scalar wave at an inflow (via a PerturbationBC ``driven=``) is supported and read
+    from the forced response; what is deferred is a scalar *column* in the measurement scattering
+    matrix (which needs the compositional-scattering closure).  So requesting a scalar family in
+    ``excite``/``modes`` raises ``NotImplementedError`` -- distinct from a genuine typo, which
+    keeps the ordinary ``ValueError``.
     """
     prob = _rig()
     x = _converged(prob)
-    assert prob.scalar_names  # reacting: there is a scalar family a user might try to drive
+    assert prob.scalar_names  # reacting: there is a scalar family a user might name
     fuel = prob.scalar_names[-1]
     freqs = np.array([200.0])
     with warnings.catch_warnings():
@@ -207,9 +208,8 @@ def test_scalar_wave_driving_is_deferred():
             excite_perturbation(prob, x, freqs, node=0, modes=("acoustic", fuel))
         with pytest.raises(ValueError, match="unknown wave family"):
             perturbation_response(prob, x, freqs, excite=("acoustic", "bogus"))
-    # the boundary-condition entry point rejects a scalar drive at construction
-    with pytest.raises(ValueError, match="not implemented yet"):
-        PerturbationBC.anechoic(driven=(fuel,))
+    # the BC driven= path, by contrast, accepts a scalar family (resolved at stamp time)
+    PerturbationBC.anechoic(driven=(fuel,))
 
 
 # --------------------------------------------------------------------------

@@ -436,16 +436,48 @@ def stamp_sources(A, omega, source_stamps):
                     A[r, int(c)] = A[r, int(c)] + v
 
 
+def _terminal_scalar_seats(prob, t, bc, e, specify, freq):
+    """Driven reacting-scalar waves seated at a genuine-inflow terminal: ``(row, cols, coeff, rhs)``.
+
+    A transported composition scalar convects at the mean speed ``u`` like the entropy wave, so
+    it is to-specify exactly when the entropy wave is -- at a genuine inflow.  Seating it is a
+    diagonal identity on its own transport row (``xi'_edge = amplitude``); the scalar -> acoustic
+    coupling at non-uniform sections (compositional / indirect noise) is **not** modelled.  Raises
+    if a scalar drive is requested where the convected waves are outgoing, or names a scalar the
+    network does not transport.
+    """
+    families = [f for f in bc.driven if f not in ("acoustic", "entropy")]
+    if not families:
+        return ()
+    names = tuple(getattr(prob, "scalar_names", ()) or ())
+    if 2 not in specify:  # h (entropy/convected) index: the convected waves are arriving here
+        raise ValueError(
+            f"cannot drive scalar wave(s) {families} at this terminal: the convected waves leave the "
+            "domain here -- drive a scalar only at a genuine inflow."
+        )
+    ns, E, tr0 = int(prob.n_solve), int(prob.n_edges), int(prob.transport_row0)
+    seats = []
+    for fam in families:
+        if fam not in names:
+            raise ValueError(f"unknown scalar wave family {fam!r}; the network transports {list(names)}.")
+        j = names.index(fam)  # 0-based over the transported scalars
+        row = tr0 + (j + 1) * E + e  # this scalar's transport row on the terminal edge
+        col = ns * e + 3 + j  # this scalar's column (band-1 var 3 + j)
+        seats.append((row, (col,), np.array([1.0 + 0.0j]), complex(bc._drive_amplitude(fam, freq))))
+    return seats
+
+
 def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
-    """Per to-specify wave at terminal ``t``: ``(row, coeff_block, rhs)``.
+    """Per to-specify wave at terminal ``t``: ``(row, cols, coeff_block, rhs)``.
 
     Builds the matrix closure ``w[specify] = A(omega) @ w[arriving] + b`` via
     :meth:`PerturbationBC.closure` over the mean-state wave partition
-    (:func:`matrices.partition`), and maps each to-specify wave to its matrix row --
-    the acoustic wave on the boundary node row, the (inflow) entropy wave on the edge's
-    transport row.  The length-3 coefficient block is
-    ``L_e[specify] - sum_j A[.,j] L_e[arriving_j]`` and ``rhs`` its forcing.  ``cal``
-    (see :func:`characteristics.dq_to_dx`) is the terminal edge's reacting caloric row.
+    (:func:`matrices.partition`), and maps each to-specify wave to its matrix row -- the acoustic
+    wave on the boundary node row, the (inflow) entropy wave on the edge's transport row.  The
+    length-3 coefficient block over the edge's acoustic columns is ``L_e[specify] - sum_j A[.,j]
+    L_e[arriving_j]`` and ``rhs`` its forcing.  Any **driven reacting-scalar** waves are appended
+    as diagonal seats on their transport rows (see :func:`_terminal_scalar_seats`).  ``cal`` (see
+    :func:`characteristics.dq_to_dx`) is the terminal edge's reacting caloric row.
     """
     e = t.edge
     rho, c, u = float(est[ES_RHO, e]), float(est[ES_C, e]), float(est[ES_U, e])
@@ -455,13 +487,15 @@ def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
     freq = omega / (2.0 * np.pi)  # BC carriers (tables/callables) are in Hz; operator stays in omega
     Amat, bvec = bc.closure(freq, rho, c, u, m_out, K, specify, arriving)
     L_e = dx_to_char(rho, c, u, p, area, K, cal)
+    acou_cols = tuple(int(prob.n_solve) * e + v for v in range(3))
     out = []
     for i, ch in enumerate(specify):
         row = t.row if ch in (0, 1) else int(prob.transport_row0) + e  # acoustic -> node, entropy -> transport
         coeff = L_e[ch, :].astype(np.complex128)
         for j, cha in enumerate(arriving):
             coeff = coeff - Amat[i, j] * L_e[cha, :]
-        out.append((row, coeff, complex(bvec[i])))
+        out.append((row, acou_cols, coeff, complex(bvec[i])))
+    out.extend(_terminal_scalar_seats(prob, t, bc, e, specify, freq))
     return out
 
 
@@ -483,14 +517,12 @@ def stamp_boundaries(A, omega, prob, x_bar, cals=None):
         return
     est = states_table(prob, x_bar)
     K = float(prob.tf[0]) / float(prob.tf[1])
-    ns = int(prob.n_solve)
     for t in find_terminals(prob):
         bc = node_bc[t.node] if t.node < len(node_bc) else None
         if bc is None or not getattr(bc, "stamps_terminal", False):
             continue
-        cols = tuple(ns * t.edge + v for v in range(3))
         cal = None if cals is None else cals[t.edge]
-        for row, coeff, _rhs in _terminal_closure(prob, est, K, t, bc, omega, cal):
+        for row, cols, coeff, _rhs in _terminal_closure(prob, est, K, t, bc, omega, cal):
             _set_row(A, row, cols, coeff, (), ())
 
 
@@ -553,7 +585,7 @@ def boundary_forcing(prob, x_bar, omega, cals=None):
         if bc is None or not getattr(bc, "stamps_terminal", False):
             continue
         cal = None if cals is None else cals[t.edge]
-        for row, _coeff, rhs in _terminal_closure(prob, est, K, t, bc, omega, cal):
+        for row, _cols, _coeff, rhs in _terminal_closure(prob, est, K, t, bc, omega, cal):
             b[row] = rhs
     return b
 

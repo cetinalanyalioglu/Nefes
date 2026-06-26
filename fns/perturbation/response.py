@@ -141,9 +141,10 @@ def _reject_unsupported_families(families, scalar_names=()):
     deferred = sorted({f for f in families if f in scalars})
     if deferred:
         raise NotImplementedError(
-            f"driving reacting-scalar wave families {deferred} is not implemented yet (compositional "
-            "scattering is deferred); only 'acoustic' and 'entropy' can be driven. Read the convected "
-            "scalar response from ForcedResponse.waves()/wave_labels instead."
+            f"reacting-scalar wave families {deferred} have no port in the scattering measurement yet "
+            "(scalar scattering matrices are deferred); only 'acoustic' and 'entropy' are measured here. "
+            "To *drive* a scalar, seat it at an inflow with PerturbationBC.<inlet>(driven=(...)) and read "
+            "the field from ForcedResponse.waves()."
         )
     unknown = sorted({f for f in families if f not in _CHAR_OF_FAMILY})
     if unknown:

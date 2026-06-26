@@ -224,7 +224,7 @@ class Solution:
         """Return a string representation of the solution."""
         return f"Solution(converged={self.converged}, iterations={self.iterations}, residual_norm={self.residual_norm})"
 
-    def __repr_html__(self) -> str:
+    def _repr_html_(self) -> str:
         """Return an HTML representation of the solution."""
         return (
             f"<div>Converged: {self.converged}</div><div>Iterations: {self.iterations}</div>"

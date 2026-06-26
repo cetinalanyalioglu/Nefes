@@ -30,7 +30,7 @@ import pytest
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import mass_flow_response, n_tau, n_tau_lowpass
 from fns.perturbation.boundary_bc import PerturbationBC
-from fns.perturbation import open_loop_response, boundary_response
+from fns.perturbation import open_loop_response, forced_response
 from fns.perturbation.stamps import build_source_stamps
 from fns.perturbation.characteristics import edge_caloric
 from fns.assemble import residual
@@ -64,7 +64,7 @@ def _air_enthalpy_datum():
 def _rig(La=0.4, Lb=0.4, Lc=0.5, mdot_air=0.4, mdot_fuel=0.006, pt=1.2e5, ds=None, inlet_excite=False):
     """Air -> duct -> H2 injector (optional dynamic fuel feed) -> duct -> reacting flame -> duct -> outlet."""
     gas, h_air = _air_enthalpy_datum()
-    inlet_bc = PerturbationBC.excitation(1.0) if inlet_excite else PerturbationBC.inherit()
+    inlet_bc = PerturbationBC.anechoic(driven=("acoustic",)) if inlet_excite else PerturbationBC.inherit()
     els = [
         cat.total_pressure_inlet(pt, 300.0, composition=AIR, basis="mole", perturbation_bc=inlet_bc),
         cat.duct(La),
@@ -146,7 +146,7 @@ def test_fuel_pulse_generates_a_convected_mixture_wave():
     omega = 2.0 * np.pi * freqs
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        fr = boundary_response(prob, x, freqs, isentropic=False)
+        fr = forced_response(prob, x, freqs, isentropic=False)
     z_air = fr.X[:, ns * E_AIR + s_fuel]
     z_inj = fr.X[:, ns * E_INJ_OUT + s_fuel]
     z_flame = fr.X[:, ns * E_APPROACH + s_fuel]

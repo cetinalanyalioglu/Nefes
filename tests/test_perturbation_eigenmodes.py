@@ -8,7 +8,7 @@ The verification is layered against closed form:
   open, lossy, and with mean flow -- so the assembled ``A(omega)`` and the oracle
   agree.
 * Cross-driver consistency: a mode's frequency coincides with the resonance peak of
-  the *forced* response (``boundary_response``) on the same network -- the two
+  the *forced* response (``forced_response``) on the same network -- the two
   s12.7 analyses share one operator, so they must.
 
 Sign convention: under the operator's ``e^{+i*omega*t}`` time dependence a passive
@@ -31,7 +31,7 @@ from fns.perturbation import (
     eigenmodes,
     EigenmodeResult,
     EigenmodeWarning,
-    boundary_response,
+    forced_response,
     DuctAcoustics,
 )
 from fns.perturbation.contour import ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
@@ -220,7 +220,7 @@ def test_network_mean_flow_shifts_modes():
 def test_eigenmode_coincides_with_forced_resonance():
     # high-Q cavity: reflective, driven inlet + reflective outlet, quiescent.
     R = 0.9
-    inlet = PerturbationBC.excitation(1.0, base_R=R)
+    inlet = PerturbationBC.reflection(R, driven=("acoustic",))
     _, sol = _duct_net(inlet, cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.reflection(R)))
     u, c = _uc(sol)
     f1 = c / (2.0 * LDUCT)
@@ -231,7 +231,7 @@ def test_eigenmode_coincides_with_forced_resonance():
 
     # sweep the forced response across the mode and find the resonance peak
     freqs = np.linspace(0.85 * f_mode, 1.15 * f_mode, 601)
-    fr = boundary_response(sol.problem, sol.x, freqs)
+    fr = forced_response(sol.problem, sol.x, freqs)
     amp = np.linalg.norm(fr.X, axis=1)  # response magnitude per frequency
     f_peak = freqs[int(np.argmax(amp))]
     # the forced resonance lands on the eigenmode frequency (within the sweep resolution)
@@ -262,6 +262,45 @@ def test_eigenmode_result_api_and_plotting():
     assert fig.data  # has at least one trace
     fig2 = res.plot_mode(0)
     assert fig2.data
+
+
+def test_eigenmode_result_repr_and_html():
+    _, sol = _duct_net(PerturbationBC.hard_wall(), cat.wall())
+    u, c = _uc(sol)
+    f1 = c / (2.0 * LDUCT)
+    res = eigenmodes(sol.problem, sol.x, (0.5 * f1, 2.5 * f1))
+    assert res.n_modes >= 1
+
+    text = repr(res)
+    # header reports the mode count, the unstable tally, the certification, and the search band
+    assert f"{res.n_modes} mode" in text
+    assert f"{int(np.count_nonzero(res.unstable))} unstable" in text
+    assert ("certified" in text) or ("uncertified" in text) or ("incomplete" in text)
+    assert "Hz" in text and "growth" in text
+    # every mode's frequency appears in the table (sorted, original index preserved)
+    for f in res.freqs:
+        assert f"{f:.3f}" in text
+
+    html = res._repr_html_()
+    assert html.startswith("<div") and "<table" in html and "</table>" in html
+    assert "EigenmodeResult" in html
+    assert html.count("<tr") == res.n_modes + 1  # one header row + one per mode
+
+    # empty result is handled (no table, just the header)
+    empty = EigenmodeResult(
+        omega=np.empty(0, complex),
+        modes=np.empty((0, res.modes.shape[1]), complex),
+        residuals=np.empty(0),
+        L=res.L,
+        est=res.est,
+        K=res.K,
+        n_solve=res.n_solve,
+        n_edges=res.n_edges,
+        contour=res.contour,
+        expected=0,
+    )
+    assert "0 modes" in repr(empty)
+    assert "<table" not in empty._repr_html_()
 
 
 # --------------------------------------------------------------------------

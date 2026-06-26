@@ -299,9 +299,9 @@ def eigenmodes(
     spectrum and the response are guaranteed consistent.
 
     Use **passive** terminal BCs (``hard_wall``/``open_end``/``anechoic``/
-    ``reflection``/``impedance``, or ``inherit``); an ``excitation`` BC has no
-    meaning for a free oscillation (its forcing is unused).  At least one
-    length-bearing duct (or another ``omega``-dependent term) must be present, else
+    ``reflection``/``impedance``, or ``inherit``); a terminal's ``driven`` forcing
+    has no meaning for a free oscillation (the eigenproblem ignores ``b``).  At least
+    one length-bearing duct (or another ``omega``-dependent term) must be present, else
     ``A`` has no frequency dependence and there is no spectrum.
 
     Parameters
@@ -531,6 +531,9 @@ def eigenmodes(
 
 _CHAR_SYM = ("f", "g", "h")
 
+# Cap on the number of mode rows shown in the plain-text repr (the HTML repr lists all of them).
+_REPR_MAX_ROWS = 20
+
 
 @dataclass
 class EigenmodeResult:
@@ -625,6 +628,121 @@ class EigenmodeResult:
     def unstable(self) -> np.ndarray:
         """Boolean mask of growing (unstable) modes (``Im(omega) < 0``)."""
         return self.omega.imag < 0.0
+
+    def _search_band(self):
+        """Frequency/growth extent of the search contour.
+
+        Returns
+        -------
+        tuple of float or None
+            ``(f_lo, f_hi, g_lo, g_hi)`` -- the searched frequency band (Hz) and growth-rate
+            band (1/s) inferred from the contour's ellipse, or ``None`` if no contour is stored.
+        """
+        c = self.contour
+        if c is None:
+            return None
+        f_lo = (c.center.real - c.rx) / (2.0 * np.pi)
+        f_hi = (c.center.real + c.rx) / (2.0 * np.pi)
+        # growth = -Im(omega), so the imaginary extent [center.imag +/- ry] maps to growth flipped
+        g_lo = -c.center.imag - c.ry
+        g_hi = -c.center.imag + c.ry
+        return f_lo, f_hi, g_lo, g_hi
+
+    def _status(self):
+        """``(n_unstable, certification_text)`` for the repr headers."""
+        n_unst = int(np.count_nonzero(self.unstable))
+        if self.expected is None:
+            cert = "uncertified"
+        elif self.certified:
+            cert = "certified complete"
+        else:
+            cert = f"incomplete ({self.n_modes}/{self.expected})"
+        return n_unst, cert
+
+    def __repr__(self) -> str:
+        """Compact text summary: mode count, search band, and a per-mode stability table.
+
+        Modes are listed in order of increasing frequency (the displayed ``#`` is the original
+        mode index, as accepted by :meth:`mode_shape`/:meth:`plot_mode`); an unstable mode is
+        flagged with a trailing ``*``.
+        """
+        n = self.n_modes
+        n_unst, cert = self._status()
+        lines = [f"EigenmodeResult: {n} mode{'' if n == 1 else 's'}, {n_unst} unstable, {cert}"]
+        band = self._search_band()
+        if band is not None:
+            f_lo, f_hi, g_lo, g_hi = band
+            lines.append(f"  search band: f in [{f_lo:.1f}, {f_hi:.1f}] Hz, growth in [{g_lo:+.1f}, {g_hi:+.1f}] 1/s")
+        if n == 0:
+            return "\n".join(lines)
+        lines.append("")
+        lines.append(f"  {'#':>4}  {'f [Hz]':>10}  {'growth [1/s]':>13}  {'damping':>9}  {'residual':>9}")
+        order = np.argsort(self.freqs)
+        for i in order[:_REPR_MAX_ROWS]:
+            tag = f"{int(i)}{'*' if self.unstable[i] else ''}"
+            lines.append(
+                f"  {tag:>4}  {self.freqs[i]:>10.3f}  {self.growth_rates[i]:>+13.3f}  "
+                f"{self.damping_ratios[i]:>+9.4f}  {self.residuals[i]:>9.1e}"
+            )
+        if n > _REPR_MAX_ROWS:
+            lines.append(f"  ... ({n - _REPR_MAX_ROWS} more)")
+        lines.append("")
+        lines.append("  * = unstable (growth > 0)")
+        return "\n".join(lines)
+
+    def _repr_html_(self) -> str:
+        """Rich HTML summary for Jupyter: header line plus a per-mode stability table.
+
+        Unstable modes are highlighted; rows are sorted by frequency and the ``#`` column holds
+        the original mode index.
+        """
+        n = self.n_modes
+        n_unst, cert = self._status()
+        cert_color = {"certified complete": "#2a8a4a", "uncertified": "#888"}.get(cert, "#c0392b")
+        parts = [
+            f"{n} mode{'' if n == 1 else 's'}",
+            (f"<b style='color:#c0392b'>{n_unst} unstable</b>" if n_unst else f"{n_unst} unstable"),
+            f"<span style='color:{cert_color}'>{cert}</span>",
+        ]
+        band = self._search_band()
+        if band is not None:
+            f_lo, f_hi, g_lo, g_hi = band
+            parts.append(
+                f"search f &isin; [{f_lo:.1f}, {f_hi:.1f}] Hz, growth &isin; [{g_lo:+.1f}, {g_hi:+.1f}] s<sup>-1</sup>"
+            )
+        header = (
+            "<div style='font-family:sans-serif;margin-bottom:4px'>"
+            "<b>EigenmodeResult</b> &nbsp;&middot;&nbsp; " + " &nbsp;|&nbsp; ".join(parts) + "</div>"
+        )
+        if n == 0:
+            return header
+        th = "style='text-align:right;padding:2px 8px;border-bottom:1px solid #ccc'"
+        head_row = (
+            f"<tr><th {th}>#</th><th {th}>f [Hz]</th><th {th}>growth [1/s]</th>"
+            f"<th {th}>damping ratio</th><th {th}>residual</th><th style='padding:2px 8px'>stability</th></tr>"
+        )
+        body = []
+        for i in np.argsort(self.freqs):
+            unst = bool(self.unstable[i])
+            bg = "background:#fdecea;" if unst else ""
+            tag = (
+                "<span style='color:#c0392b;font-weight:bold'>unstable</span>"
+                if unst
+                else "<span style='color:#888'>stable</span>"
+            )
+            td = "style='text-align:right;padding:2px 8px'"
+            body.append(
+                f"<tr style='{bg}'><td {td}>{int(i)}</td><td {td}>{self.freqs[i]:.3f}</td>"
+                f"<td {td}>{self.growth_rates[i]:+.3f}</td><td {td}>{self.damping_ratios[i]:+.4f}</td>"
+                f"<td {td}>{self.residuals[i]:.1e}</td><td style='padding:2px 8px'>{tag}</td></tr>"
+            )
+        table = (
+            "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>"
+            + head_row
+            + "".join(body)
+            + "</table>"
+        )
+        return header + table
 
     def mode_waves(self, i, edge):
         """Characteristic amplitudes ``(f, g, h)`` of mode ``i`` at ``edge``.

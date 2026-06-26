@@ -42,7 +42,7 @@ from .response import (
     acoustic_response,
     AcousticResponse,
 )
-from .forced import boundary_response, ForcedResponse
+from .forced import forced_response, ForcedResponse
 from .stamps import boundary_forcing
 from . import matrices
 from .matrices import (
@@ -92,7 +92,7 @@ __all__ = [
     "verify_acoustic",
     # boundary conditions + forced response
     "PerturbationBC",
-    "boundary_response",
+    "forced_response",
     "ForcedResponse",
     "boundary_forcing",
     # response + matrices

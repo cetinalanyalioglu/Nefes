@@ -15,7 +15,8 @@ The mean state partitions the three characteristics ``w = (f, g, h)`` into the
 pointing in) -- see :func:`matrices.partition`.  For a subsonic terminal that is a
 duct **tail** (an inlet) the flow carries ``f`` and ``h`` in and lets ``g`` out, so
 ``A`` is ``2 x 1``; at a duct **head** (an outlet) only ``g`` enters while ``f`` and
-``h`` leave, so ``A`` is ``1 x 2``.  ``b`` is an optional excitation forcing.
+``h`` leave, so ``A`` is ``1 x 2``.  ``b`` is the optional forcing -- an incoming wave
+injected at the boundary (see ``driven`` below).
 
 The classic scalar reflection is the **diagonal** case: ``A`` couples the to-specify
 acoustic wave to the arriving acoustic wave by a single coefficient ``R``, and (at an
@@ -34,11 +35,20 @@ kind                 closure
 ``anechoic``         ``R = 0``                    (reflection-free termination)
 ``reflection``       user ``R(omega)``            constant / table / callable
 ``impedance``        ``R = (Z - rho c)/(Z + rho c)`` from a (specific/absolute) ``Z``
-``excitation``       ``R = base_R`` (default 0), with forcing ``b``
 ``choked_nozzle``    ``g = R f + R_s h``          compact choked outlet (Marble--Candel):
                                                   ``R = (2-(g-1)M)/(2+(g-1)M)``,
                                                   ``R_s = (c/rho) M/(2+(g-1)M)``
 ===================  =========================================================
+
+**Forcing is orthogonal to the reflection.**  Any closure may additionally *drive* one
+or more incoming waves: ``driven`` is the set of wave families injected at the boundary
+(``"acoustic"`` and/or ``"entropy"``), and ``amplitudes`` optionally sets their complex
+amplitudes (a marked-but-unspecified family drives a *unit* wave).  Because the forcing
+``b`` is stamped on the to-specify rows independently of ``A`` (see :meth:`closure`),
+a drive composes with *any* reflection -- e.g. ``mean_flow_open_end(driven=("acoustic",))``
+keeps the convective-neutral ``R`` and adds a unit incoming acoustic wave.  The
+``"acoustic"`` family is always to-specify (exactly one acoustic wave enters); the
+``"entropy"`` family is drivable only at an inflow terminal (where entropy is to-specify).
 
 Off-diagonal coupling is also available on the generic closures: ``entropy_coupling``
 sets the arriving-entropy -> reflected-acoustic term ``R_s`` at an outlet, and
@@ -49,7 +59,7 @@ at an inlet and an outlet: a rigid wall ``Z -> inf`` gives ``R = +1``, a
 pressure-release end ``Z -> 0`` gives ``R = -1``, and the matched impedance
 ``Z = rho c`` gives ``R = 0``.
 
-Each numeric carrier (``R``, ``Z``, ``amplitude``, ``entropy_in``) may be a complex
+Each numeric carrier (``R``, ``Z``, ``entropy_in``, an ``amplitudes`` value) may be a complex
 constant, a frequency table ``(freqs_hz, values)`` interpolated in frequency, or a
 callable ``freq_hz -> complex`` (Python API only; YAML/UI use constants or a table).
 Frequencies here are in **Hz**, matching the public perturbation API.  This object
@@ -72,10 +82,13 @@ KINDS = (
     "anechoic",
     "reflection",
     "impedance",
-    "excitation",
     "choked_nozzle",
     "constant_mass_flow",
 )
+
+# Wave families that the closure can inject at a boundary (theory.md s12.4); reacting-scalar
+# waves (named by ``prob.scalar_names``) are not yet carried through the terminal closure.
+DRIVABLE_FAMILIES = ("acoustic", "entropy")
 
 # Characteristic indices (theory.md s9.1): f downstream, g upstream, h entropy.
 _F, _G, _H = 0, 1, 2
@@ -112,9 +125,9 @@ class PerturbationBC:
     """Acoustic/perturbation closure for a single-port terminal (theory.md s12.4).
 
     Build one with the named constructors (:meth:`hard_wall`, :meth:`open_end`,
-    :meth:`anechoic`, :meth:`reflection`, :meth:`impedance`, :meth:`excitation`,
-    :meth:`mean_flow_open_end`); :meth:`inherit` (the default) leaves the linearized
-    mean boundary row untouched.
+    :meth:`anechoic`, :meth:`reflection`, :meth:`impedance`, :meth:`mean_flow_open_end`);
+    :meth:`inherit` (the default) leaves the linearized mean boundary row untouched.
+    Any of these accepts ``driven``/``amplitudes`` to additionally inject incoming waves.
 
     Attributes
     ----------
@@ -126,38 +139,55 @@ class PerturbationBC:
         Acoustic impedance for ``kind == "impedance"`` (specific if ``specific``).
     specific : bool
         If True, ``Z`` is normalized by the characteristic impedance ``rho c``.
-    amplitude : complex or callable or tuple, optional
-        Acoustic excitation forcing ``b`` for ``kind == "excitation"``.
-    base_R : complex or callable or tuple, optional
-        Reflection coefficient of an excitation terminal (default ``0`` -- a clean,
-        reflection-free source).
     entropy_in : complex or callable or tuple, optional
         Incoming entropy-wave amplitude seated at an inflow terminal (default ``0``).
-    family : str
-        ``"acoustic"`` (default) or ``"entropy"`` -- which incoming wave an
-        :meth:`excitation` drives.
+        Shorthand for ``driven=("entropy",)`` with this amplitude; the two add if both set.
     entropy_coupling : complex or callable or tuple, optional
         Off-diagonal ``R_s``: arriving entropy -> reflected acoustic at an **outlet**
         (entropy noise).  Default ``0``.  Ignored at an inlet (entropy is to-specify).
     acoustic_to_entropy : complex or callable or tuple, optional
         Off-diagonal: arriving acoustic -> specified entropy at an **inlet**.  Default
         ``0``.  Ignored at an outlet.
+    driven : tuple of str
+        Wave families injected at this boundary, a subset of :data:`DRIVABLE_FAMILIES`
+        (``"acoustic"``, ``"entropy"``).  Empty (the default) is a passive, unforced
+        terminal.  A family listed here drives a **unit** incoming wave unless
+        ``amplitudes`` overrides it.
+    amplitudes : dict, optional
+        Per-family complex amplitude (constant, table, or callable), keyed by a family in
+        ``driven``.  Families in ``driven`` but absent here drive a unit wave.
     """
 
     kind: str = "inherit"
     R: object = None
     Z: object = None
     specific: bool = False
-    amplitude: object = None
-    base_R: object = None
     entropy_in: object = None
-    family: str = "acoustic"
     entropy_coupling: object = None
     acoustic_to_entropy: object = None
+    driven: tuple = ()
+    amplitudes: object = None
 
     def __post_init__(self):
         if self.kind not in KINDS:
             raise ValueError(f"unknown perturbation BC kind {self.kind!r}; choose from {KINDS}")
+        self.driven = tuple(self.driven) if self.driven else ()
+        for fam in self.driven:
+            if fam not in DRIVABLE_FAMILIES:
+                raise ValueError(
+                    f"cannot drive wave family {fam!r}; the perturbation closure carries only "
+                    f"{DRIVABLE_FAMILIES} (reacting-scalar waves, named by prob.scalar_names, "
+                    "are not yet wired)"
+                )
+        if len(set(self.driven)) != len(self.driven):
+            raise ValueError(f"duplicate family in driven={self.driven!r}")
+        if self.amplitudes is not None:
+            extra = set(self.amplitudes) - set(self.driven)
+            if extra:
+                raise ValueError(
+                    f"amplitudes given for families {sorted(extra)} not in driven={self.driven!r}; "
+                    "every amplitude key must be a driven family"
+                )
 
     # -- evaluation on the frozen mean state --------------------------------
 
@@ -187,8 +217,6 @@ class PerturbationBC:
                 z = z * (rho * c)
             zc = rho * c
             return (z - zc) / (z + zc)
-        if k == "excitation":
-            return _eval(self.base_R, freq)
         if k == "choked_nozzle":  # compact choked outlet: delta_M = 0 (Marble--Candel)
             gm1 = _gamma_minus_one(K)
             return complex((2.0 - gm1 * M) / (2.0 + gm1 * M))
@@ -232,6 +260,11 @@ class PerturbationBC:
         apos = {ch: i for i, ch in enumerate(arriving)}
         if (_F in spos) == (_G in spos):  # exactly one acoustic wave must be on each side
             raise ValueError("non-subsonic / degenerate terminal: acoustic waves not split one-each-way")
+        if "entropy" in self.driven and _H not in spos:  # entropy drivable only where it is to-specify
+            raise ValueError(
+                "cannot drive the 'entropy' wave at this terminal: entropy is an arriving (outgoing) "
+                "characteristic here -- drive it only at an inflow terminal"
+            )
         A = np.zeros((len(specify), len(arriving)), dtype=complex)
         b = np.zeros(len(specify), dtype=complex)
 
@@ -248,18 +281,26 @@ class PerturbationBC:
             A[spos[_H], apos[ac_arr]] = self.acoustic_to_entropy_coefficient(freq)
         return A, b
 
+    def _drive_amplitude(self, family, freq) -> complex:
+        """Forcing amplitude of a ``driven`` ``family`` at ``freq`` (Hz); 0 if not driven.
+
+        A family marked in ``driven`` but absent from ``amplitudes`` drives a **unit** wave.
+        """
+        if family not in self.driven:
+            return 0.0 + 0.0j
+        amps = self.amplitudes or {}
+        if family in amps:
+            return _eval(amps[family], freq)
+        return 1.0 + 0.0j
+
     def forcing(self, freq) -> complex:
-        """Acoustic-row excitation forcing ``b`` at ``freq`` (Hz) (0 unless excitation)."""
-        if self.kind == "excitation" and self.family == "acoustic":
-            return _eval(self.amplitude, freq)
-        return 0.0 + 0.0j
+        """Acoustic-row forcing ``b`` at ``freq`` (Hz): the driven acoustic wave (0 if none)."""
+        return self._drive_amplitude("acoustic", freq)
 
     def entropy_forcing(self, freq) -> complex:
-        """Incoming entropy amplitude seated at an inflow terminal, at ``freq`` (Hz)."""
+        """Entropy-row forcing at ``freq`` (Hz): the seated ``entropy_in`` plus any driven entropy wave."""
         b = _eval(self.entropy_in, freq) if self.entropy_in is not None else 0.0 + 0.0j
-        if self.kind == "excitation" and self.family == "entropy":
-            b = b + _eval(self.amplitude, freq)
-        return b
+        return b + self._drive_amplitude("entropy", freq)
 
     @property
     def stamps_terminal(self) -> bool:
@@ -274,36 +315,43 @@ class PerturbationBC:
         return cls("inherit")
 
     @classmethod
-    def hard_wall(cls, entropy_in=None) -> "PerturbationBC":
+    def hard_wall(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Rigid wall, ``u' = 0`` (``R = +1``)."""
-        return cls("hard_wall", entropy_in=entropy_in)
+        return cls("hard_wall", entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def open_end(cls, entropy_in=None) -> "PerturbationBC":
+    def open_end(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Ideal pressure-release open end, ``p' = 0`` (``R = -1``)."""
-        return cls("open_end", entropy_in=entropy_in)
+        return cls("open_end", entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def mean_flow_open_end(cls, entropy_in=None) -> "PerturbationBC":
+    def mean_flow_open_end(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Convective open end, ``R = -(1 - M)/(1 + M)`` (``-1`` at ``M=0``)."""
-        return cls("mean_flow_open_end", entropy_in=entropy_in)
+        return cls("mean_flow_open_end", entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def anechoic(cls, entropy_in=None) -> "PerturbationBC":
+    def anechoic(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Reflection-free termination (``R = 0``)."""
-        return cls("anechoic", entropy_in=entropy_in)
+        return cls("anechoic", entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def reflection(cls, R, entropy_coupling=None, entropy_in=None) -> "PerturbationBC":
+    def reflection(cls, R, entropy_coupling=None, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Prescribed reflection coefficient ``R`` (constant, table, or callable).
 
         ``entropy_coupling`` optionally adds the off-diagonal ``R_s`` (arriving entropy ->
         reflected acoustic) at an outlet, for a generic entropy-noise termination.
         """
-        return cls("reflection", R=R, entropy_coupling=entropy_coupling, entropy_in=entropy_in)
+        return cls(
+            "reflection",
+            R=R,
+            entropy_coupling=entropy_coupling,
+            entropy_in=entropy_in,
+            driven=driven,
+            amplitudes=amplitudes,
+        )
 
     @classmethod
-    def choked_nozzle(cls, entropy_in=None) -> "PerturbationBC":
+    def choked_nozzle(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Compact (low-frequency) choked-nozzle outlet -- Marble--Candel.
 
         Enforces ``delta_M = 0`` at the nozzle inlet (the duct outlet edge), so the
@@ -316,15 +364,15 @@ class PerturbationBC:
         with ``M`` the outlet mean Mach.  At ``M -> 0`` this is a hard wall (``R = +1``,
         ``R_s = 0``).  Must terminate an outlet (entropy must be an arriving wave).
         """
-        return cls("choked_nozzle", entropy_in=entropy_in)
+        return cls("choked_nozzle", entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def compact_nozzle(cls, entropy_in=None) -> "PerturbationBC":
+    def compact_nozzle(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Alias of :meth:`choked_nozzle`."""
-        return cls.choked_nozzle(entropy_in=entropy_in)
+        return cls.choked_nozzle(entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def constant_mass_flow(cls, entropy_in=None) -> "PerturbationBC":
+    def constant_mass_flow(cls, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Constant-mass-flow outlet termination -- pins ``mdot' = 0`` acoustically.
 
         The linearization of a fixed-mass-flow boundary: the unsteady mass flux vanishes,
@@ -340,31 +388,21 @@ class PerturbationBC:
         other outlet (e.g. a choked upstream injector seen from downstream).  Must
         terminate an outlet (entropy must be an arriving wave).
         """
-        return cls("constant_mass_flow", entropy_in=entropy_in)
+        return cls("constant_mass_flow", entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def impedance(cls, Z, specific=False, entropy_in=None) -> "PerturbationBC":
+    def impedance(cls, Z, specific=False, entropy_in=None, driven=(), amplitudes=None) -> "PerturbationBC":
         """Acoustic impedance ``Z`` (absolute Pa.s/m, or specific if ``specific``)."""
-        return cls("impedance", Z=Z, specific=specific, entropy_in=entropy_in)
+        return cls("impedance", Z=Z, specific=specific, entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)
 
     @classmethod
-    def impedance_polar(cls, magnitude, phase_deg=0.0, specific=True, entropy_in=None) -> "PerturbationBC":
+    def impedance_polar(
+        cls, magnitude, phase_deg=0.0, specific=True, entropy_in=None, driven=(), amplitudes=None
+    ) -> "PerturbationBC":
         """Impedance from a magnitude and phase (degrees); specific (``Z/rho c``) by default.
 
         This is the closure the UI exposes: ``magnitude = 1, phase = 0`` is the matched
         (anechoic) termination, and the rigid-wall limit is ``magnitude -> inf``.
         """
         Z = float(magnitude) * cmath.exp(1j * math.radians(float(phase_deg)))
-        return cls("impedance", Z=Z, specific=specific, entropy_in=entropy_in)
-
-    @classmethod
-    def excitation(cls, amplitude, family="acoustic", base_R=0.0, entropy_in=None) -> "PerturbationBC":
-        """Drive an incoming wave with forcing ``amplitude`` on top of ``base_R``.
-
-        ``family`` selects which incoming wave is driven (``"acoustic"`` or
-        ``"entropy"``); ``base_R`` is the terminal's own reflection (default ``0`` --
-        a clean source).
-        """
-        if family not in ("acoustic", "entropy"):
-            raise ValueError(f"excitation family must be 'acoustic' or 'entropy'; got {family!r}")
-        return cls("excitation", amplitude=amplitude, base_R=base_R, family=family, entropy_in=entropy_in)
+        return cls("impedance", Z=Z, specific=specific, entropy_in=entropy_in, driven=driven, amplitudes=amplitudes)

@@ -5,14 +5,15 @@ unit waves to read out a transfer/scattering matrix, regardless of how the bound
 are actually closed -- this module *solves* the network as it is physically
 terminated.  Each single-port element carries a :class:`PerturbationBC`; the operator
 ``A(omega)`` is assembled with the terminal reflection face stamped
-(``with_boundaries=True``) and the excitation right-hand side ``b(omega)`` built from
-the terminals that force.  One sparse solve per frequency gives the nodal
-perturbation field.
+(``with_boundaries=True``) and the forcing right-hand side ``b(omega)`` built from the
+terminals that drive an incoming wave (``driven``).  One sparse solve per frequency
+gives the nodal perturbation field.
 
 A purely-reflective, undamped, unforced network is singular at its resonances -- that
-is the (deferred) stability eigenvalue problem ``det A(omega) = 0``.  A forced
-response therefore needs at least one excitation terminal (or some loss); off
-resonance it is well posed.
+is the (deferred) stability eigenvalue problem ``det A(omega) = 0``.  With no driven
+terminal the forcing vanishes and the forced response is the trivial zero field (and is
+singular exactly at those resonances); a single driven terminal (or some loss) makes it
+well posed off resonance.
 """
 
 from dataclasses import dataclass
@@ -27,8 +28,11 @@ from .characteristics import edge_transforms, basis_block_from_state
 from ..solver.control import states_table
 
 
-def boundary_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
+def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
     """Solve the perturbation field under each terminal's declared boundary condition.
+
+    The forcing is whatever the terminals' :class:`PerturbationBC`\\ s drive (their
+    ``driven`` families); with no driven terminal the response is the trivial zero field.
 
     Parameters
     ----------

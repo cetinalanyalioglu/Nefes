@@ -25,7 +25,7 @@ import numpy as np
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import n_tau_flame
 from fns.perturbation.boundary_bc import PerturbationBC
-from fns.perturbation import boundary_response
+from fns.perturbation import forced_response
 from fns.solver import solve
 from fns.solver.control import states_table
 from fns.thermo.configure import perfect_gas
@@ -52,7 +52,7 @@ def _rig(n, tau, dT=600.0):
 
     def mk(Qdot):
         els = [
-            cat.mass_flow_inlet(MDOT, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)),
+            cat.mass_flow_inlet(MDOT, 300.0, perturbation_bc=PerturbationBC.anechoic(driven=("acoustic",))),
             cat.duct(L1),
             cat.heat_release_flame(Qdot, dynamic_source=ds),
             cat.duct(L2),
@@ -73,7 +73,7 @@ def _rig(n, tau, dT=600.0):
 def _response(prob, x, isentropic=False):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return boundary_response(prob, x, FREQS, isentropic=isentropic)
+        return forced_response(prob, x, FREQS, isentropic=isentropic)
 
 
 def _marble_candel(est):

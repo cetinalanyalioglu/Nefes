@@ -21,7 +21,7 @@ from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
 from fns.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
 from fns.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
-from fns.perturbation import boundary_response, PerturbationBC
+from fns.perturbation import forced_response, PerturbationBC
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 _HANDLE_RE = re.compile(r"^.+-port-\d+$")
@@ -219,7 +219,7 @@ def test_unknown_field_rejected():
 # --------------------------------------------------------------------------
 def test_forced_response_snapshots(tmp_path):
     net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=5.0)
-    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)))
+    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.anechoic(driven=("acoustic",))))
     net.add(cat.duct(0.5))
     net.add(cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.open_end()))
     net.connect(0, 1, 0.05)
@@ -227,7 +227,7 @@ def test_forced_response_snapshots(tmp_path):
     sol = net.solve()
     assert sol.converged
     freqs = np.array([100.0, 250.0, 500.0])
-    fr = boundary_response(sol.problem, sol.x, freqs)
+    fr = forced_response(sol.problem, sol.x, freqs)
 
     text = dump_case(net, solution=sol, forced=fr, forced_freqs=[100.0, 500.0], forced_fields=("p", "u"))
     doc = yaml.safe_load(text)
@@ -248,13 +248,13 @@ def test_forced_response_snapshots(tmp_path):
 
 def test_forced_unknown_frequency_rejected(tmp_path):
     net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=5.0)
-    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)))
+    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.anechoic(driven=("acoustic",))))
     net.add(cat.duct(0.5))
     net.add(cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.open_end()))
     net.connect(0, 1, 0.05)
     net.connect(1, 2, 0.05)
     sol = net.solve()
-    fr = boundary_response(sol.problem, sol.x, np.array([100.0, 200.0]))
+    fr = forced_response(sol.problem, sol.x, np.array([100.0, 200.0]))
     with pytest.raises(ValueError, match="not in the forced response"):
         dump_case(net, forced=fr, forced_freqs=[123.0])
 
@@ -291,13 +291,13 @@ def test_mean_flow_dataset_has_minimal_metadata(tmp_path):
 
 def test_forced_snapshot_dataset_metadata(tmp_path):
     net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=5.0)
-    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)))
+    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.anechoic(driven=("acoustic",))))
     net.add(cat.duct(0.5))
     net.add(cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.open_end()))
     net.connect(0, 1, 0.05)
     net.connect(1, 2, 0.05)
     sol = net.solve()
-    fr = boundary_response(sol.problem, sol.x, np.array([100.0, 250.0]))
+    fr = forced_response(sol.problem, sol.x, np.array([100.0, 250.0]))
     doc = yaml.safe_load(dump_case(net, forced=fr, forced_freqs=[250.0]))
     snap = next(d for d in doc["data"]["datasets"] if d["name"] == "250 Hz")
     info = _info_map(snap)

@@ -537,7 +537,7 @@ def stamp_isentropic(A, prob, est, K, skip_edges=(), cals=None):
 def boundary_forcing(prob, x_bar, omega, cals=None):
     """Right-hand side ``b(omega)`` for the explicitly-closed terminals.
 
-    The forcing of each to-specify wave (acoustic excitation on the node row, incoming
+    The forcing of each to-specify wave (a driven acoustic wave on the node row, incoming
     entropy on the inflow-side transport row); zero everywhere else.  Mirrors the rows
     :func:`stamp_boundaries` overwrites, via the same :func:`_terminal_closure`.  ``cals``
     (optional): per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).

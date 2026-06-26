@@ -156,6 +156,36 @@ def test_fuel_pulse_generates_a_convected_mixture_wave():
     assert np.allclose(z_flame, z_inj * np.exp(-1j * omega * Lb / u), rtol=1e-6)  # convective phase lag
 
 
+def test_forced_response_surfaces_scalar_waves():
+    """``ForcedResponse.waves()`` returns the convected scalar wave alongside ``(f, g, h)``.
+
+    Wave-family parity for reacting scalars: the per-edge wave vector now carries one entry per
+    transported scalar (named by ``prob.scalar_names``), surfaced directly from the network
+    column -- the scalar is already its own convected wave -- so the same field accessor serves
+    entropy and the scalars, no hand-indexing of ``X`` required.
+    """
+    ds = mass_flow_response(n_tau(1.0, 2e-3), ref_edge=E_AIR, quantity="u")
+    prob = _rig(ds=ds, inlet_excite=True)
+    x = _converged(prob)
+    ns = int(prob.n_solve)
+    assert ns > 3 and len(prob.scalar_names) == ns - 3  # genuinely reacting (scalars present)
+    freqs = np.array([150.0, 280.0, 400.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fr = forced_response(prob, x, freqs, isentropic=False)
+    # as many waves as unknowns, labelled (f, g, h) then the feed-stream names
+    assert fr.n_char == ns
+    assert fr.wave_labels[:3] == ("f", "g", "h")
+    assert tuple(fr.wave_labels[3:]) == tuple(prob.scalar_names)
+    # the surfaced scalar wave is exactly the raw network column (identity), for every scalar/edge
+    for s in range(3, ns):
+        for e in (E_AIR, E_INJ_OUT, E_APPROACH):
+            assert np.allclose(fr.waves(e)[:, s], fr.X[:, ns * e + s])
+    # genuinely nonzero (the fuel pulse sheds a mixture-fraction wave) and acoustics untouched
+    assert np.max(np.abs(fr.waves(E_INJ_OUT)[:, ns - 1])) > 1e-4
+    assert np.allclose(fr.reflection_at(E_AIR), fr.waves(E_AIR)[:, 1] / fr.waves(E_AIR)[:, 0])
+
+
 # --------------------------------------------------------------------------
 # 3. The equivalence-ratio instability (fuel flow -> heat release -> acoustics)
 # --------------------------------------------------------------------------

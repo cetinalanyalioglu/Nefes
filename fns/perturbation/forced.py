@@ -69,7 +69,16 @@ def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, 
         A = assemble_acoustic(omega, blocks, with_boundaries=True)
         b = boundary_forcing(prob, x_bar, omega, cals)
         X[i] = spla.spsolve(A.tocsc(), b)
-    return ForcedResponse(freqs=freqs, X=X, L=L, est=est, K=K, n_solve=int(prob.n_solve), cals=cals)
+    return ForcedResponse(
+        freqs=freqs,
+        X=X,
+        L=L,
+        est=est,
+        K=K,
+        n_solve=int(prob.n_solve),
+        cals=cals,
+        scalar_names=tuple(getattr(prob, "scalar_names", ())),
+    )
 
 
 @dataclass
@@ -83,28 +92,55 @@ class ForcedResponse:
     K: float  # cp / R
     n_solve: int
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
+    scalar_names: tuple = ()  # transported reacting scalars (feed-stream labels), in band-1 order
+
+    @property
+    def _n_acoustic(self) -> int:
+        """The acoustic+entropy characteristic count handled by the ``L`` transform (3)."""
+        return self.L[0].shape[0]
 
     @property
     def n_char(self) -> int:
-        """Characteristic count per edge (3 for inert flow)."""
-        return self.L[0].shape[0]
+        """Wave count per edge: the acoustic+entropy chars plus one per convected scalar (== ``n_solve``)."""
+        return self.n_solve
+
+    @property
+    def wave_labels(self) -> tuple:
+        """Per-wave symbols: ``("f", "g", "h")`` then the reacting-scalar names (:attr:`scalar_names`)."""
+        return ("f", "g", "h") + tuple(self.scalar_names)
 
     def waves(self, edge):
-        """Characteristic amplitudes ``(f, g, h)`` at ``edge``; shape ``(n_omega, n_char)``."""
-        ns, nc = self.n_solve, self.n_char
-        Xe = self.X[:, ns * edge : ns * edge + nc]  # (n_omega, n_char)
-        return np.einsum("ij,oj->oi", self.L[edge], Xe)  # (n_omega, n_char)
+        """Wave amplitudes at ``edge``: ``(f, g, h)`` then one convected amplitude per reacting scalar.
+
+        Shape ``(n_omega, n_char)``.  The acoustic/entropy block is the characteristic
+        transform ``L_e`` of the network unknowns; each transported scalar's perturbation is
+        already its own convected wave (the operator propagates it at the mean speed ``u``), so
+        it is surfaced as-is (identity) under the name in :attr:`wave_labels`.  Inert flow
+        (no scalars) returns just ``(f, g, h)`` exactly as before.
+        """
+        ns = self.n_solve
+        na = self._n_acoustic
+        Xe = self.X[:, ns * edge : ns * (edge + 1)]  # (n_omega, ns): every unknown on this edge
+        w = np.empty((Xe.shape[0], ns), dtype=Xe.dtype)
+        w[:, :na] = np.einsum("ij,oj->oi", self.L[edge], Xe[:, :na])  # (f, g, h)
+        w[:, na:] = Xe[:, na:]  # convected scalar waves (identity)
+        return w
 
     def field(self, edge, basis="network"):
         """Perturbation at ``edge`` in a variable flavor; shape ``(n_omega, n_char)``.
 
-        ``basis`` is any of ``characteristics.BASIS_LABELS`` (default ``"network"`` --
-        the solver's own ``(mdot', p', h_t')``).
+        ``basis`` is any of ``characteristics.BASIS_LABELS`` (default ``"network"`` -- the
+        solver's own ``(mdot', p', h_t')``) and re-expresses the acoustic+entropy block; the
+        reacting-scalar waves pass through unchanged (they are already in network units).
         """
         w = self.waves(edge)  # (n_omega, n_char)
+        na = self._n_acoustic
         cal = None if self.cals is None else self.cals[edge]
         B = basis_block_from_state(basis, self.est[:, edge], self.K, cal)
-        return np.einsum("ij,oj->oi", B, w)
+        out = np.empty_like(w)
+        out[:, :na] = np.einsum("ij,oj->oi", B, w[:, :na])
+        out[:, na:] = w[:, na:]
+        return out
 
     def reflection_at(self, edge):
         """Local acoustic reflection ``g/f`` at ``edge``; shape ``(n_omega,)``.

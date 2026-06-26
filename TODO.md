@@ -35,5 +35,5 @@
 
 ## Deferred
 
-- [ ] Perturbation parity for reacting scalars: the `xi'` waves aren't surfaced as families (e.g. in `ForcedResponse`) the way entropy is. Needs the 3-wave `(f,g,h)` characteristic layer generalized to N waves across characteristics/partition/stamps/closure/ForcedResponse/power.
+- [ ] Compositional (scalar->acoustic) scattering at non-uniform terminals: extend the 3-wave characteristic closure to N waves and add the scalar->acoustic coefficient at compact nozzles/area changes -- compositional noise (Magri, JFM 2016, "Compositional inhomogeneities as a source of indirect combustion noise"). Fits the existing `delta(reduced-mass-flow)=0` compact-nozzle route by complex-stepping the choked mass flux's composition dependence; reacting backend only (a perfect gas has none). The same N-wave closure also unblocks scalar boundary seating (`driven=("<stream>",)`) and scalar ports in the measurement/scattering matrices (`response.py` PerturbationField). Needs reacting-thermo composition derivatives + a literature validation case. (`ForcedResponse` already surfaces the convected scalar waves.)
 - [ ] Re-order algorithm - deferred because current solvers do not utilize this

@@ -42,7 +42,7 @@ from .response import (
     acoustic_response,
     AcousticResponse,
 )
-from .forced import forced_response, ForcedResponse
+from .forced import forced_response, ForcedResponse, CompositionalNoiseWarning
 from .stamps import boundary_forcing
 from . import matrices
 from .matrices import (
@@ -94,6 +94,7 @@ __all__ = [
     "PerturbationBC",
     "forced_response",
     "ForcedResponse",
+    "CompositionalNoiseWarning",
     "boundary_forcing",
     # response + matrices
     "perturbation_response",

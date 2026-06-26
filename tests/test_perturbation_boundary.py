@@ -15,6 +15,7 @@ acoustic hard wall.  A separate block unit-tests :class:`PerturbationBC` itself.
 """
 
 import os
+import warnings
 
 import numpy as np
 import pytest
@@ -24,9 +25,9 @@ from fns.shell import Network
 from fns.elements import catalog as cat
 from fns.elements.ids import WALL
 from fns.io import load_case
-from fns.thermo.configure import perfect_gas
+from fns.thermo.configure import perfect_gas, perfect_gas_passive_scalars
 from fns.derive import ES_U, ES_C, ES_RHO, ES_P
-from fns.perturbation import PerturbationBC, forced_response
+from fns.perturbation import PerturbationBC, forced_response, CompositionalNoiseWarning
 from fns.perturbation.characteristics import char_to_dq
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
@@ -424,12 +425,13 @@ def test_bc_forcing_and_entropy():
     assert both.entropy_forcing(0.0) == pytest.approx(0.8 + 0.1j)
 
 
-def test_bc_rejects_unknown_kind_and_driven_family():
+def test_bc_rejects_unknown_kind_and_bad_driven():
     with pytest.raises(ValueError):
         PerturbationBC(kind="nonsense")
-    # Only the wired wave families may be driven; a reacting-scalar/vortical name is rejected.
-    with pytest.raises(ValueError):
-        PerturbationBC.anechoic(driven=("vortical",))
+    # driven families must be strings (a scalar name is resolved later, at stamp time, against
+    # prob.scalar_names -- so an arbitrary string is accepted here and validated then).
+    with pytest.raises(TypeError):
+        PerturbationBC.anechoic(driven=(3,))
     # An amplitude for a family that is not driven is a mistake.
     with pytest.raises(ValueError):
         PerturbationBC.anechoic(driven=("acoustic",), amplitudes={"entropy": 1.0})
@@ -454,6 +456,60 @@ def test_cannot_drive_entropy_at_an_outlet():
     bc = PerturbationBC.anechoic(driven=("entropy",))
     with pytest.raises(ValueError):
         bc.closure(0.0, 1.2, 340.0, 100.0, 0.3, None, specify=(1,), arriving=(0, 2))
+
+
+# --------------------------------------------------------------------------
+# 3b. Driving a reacting/passive scalar wave at an inflow terminal (decoupled seat).
+# --------------------------------------------------------------------------
+
+
+def _scalar_duct(inlet_bc, outlet_bc=None, *, L=0.7, mdot=2.0):
+    """[mass-flow inlet] -- duct(L) -- [pressure outlet] on a 2-passive-scalar perfect gas."""
+    cfg = perfect_gas_passive_scalars(2, names=["Z1", "Z2"])
+    net = Network(cfg, p_ref=1.0e5, T_ref=300.0, mdot_ref=mdot)
+    net.add(cat.mass_flow_inlet(mdot, 300.0, perturbation_bc=inlet_bc))
+    net.add(cat.duct(L))
+    net.add(cat.pressure_outlet(1.0e5, perturbation_bc=outlet_bc or PerturbationBC.anechoic()))
+    net.connect(0, 1, 0.05)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+    assert sol.converged
+    return sol
+
+
+def test_driven_scalar_wave_seats_and_convects():
+    # Seat a scalar wave Z1 at the inflow; it must appear on the inlet edge and convect to the
+    # outlet at the mean speed u (phase e^{-i w L/u}), decoupled from sound, with the undriven
+    # scalar Z2 staying zero.  A reminder warns that scalar->acoustic noise is not modelled.
+    amp, L = 0.4 - 0.2j, 0.7
+    sol = _scalar_duct(PerturbationBC.anechoic(driven=("Z1",), amplitudes={"Z1": amp}), L=L)
+    u = float(sol.table()[ES_U, 0])
+    assert u > 1.0  # genuinely flowing
+    with pytest.warns(CompositionalNoiseWarning):
+        fr = forced_response(sol.problem, sol.x, FREQS, isentropic=False)
+    iz = fr.wave_labels.index("Z1")
+    assert np.allclose(fr.waves(0)[:, iz], amp, atol=1e-9)  # seated at the inlet edge
+    assert np.allclose(fr.waves(1)[:, iz], amp * np.exp(-1j * OMEGAS * (L / u)), atol=1e-6)  # convected out
+    assert np.allclose(fr.waves(0)[:, fr.wave_labels.index("Z2")], 0.0, atol=1e-12)  # undriven scalar
+
+
+def test_driving_scalar_rejected_at_outlet():
+    # A scalar is arriving (outgoing) at the outlet, so seating one there is rejected on assembly.
+    sol = _scalar_duct(PerturbationBC.inherit(), PerturbationBC.anechoic(driven=("Z1",)))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", CompositionalNoiseWarning)
+        with pytest.raises(ValueError, match="genuine inflow"):
+            forced_response(sol.problem, sol.x, FREQS, isentropic=False)
+
+
+def test_driving_unknown_scalar_name_is_rejected():
+    # A driven family that is neither acoustic/entropy nor a transported scalar errors at stamp
+    # time (it cannot be checked at BC construction), listing what the network does transport.
+    sol = _scalar_duct(PerturbationBC.anechoic(driven=("Zbogus",)))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", CompositionalNoiseWarning)
+        with pytest.raises(ValueError, match="unknown scalar wave family"):
+            forced_response(sol.problem, sol.x, FREQS, isentropic=False)
 
 
 # --------------------------------------------------------------------------

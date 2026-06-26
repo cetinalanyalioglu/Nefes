@@ -233,7 +233,7 @@ class _AssemblyPlan:
             data[self.phase_slots] = self.phase_coeff * np.exp(-1j * omega * self.phase_tau)
         for t, bc, rowslots in self.bnd:
             cal = None if not self.cals else self.cals[t.edge]
-            for row, coeff, _rhs in _terminal_closure(self.prob, self.est, self.K, t, bc, omega, cal):
+            for row, _cols, coeff, _rhs in _terminal_closure(self.prob, self.est, self.K, t, bc, omega, cal):
                 slots = rowslots.get(row)
                 if slots is not None:  # entropy rows are dropped under isentropic mode
                     data[slots] = coeff
@@ -249,8 +249,6 @@ class _AssemblyPlan:
 def _build_plan(blocks: AcousticBlocks, with_boundaries):
     """Capture the fixed sparsity pattern and per-omega fill data for :class:`_AssemblyPlan`."""
     prob = blocks.prob
-    ns = int(prob.n_solve)
-
     tr0 = int(prob.transport_row0)
 
     # The omega-dependent duct entries, as (row, col, constant coeff, tau).  Structural
@@ -284,19 +282,20 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
     if with_boundaries and prob.node_bc:
         est = states_table(prob, blocks.x_bar)
         K = float(prob.tf[0]) / float(prob.tf[1])
+        E = int(prob.n_edges)
         for t in find_terminals(prob):
             bc = prob.node_bc[t.node] if t.node < len(prob.node_bc) else None
             if bc is None or not getattr(bc, "stamps_terminal", False):
                 continue
-            cols = tuple(ns * t.edge + v for v in range(3))
             cal = None if not blocks.cals else blocks.cals[t.edge]
-            rows = [row for row, _c, _r in _terminal_closure(prob, est, K, t, bc, _PLAN_OMEGA, cal)]
+            entries = [(row, cols) for row, cols, _c, _r in _terminal_closure(prob, est, K, t, bc, _PLAN_OMEGA, cal)]
             if blocks.isentropic:
-                # entropy (transport) rows are pinned to h = 0 in base; the boundary fill
-                # must not overwrite them, so keep only the acoustic (node) closure rows.
-                rows = [row for row in rows if row < tr0]
-            bnd_meta.append((t, bc, [(row, cols) for row in rows]))
-            forced_rc.extend((row, c) for row in rows for c in cols)
+                # entropy (transport) rows [tr0, tr0+E) are pinned to h = 0 in base; the boundary
+                # fill must not overwrite them.  Acoustic node rows (< tr0) and scalar transport
+                # rows (>= tr0+E, not pinned) are kept.
+                entries = [(row, cols) for row, cols in entries if row < tr0 or row >= tr0 + E]
+            bnd_meta.append((t, bc, entries))
+            forced_rc.extend((row, c) for row, cols in entries for c in cols)
 
     # Dynamic source S(omega): each term adds factor[r]*coeff[c]*F(omega) onto row r,
     # column c.  Collected as (row, col, constant complex coeff, transfer) and forced into

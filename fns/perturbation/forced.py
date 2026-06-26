@@ -16,6 +16,7 @@ singular exactly at those resonances); a single driven terminal (or some loss) m
 well posed off resonance.
 """
 
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -26,6 +27,23 @@ from .operator import build_acoustic_blocks, assemble_acoustic
 from .stamps import boundary_forcing
 from .characteristics import edge_transforms, basis_block_from_state
 from ..solver.control import states_table
+
+
+class CompositionalNoiseWarning(UserWarning):
+    """A driven scalar wave convects and feeds composition-sensitive elements, but its scattering
+    into sound at non-uniform sections (compositional / indirect noise) is not modelled."""
+
+
+def _driven_scalar_families(prob):
+    """Scalar (non-acoustic, non-entropy) families any terminal BC drives, sorted and de-duplicated."""
+    fams = set()
+    for bc in getattr(prob, "node_bc", None) or []:
+        if bc is None:
+            continue
+        for f in getattr(bc, "driven", ()):
+            if f not in ("acoustic", "entropy"):
+                fams.add(f)
+    return sorted(fams)
 
 
 def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
@@ -57,6 +75,14 @@ def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, 
         The nodal perturbation field at every frequency.
     """
     freqs = np.asarray(freqs, dtype=float)
+    driven_scalars = _driven_scalar_families(prob)
+    if driven_scalars:  # one reminder per call: the seated scalar convects but does not radiate sound
+        warnings.warn(
+            f"driving scalar wave(s) {driven_scalars}: they convect and feed composition-sensitive "
+            "elements, but scalar -> acoustic coupling (compositional / indirect noise) is not modelled.",
+            CompositionalNoiseWarning,
+            stacklevel=2,
+        )
     omegas = 2.0 * np.pi * freqs  # operator assembly works in angular frequency (rad/s)
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     K = float(prob.tf[0]) / float(prob.tf[1])

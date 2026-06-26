@@ -324,3 +324,65 @@ def states_table(prob, x2d):
     est = np.zeros((NS_EST, prob.n_edges))
     recover_all(prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, est)
     return est
+
+
+def format_states(prob, x2d, edges=None, precision=5):
+    """Return a fixed-width table of the recovered per-edge mean-flow states.
+
+    One row per edge (indexed by edge number) with the recovered flow quantities as columns:
+    ``mdot``, ``p``, ``h_t``, ``rho``, ``u``, ``T``, ``c``, ``M``, ``p_t``, ``area``.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem whose edges are tabulated.
+    x2d : ndarray
+        A converged (or trial) mean-flow state, shape ``(3 + n_elem, n_edges)``.
+    edges : sequence of int, optional
+        Edge indices to include, in the given order (default: every edge, ``0 .. n_edges - 1``).
+    precision : int, optional
+        Number of significant digits printed per value (default 5).
+
+    Returns
+    -------
+    str
+        A newline-joined, column-aligned table ready to print.
+    """
+    from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
+
+    # (label, est-row index, unit) in edge-state-table column order
+    cols = (
+        ("mdot", ES_MDOT, "kg/s"),
+        ("p", ES_P, "Pa"),
+        ("h_t", ES_HT, "J/kg"),
+        ("rho", ES_RHO, "kg/m^3"),
+        ("u", ES_U, "m/s"),
+        ("T", ES_T, "K"),
+        ("c", ES_C, "m/s"),
+        ("M", ES_M, "-"),
+        ("p_t", ES_PT, "Pa"),
+        ("area", ES_AREA, "m^2"),
+    )
+    est = states_table(prob, x2d)
+    if edges is None:
+        edges = range(prob.n_edges)
+    edges = [int(e) for e in edges]
+
+    headers = ["edge"] + [f"{label} [{unit}]" for label, _idx, unit in cols]
+    rows = [[str(e)] + [f"{est[idx, e]:.{precision}g}" for _label, idx, _unit in cols] for e in edges]
+    widths = [max([len(headers[c])] + [len(r[c]) for r in rows]) for c in range(len(headers))]
+
+    def _row(cells):
+        return "  ".join(s.rjust(widths[c]) for c, s in enumerate(cells))
+
+    lines = [_row(headers), _row(["-" * w for w in widths])] + [_row(r) for r in rows]
+    return "\n".join(lines)
+
+
+def print_states(prob, x2d, edges=None, precision=5, file=None):
+    """Print the per-edge mean-flow state table to the screen.
+
+    Thin wrapper over :func:`format_states`; see it for the column layout and parameters.
+    ``file`` is forwarded to :func:`print` (default ``sys.stdout``).
+    """
+    print(format_states(prob, x2d, edges=edges, precision=precision), file=file)

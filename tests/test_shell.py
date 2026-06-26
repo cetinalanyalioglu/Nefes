@@ -48,6 +48,167 @@ def test_mdot_ref_default_from_inlet():
     assert net.mdot_ref == pytest.approx(7.5)
 
 
+def test_h_ref_defaults_to_cp_t_ref():
+    # With no explicit datum the enthalpy reference is the perfect-gas cp * T_ref, and it sets
+    # the total-enthalpy variable scale on the compiled problem.
+    net = Network(perfect_gas(R_AIR, GAMMA), T_ref=300.0)
+    net.add(cat.mass_flow_inlet(5.0, 300.0))
+    net.add(cat.pressure_outlet(101325.0))
+    net.connect(0, 1, 0.05)
+    assert net.h_ref == pytest.approx(CP * 300.0)
+    assert net.compile().var_scale[2] == pytest.approx(CP * 300.0)
+
+
+def test_h_ref_explicit_override():
+    # An explicit absolute-enthalpy datum (as the reacting closures need) overrides the
+    # cp * T_ref fallback and threads through to the h_t variable scale.  It is a pure
+    # rescaling, so the converged perfect-gas mean flow is unchanged.
+    h0 = 1.5e6
+
+    def build(h_ref):
+        net = Network(perfect_gas(R_AIR, GAMMA), T_ref=300.0, h_ref=h_ref)
+        net.add(cat.total_pressure_inlet(120000.0, 300.0))
+        net.add(cat.isentropic_area_change())
+        net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+        net.connect(0, 1, 0.10)
+        net.connect(1, 2, 0.05)
+        return net
+
+    net = build(h0)
+    assert net.h_ref == pytest.approx(h0)
+    assert net.compile().var_scale[2] == pytest.approx(h0)
+
+    explicit = net.solve()
+    default = build(None).solve()
+    assert explicit.converged and default.converged
+    assert explicit.edge(1)["M"] == pytest.approx(default.edge(1)["M"], rel=1e-8)
+    assert explicit.edge(1)["p_t"] == pytest.approx(default.edge(1)["p_t"], rel=1e-8)
+
+
+def test_edge_model_defaults_to_gas_model_on_every_edge():
+    gas = perfect_gas(R_AIR, GAMMA)
+    net = Network(gas)
+    net.add(cat.mass_flow_inlet(5.0, 300.0))
+    net.add(cat.duct(0.5))
+    net.add(cat.pressure_outlet(101325.0))
+    net.connect(0, 1, 0.05)
+    net.connect(1, 2, 0.05)
+    # no per-edge override -> the gas config's model id on every edge
+    assert list(net.compile().edge_model) == [int(gas.model_id)] * 2
+
+
+def test_edge_model_per_edge_override_threads_and_fills_default():
+    # The per-edge model id is threaded verbatim (the frozen-vs-equilibrium split a flame needs);
+    # edges left unset fall back to the gas config's default model id.
+    gas = perfect_gas(R_AIR, GAMMA)
+    sentinel = int(gas.model_id) + 17  # a distinct id, to prove the override is carried through
+    net = Network(gas)
+    net.add(cat.mass_flow_inlet(5.0, 300.0))
+    net.add(cat.duct(0.5))
+    net.add(cat.pressure_outlet(101325.0))
+    net.connect(0, 1, 0.05, edge_model=sentinel)
+    net.connect(1, 2, 0.05)
+    assert list(net.compile().edge_model) == [sentinel, int(gas.model_id)]
+
+
+def test_format_states_tabulates_every_edge():
+    from fns.solver import format_states
+
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    net.add(cat.total_pressure_inlet(120000.0, 300.0))
+    net.add(cat.isentropic_area_change())
+    net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+    net.connect(0, 1, 0.10)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+
+    text = format_states(sol.problem, sol.x)
+    lines = text.splitlines()
+    # header + rule + one row per edge
+    assert len(lines) == 2 + sol.problem.n_edges
+    assert lines[0].split()[0] == "edge"
+    for field in ("mdot", "p_t", "area"):
+        assert field in lines[0]
+    # rows are indexed 0 .. n_edges-1 in order
+    assert [ln.split()[0] for ln in lines[2:]] == [str(e) for e in range(sol.problem.n_edges)]
+
+
+def test_print_states_subset_and_precision():
+    from fns.solver import format_states
+
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    net.add(cat.total_pressure_inlet(120000.0, 300.0))
+    net.add(cat.isentropic_area_change())
+    net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+    net.connect(0, 1, 0.10)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+
+    # an explicit edge subset, in the requested order, tabulates just those rows
+    text = format_states(sol.problem, sol.x, edges=[1])
+    body = text.splitlines()[2:]
+    assert len(body) == 1 and body[0].split()[0] == "1"
+
+    # precision controls the significant digits of the printed Mach number
+    coarse = format_states(sol.problem, sol.x, edges=[1], precision=2)
+    fine = format_states(sol.problem, sol.x, edges=[1], precision=8)
+    assert f"{sol.edge(1)['M']:.2g}" in coarse
+    assert f"{sol.edge(1)['M']:.8g}" in fine
+
+
+def test_edge_between_lookup():
+    net = Network(perfect_gas(R_AIR, GAMMA))
+    a = net.add(cat.mass_flow_inlet(5.0, 300.0))
+    b = net.add(cat.duct(0.5))
+    c = net.add(cat.pressure_outlet(101325.0))
+    e0 = net.connect(a, b, 0.05)
+    e1 = net.connect(b, c, 0.05)
+    # the returned edge ids are recoverable from the element pair
+    assert net.edge_between(a, b) == e0
+    assert net.edge_between(b, c) == e1
+    with pytest.raises(ValueError, match="no edge"):
+        net.edge_between(a, c)
+
+
+def test_edge_between_rejects_ambiguous_pair():
+    net = Network(perfect_gas(R_AIR, GAMMA))
+    a = net.add(cat.mass_flow_inlet(5.0, 300.0))
+    b = net.add(cat.duct(0.5))
+    net.connect(a, b, 0.05)
+    net.connect(a, b, 0.05)  # a second parallel edge between the same ordered pair
+    with pytest.raises(ValueError, match="multiple edges"):
+        net.edge_between(a, b)
+
+
+def test_set_dynamic_source_deferred_attach():
+    # Wire the network first, take the flame's reference edge from connect()'s return, then attach
+    # the dynamic source -- no edge index is guessed before the topology exists.
+    from fns.elements.dynamic_source import n_tau_flame
+
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1e5, T_ref=300.0, mdot_ref=0.006)
+    inlet = net.add(cat.mass_flow_inlet(0.006, 300.0))
+    cold = net.add(cat.duct(0.6))
+    flame = net.add(cat.heat_release_flame(0.006 * CP * 400.0))
+    hot = net.add(cat.duct(0.4))
+    outlet = net.add(cat.pressure_outlet(1e5))
+    net.connect(inlet, cold, 0.01)
+    ref = net.connect(cold, flame, 0.01)
+    net.connect(flame, hot, 0.01)
+    net.connect(hot, outlet, 0.01)
+
+    # before attaching, the flame carries no source
+    assert net.compile().node_dynamic_source[flame] is None
+
+    src = n_tau_flame(0.8, 4.0e-3, ref_edge=ref)
+    assert net.set_dynamic_source(flame, src) == flame  # returns the node, for chaining
+    prob = net.compile()
+    assert prob.node_dynamic_source[flame] is src
+    assert prob.node_dynamic_source[flame].terms[0].ref_edge == ref
+
+    # mean flow ignores the source, so it still converges
+    assert net.solve().converged
+
+
 def test_warm_restart_is_cheaper():
     net = Network(perfect_gas(R_AIR, GAMMA))
     net.add(cat.total_pressure_inlet(115000.0, 300.0))

@@ -11,7 +11,7 @@ from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
 from ..problem import CompiledProblem
 from ..solver import solve as _solve
-from ..solver.control import states_table, initial_guess
+from ..solver.control import states_table, initial_guess, print_states
 from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
 
 # ES for "edge state"
@@ -32,15 +32,20 @@ _EDGE_FIELDS = {
 class Network:
     """The main object for building and solving flow networks."""
 
-    def __init__(self, gas: Optional[ThermoConfig] = None, p_ref=101325.0, T_ref=300.0, mdot_ref=None):
+    def __init__(self, gas: Optional[ThermoConfig] = None, p_ref=101325.0, T_ref=300.0, mdot_ref=None, h_ref=None):
         self.gas = gas if gas is not None else perfect_gas()
         self.p_ref = p_ref
         self.T_ref = T_ref
         self._mdot_ref = mdot_ref
+        # Explicit absolute-enthalpy datum; if None, falls back to ``cp * T_ref`` (perfect-gas convention).
+        # Reacting closures need the gas's absolute-enthalpy reference here instead.
+        self._h_ref = h_ref
         self._elements: List[ElementSpec] = []
         self._edges: List[Tuple[int, int, float]] = []
         self._ports: List[Tuple[Optional[int], Optional[int]]] = []
         self._edge_names: List[str] = []
+        # Per-edge thermo-model override (None -> the gas config's model on that edge).
+        self._edge_models: List[Optional[int]] = []
         # Provenance metadata for the network (e.g. from the UI).
         self.provenance = None
 
@@ -51,22 +56,69 @@ class Network:
         self._elements.append(spec)
         return len(self._elements) - 1
 
-    def connect(self, tail: int, head: int, area: float, name: str = "", tail_port=None, head_port=None) -> int:
-        """Add a directed edge from element `tail` to element `head`.
+    def connect(
+        self, tail: int, head: int, area: float, name: str = "", tail_port=None, head_port=None, edge_model=None
+    ) -> int:
+        """Add a directed edge from element `tail` to element `head`, returning its edge id.
+
+        The returned integer is the edge index in the compiled problem -- capture it to wire a
+        dynamic source's ``ref_edge`` (e.g. the edge just upstream of a flame) without guessing.
 
         `tail_port`/`head_port` pin the local port indices at each endpoint; leave them `None` to let the
-        compiler auto-assign ports in attachment order.
+        compiler auto-assign ports in attachment order.  `edge_model` overrides the per-edge thermo-model id
+        (e.g. a frozen-unburnt vs. equilibrium-burnt split across a flame); leave `None` to use the gas
+        config's default model on this edge.
         """
         idx = len(self._edges)
         self._edges.append((tail, head, float(area)))
         self._ports.append((tail_port, head_port))
+        self._edge_models.append(None if edge_model is None else int(edge_model))
         # Edge name is optional, defaulting to "e<index>".
         self._edge_names.append(name or f"e{idx}")
         return idx
 
+    def edge_between(self, tail: int, head: int) -> int:
+        """Return the id of the directed edge from element `tail` to element `head`.
+
+        A convenience for recovering an edge index after assembly (e.g. to set a dynamic source's
+        ``ref_edge``) when the value returned by :meth:`connect` was not captured.  Raises if no such
+        edge exists, or if more than one connects the same ordered pair.
+        """
+        matches = [i for i, (t, h, _a) in enumerate(self._edges) if t == tail and h == head]
+        if not matches:
+            raise ValueError(f"no edge from element {tail} to element {head}")
+        if len(matches) > 1:
+            raise ValueError(f"multiple edges from element {tail} to element {head}: {matches}")
+        return matches[0]
+
+    def set_dynamic_source(self, node: int, source) -> int:
+        """Attach (or replace) the dynamic-source descriptor on an already-added element.
+
+        Lets the network be wired up first -- so a flame's ``ref_edge`` can be taken from the edge id
+        :meth:`connect` returns -- and the ``S(omega)`` source attached afterwards, rather than baking a
+        guessed edge index into the element at construction time.  The mean solve ignores the source; the
+        perturbation layer consumes it.
+
+        Parameters
+        ----------
+        node : int
+            Element index (as returned by :meth:`add`) to carry the source.
+        source : DynamicSource or None
+            The descriptor (e.g. from :func:`fns.elements.dynamic_source.n_tau_flame`); ``None`` clears it.
+
+        Returns
+        -------
+        int
+            The same ``node``, for chaining.
+        """
+        self._elements[node].dynamic_source = source
+        return node
+
     @property
     def h_ref(self) -> float:
-        """Reference enthalpy ``cp * T_ref``."""
+        """Reference enthalpy: the explicit datum if set, else ``cp * T_ref`` (perfect-gas convention)."""
+        if self._h_ref is not None:
+            return self._h_ref
         return self.gas.tf[0] * self.T_ref
 
     @property
@@ -87,8 +139,16 @@ class Network:
 
     # -- compile / solve ----------------------------------------------------------------------------------------------
 
+    def _resolve_edge_models(self):
+        """Return the per-edge thermo-model array, or ``None`` if every edge uses the gas default."""
+        if all(m is None for m in self._edge_models):
+            return None
+        default = int(self.gas.model_id)
+        return np.array([default if m is None else m for m in self._edge_models], dtype=np.int64)
+
     def compile(self) -> CompiledProblem:
         """Compile the elements and edges into an immutable ``CompiledProblem``."""
+        edge_models = self._resolve_edge_models()
         # If the ports are explicitly set, use the connectivity builder.
         explicit = self._edges and all(tp is not None and hp is not None for (tp, hp) in self._ports)
         if explicit:
@@ -96,9 +156,11 @@ class Network:
             conn = build_connectivity(len(self._elements), endpoints)
             area = np.array([a for (_t, _h, a) in self._edges], dtype=np.float64)
             return cat.build_problem_from_connectivity(
-                self.gas, self._elements, conn, area, self.mdot_ref, self.p_ref, self.h_ref
+                self.gas, self._elements, conn, area, self.mdot_ref, self.p_ref, self.h_ref, edge_models=edge_models
             )
-        return cat.build_problem(self.gas, self._elements, self._edges, self.mdot_ref, self.p_ref, self.h_ref)
+        return cat.build_problem(
+            self.gas, self._elements, self._edges, self.mdot_ref, self.p_ref, self.h_ref, edge_models=edge_models
+        )
 
     def solve(self, x0=None, **kw) -> "Solution":
         """Compile and solve the steady mean flow, returning a ``Solution``.
@@ -192,6 +254,22 @@ class Solution:
     def table(self) -> np.ndarray:
         """Return the per-edge state table (rows are fields, columns are edges)."""
         return states_table(self.problem, self.result.x)
+
+    def print_states(self, edges=None, precision: int = 5, file=None) -> None:
+        """Print the per-edge mean-flow state table to the screen.
+
+        Thin wrapper over :func:`fns.solver.control.print_states`; see it for the column layout.
+
+        Parameters
+        ----------
+        edges : sequence of int, optional
+            Edge indices to include, in the given order (default: every edge).
+        precision : int, optional
+            Number of significant digits printed per value (default 5).
+        file : file-like, optional
+            Destination stream forwarded to :func:`print` (default ``sys.stdout``).
+        """
+        print_states(self.problem, self.result.x, edges=edges, precision=precision, file=file)
 
     def edge(self, e: int) -> dict:
         """Return a ``{field: value}`` dict of all derived quantities on edge ``e``."""

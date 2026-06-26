@@ -43,6 +43,7 @@ import scipy.sparse.linalg as spla
 
 from .operator import build_acoustic_blocks, assemble_acoustic
 from .characteristics import dx_to_char, basis_block_from_state
+from .modeshape import build_geometry, reconstruct_field, VARIABLE_SPEC, NetworkGeometry
 from .terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (re-exported)
 from . import matrices as mat
 from ..solver.control import states_table
@@ -497,6 +498,7 @@ def perturbation_response(
         terminals=ctx.terminals,
         node_names=tuple(getattr(prob, "node_names", ()) or ()),
         cals=ctx.cals,
+        geometry=build_geometry(prob),
     )
 
 
@@ -516,6 +518,7 @@ class PerturbationResponse:
     terminals: Optional[List[Terminal]] = None  # all terminals (for the multiport matrix)
     node_names: tuple = ()  # per-node element label (for plot labels); empty -> id only
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
+    geometry: Optional[NetworkGeometry] = None  # topology + duct lengths for spatial reconstruction
 
     @property
     def n(self) -> int:
@@ -1064,6 +1067,101 @@ class PerturbationResponse:
         ``(f_b, g_a)`` ordering, so the two rows are swapped.
         """
         return mat.tm_fg_to_sm2(self.acoustic_transfer_matrix(a, b))[:, ::-1, :]
+
+    # -- spatial field reconstruction (mode-shape animation) ----------------
+
+    def field_along_network(self, freq, *, incoming=None, variable="p", root=None, n_x=160):
+        """Reconstruct the forced spatial field at one frequency along every root->leaf path.
+
+        Picks the stored frequency nearest ``freq`` and superposes the driven sources by
+        ``incoming``, then reconstructs the continuous perturbation field inside every duct
+        (theory.md s12.3); see :func:`fns.perturbation.modeshape.reconstruct_field`.
+
+        Parameters
+        ----------
+        freq : float
+            Target frequency (Hz); the nearest value in :attr:`freqs` is used.
+        incoming : array_like of complex, optional
+            One amplitude per driven source (column of :attr:`X`), in excitation order.
+            Default: unit amplitude on the first source, zero on the rest.
+        variable : str, optional
+            Plotted quantity (``"p"``, ``"u"``, ``"rho"``, ``"mdot"``, ``"f"``, ``"g"``,
+            ``"h"``); default ``"p"``.
+        root : int, optional
+            Developed-length origin element (default: a mean-flow inlet).
+        n_x : int, optional
+            Interior samples per duct (default 160).
+
+        Returns
+        -------
+        list of fns.perturbation.modeshape.PathField
+
+        Raises
+        ------
+        ValueError
+            If the result carries no geometry, or ``incoming`` has the wrong length.
+        """
+        if self.geometry is None:
+            raise ValueError("no network geometry stored; rebuild via perturbation_response() for spatial fields")
+        n_force = self.X.shape[1]
+        if incoming is None:
+            w = np.zeros(n_force, dtype=np.complex128)
+            w[0] = 1.0
+        else:
+            w = np.asarray(incoming, dtype=np.complex128)
+            if w.shape != (n_force,):
+                raise ValueError(f"incoming must give one amplitude per source ({n_force}); got {w.shape}")
+        fi = int(np.argmin(np.abs(self.freqs - float(freq))))
+        omega = 2.0 * np.pi * float(self.freqs[fi])
+        return reconstruct_field(
+            self.geometry,
+            lambda e: self._waves(e)[fi] @ w,
+            self.est,
+            self.K,
+            omega,
+            variable=variable,
+            root=root,
+            n_x=n_x,
+            cals=self.cals,
+        )
+
+    def animate_field(
+        self, freq, *, incoming=None, variable="p", root=None, n_x=160, n_frames=48, normalize=True, **layout
+    ):
+        """Animate the forced spatial field at one frequency over a phase cycle (slider + play).
+
+        Parameters
+        ----------
+        freq : float
+            Target frequency (Hz); the nearest value in :attr:`freqs` is used.
+        incoming : array_like of complex, optional
+            Per-source amplitudes (see :meth:`field_along_network`); default unit on the
+            first source.
+        variable : str, optional
+            Plotted quantity (see :meth:`field_along_network`); default ``"p"``.
+        root : int, optional
+            Developed-length origin element (default: a mean-flow inlet).
+        n_x, n_frames : int, optional
+            Interior samples per duct (default 160) and phase frames per cycle (default 48).
+        normalize : bool, optional
+            Scale the peak magnitude to 1 (default True).
+        **layout
+            Forwarded to ``Figure.update_layout``.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import animate_mode_shape as _animate
+
+        fi = int(np.argmin(np.abs(self.freqs - float(freq))))
+        used = float(self.freqs[fi])
+        fields = self.field_along_network(freq, incoming=incoming, variable=variable, root=root, n_x=n_x)
+        label = VARIABLE_SPEC[variable][2]
+        title = layout.pop("title", None) or f"Forced response: f = {used:.4g} Hz"
+        return _animate(
+            fields, var_label=label, title=title, n_frames=n_frames, normalize=normalize, freq_hz=used, **layout
+        )
 
 
 # -- back-compatibility aliases (pre-reframe names) -------------------------

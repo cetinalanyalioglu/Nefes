@@ -44,6 +44,7 @@ from .operator import build_acoustic_blocks, assemble_acoustic
 from .characteristics import edge_transforms, basis_block_from_state, edge_caloric
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
 from .terminals import find_terminals
+from .modeshape import build_geometry, reconstruct_field, VARIABLE_SPEC, NetworkGeometry
 from ..solver.control import states_table
 from ..derive import ES_C
 
@@ -526,6 +527,7 @@ def eigenmodes(
         contour=bound,
         node_names=tuple(getattr(prob, "node_names", ()) or ()),
         expected=expected,
+        geometry=build_geometry(prob),
     )
 
 
@@ -588,6 +590,8 @@ class EigenmodeResult:
     cals: Optional[list] = None
     # 1-port boundary terminals (terminals.find_terminals) for acoustic-power diagnostics
     terminals: Optional[list] = None
+    # topology + duct lengths for spatial mode-shape reconstruction (modeshape.build_geometry)
+    geometry: Optional[NetworkGeometry] = None
 
     def __len__(self) -> int:
         return int(self.omega.size)
@@ -843,6 +847,90 @@ class EigenmodeResult:
             f"Mode {i}: f = {self.freqs[i]:.4g} Hz, growth = {self.growth_rates[i]:.4g} 1/s"
         )
         return _plot(shape, labels=labels, title=title, **kwargs)
+
+    def field_along_network(self, i, *, variable="p", root=None, n_x=160):
+        """Reconstruct mode ``i``'s spatial field along every root->leaf path.
+
+        The continuous perturbation field *inside* every duct, recovered analytically
+        from the mode's face wave-amplitudes (theory.md s12.3); see
+        :func:`fns.perturbation.modeshape.reconstruct_field`.
+
+        Parameters
+        ----------
+        i : int
+            Mode index.
+        variable : str, optional
+            Plotted quantity (``"p"``, ``"u"``, ``"rho"``, ``"mdot"``, ``"f"``,
+            ``"g"``, ``"h"``); default ``"p"``.
+        root : int, optional
+            Developed-length origin element (default: a mean-flow inlet).
+        n_x : int, optional
+            Interior samples per duct (default 160).
+
+        Returns
+        -------
+        list of fns.perturbation.modeshape.PathField
+
+        Raises
+        ------
+        ValueError
+            If the result carries no geometry (constructed without a problem).
+        """
+        if self.geometry is None:
+            raise ValueError("no network geometry stored; rebuild via eigenmodes() to enable spatial reconstruction")
+        return reconstruct_field(
+            self.geometry,
+            lambda e: self.mode_waves(i, e),
+            self.est,
+            self.K,
+            complex(self.omega[i]),
+            variable=variable,
+            root=root,
+            n_x=n_x,
+            cals=self.cals,
+        )
+
+    def animate_mode(self, i, *, variable="p", root=None, n_x=160, n_frames=48, normalize=True, **layout):
+        """Animate mode ``i``'s spatial shape over one phase cycle (slider + play).
+
+        Draws the instantaneous physical perturbation ``Re{psi(x) e^{i theta}}`` along
+        the developed length, sweeping the phase ``theta`` with a play button, framed by
+        the static ``+/- |psi(x)|`` envelope.  A serial network is one trace; a branched
+        one shows one trace per root->leaf path, with compact elements marked where the
+        field jumps.
+
+        Parameters
+        ----------
+        i : int
+            Mode index.
+        variable : str, optional
+            Plotted quantity (see :meth:`field_along_network`); default ``"p"``.
+        root : int, optional
+            Developed-length origin element (default: a mean-flow inlet).
+        n_x : int, optional
+            Interior samples per duct (default 160).
+        n_frames : int, optional
+            Phase frames over one cycle (default 48).
+        normalize : bool, optional
+            Scale the peak magnitude to 1 (default True; eigenvectors are arbitrary scale).
+        **layout
+            Forwarded to ``Figure.update_layout``.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import animate_mode_shape as _animate
+
+        fields = self.field_along_network(i, variable=variable, root=root, n_x=n_x)
+        label = VARIABLE_SPEC[variable][2]
+        title = layout.pop("title", None) or (
+            f"Mode {i}: f = {self.freqs[i]:.4g} Hz, growth = {self.growth_rates[i]:.4g} 1/s"
+        )
+        return _animate(
+            fields, var_label=label, title=title, n_frames=n_frames, normalize=normalize,
+            freq_hz=float(self.freqs[i]), **layout,
+        )
 
     def boundary_power(self, i=0):
         """Acoustic-power budget across the boundaries for mode ``i``.

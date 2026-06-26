@@ -65,6 +65,7 @@ from .power import (
 from .drivers import modes_from_det, scattering_2port
 from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning
+from .modeshape import build_geometry, reconstruct_field, NetworkGeometry, PathField, DuctSegment
 from .nyquist import open_loop_response, nyquist_stability, NyquistResponse, NyquistWarning
 
 # perturbation-network primary names (thin aliases over the original spellings)
@@ -129,6 +130,12 @@ __all__ = [
     "eigenmodes",
     "EigenmodeResult",
     "EigenmodeWarning",
+    # spatial mode-shape reconstruction (analytic intra-duct field)
+    "build_geometry",
+    "reconstruct_field",
+    "NetworkGeometry",
+    "PathField",
+    "DuctSegment",
     "Contour",
     "ellipse_contour",
     "circle_contour",

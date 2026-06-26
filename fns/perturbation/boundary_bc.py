@@ -175,9 +175,9 @@ class PerturbationBC:
         for fam in self.driven:
             if fam not in DRIVABLE_FAMILIES:
                 raise ValueError(
-                    f"cannot drive wave family {fam!r}; the perturbation closure carries only "
-                    f"{DRIVABLE_FAMILIES} (reacting-scalar waves, named by prob.scalar_names, "
-                    "are not yet wired)"
+                    f"cannot drive wave family {fam!r}: only {DRIVABLE_FAMILIES} can be driven. Driving a "
+                    "reacting-scalar wave (named by prob.scalar_names) is not implemented yet -- compositional "
+                    "scattering is deferred; read the convected scalar response from ForcedResponse.waves() instead."
                 )
         if len(set(self.driven)) != len(self.driven):
             raise ValueError(f"duplicate family in driven={self.driven!r}")

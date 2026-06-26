@@ -30,7 +30,7 @@ import pytest
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import mass_flow_response, n_tau, n_tau_lowpass
 from fns.perturbation.boundary_bc import PerturbationBC
-from fns.perturbation import open_loop_response, forced_response
+from fns.perturbation import open_loop_response, forced_response, perturbation_response, excite_perturbation
 from fns.perturbation.stamps import build_source_stamps
 from fns.perturbation.characteristics import edge_caloric
 from fns.assemble import residual
@@ -184,6 +184,32 @@ def test_forced_response_surfaces_scalar_waves():
     # genuinely nonzero (the fuel pulse sheds a mixture-fraction wave) and acoustics untouched
     assert np.max(np.abs(fr.waves(E_INJ_OUT)[:, ns - 1])) > 1e-4
     assert np.allclose(fr.reflection_at(E_AIR), fr.waves(E_AIR)[:, 1] / fr.waves(E_AIR)[:, 0])
+
+
+def test_scalar_wave_driving_is_deferred():
+    """*Driving* a reacting-scalar wave is a deferred capability and must fail loudly.
+
+    Surfacing the convected scalar (above) is supported, but injecting one as an incoming wave
+    needs the compositional-scattering closure that is deferred -- so every entry point that
+    would reach it (the measurement driver and the boundary condition) raises rather than
+    silently dropping the request.  A genuine typo still raises the ordinary ``ValueError``.
+    """
+    prob = _rig()
+    x = _converged(prob)
+    assert prob.scalar_names  # reacting: there is a scalar family a user might try to drive
+    fuel = prob.scalar_names[-1]
+    freqs = np.array([200.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(NotImplementedError, match="reacting-scalar"):
+            perturbation_response(prob, x, freqs, excite=("acoustic", fuel))
+        with pytest.raises(NotImplementedError, match="reacting-scalar"):
+            excite_perturbation(prob, x, freqs, node=0, modes=("acoustic", fuel))
+        with pytest.raises(ValueError, match="unknown wave family"):
+            perturbation_response(prob, x, freqs, excite=("acoustic", "bogus"))
+    # the boundary-condition entry point rejects a scalar drive at construction
+    with pytest.raises(ValueError, match="not implemented yet"):
+        PerturbationBC.anechoic(driven=(fuel,))
 
 
 # --------------------------------------------------------------------------

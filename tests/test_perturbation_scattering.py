@@ -19,7 +19,6 @@ from fns.solver.control import states_table
 from fns.derive import ES_C, ES_U, ES_RHO, ES_AREA
 from fns.perturbation import (
     perturbation_response,
-    excite_perturbation,
     find_terminals,
     build_acoustic_blocks,
     assemble_acoustic,
@@ -461,29 +460,18 @@ def test_entropy_quiescent_rejected():
     assert perturbation_response(prob, res.x, FR).transfer_matrix(0, 1).shape == (OM.size, 2, 2)
 
 
-def test_reversed_duct_supported():
-    """A reversed-flow boundary is handled by reading genuine inlet/outlet from the mean flow.
+def test_mass_flow_inlet_rejects_reverse_flow():
+    """A mass-flow inlet is inflow-only: a negative (reversing/suction) mass rate is rejected.
 
-    A negative-mass-flow inlet runs the duct backward, so node 2 (geometric outlet) is the
-    genuine inlet.  The entropy seat and the duct entropy-phase row follow the flow, giving
-    correct physics: lossless acoustics and entropy convecting from the genuine inlet at the
-    mean speed ``|u|`` (phase ``exp(-i w L / |u|)``).
+    Reverse flow at a boundary is modelled by a ``pressure_outlet`` that ingests (backflow);
+    the genuine inlet/outlet read from the mean flow under reversal is still exercised by
+    :func:`test_branched_reversal_well_posed`.  A quiescent (``mdot = 0``) inlet stays valid.
     """
-    L = 1.0
-    net = [cat.mass_flow_inlet(-0.05, 300.0), cat.duct(L), cat.pressure_outlet(101325.0, 300.0)]
-    prob = cat.build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
-    res = solve(prob)
-    assert res.converged
-    u = float(states_table(prob, res.x)[ES_U, 0])
-    assert u < 0.0  # the duct runs backward
-    fr = np.linspace(20.0, 1500.0, 64)  # Hz
-    om = 2.0 * np.pi * fr  # angular, for the convection-phase check
-    r = perturbation_response(prob, res.x, fr, excite=FULL)
-    assert np.abs(r.multiport_scattering_matrix()).max() < 1.0 + 1e-6  # lossless
-    # entropy driven at the genuine inlet (node 2) convects to edge 0 at speed |u|
-    fld = excite_perturbation(prob, res.x, fr, node=2, modes=("entropy",))
-    ratio = fld.waves(0)[:, 2, 0] / fld.waves(1)[:, 2, 0]
-    assert np.allclose(ratio, np.exp(-1j * om * L / abs(u)), atol=1e-3)
+    with pytest.raises(ValueError, match="inflow boundary"):
+        cat.mass_flow_inlet(-0.05, 300.0)
+    # zero (quiescent) and positive (injecting) remain valid constructions
+    cat.mass_flow_inlet(0.0, 300.0)
+    cat.mass_flow_inlet(0.05, 300.0)
 
 
 def test_branched_reversal_well_posed():

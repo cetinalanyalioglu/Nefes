@@ -33,8 +33,7 @@
 
 ## Issues
 
-- [ ] Mass flow inlet should not allow reverse flow.
-
 ## Deferred
 
+- [ ] Perturbation parity for reacting scalars: the `xi'` waves aren't surfaced as families (e.g. in `ForcedResponse`) the way entropy is. Needs the 3-wave `(f,g,h)` characteristic layer generalized to N waves across characteristics/partition/stamps/closure/ForcedResponse/power.
 - [ ] Re-order algorithm - deferred because current solvers do not utilize this

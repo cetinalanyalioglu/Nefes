@@ -79,7 +79,18 @@ def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", pert
     equilibrium model -- e.g. air as ``{"O2": 0.21, "N2": 0.79}`` with
     ``basis="mole"`` -- resolved to the transported elemental ``Z`` and the feed
     enthalpy at ``Tt`` during ``build_problem``.
+
+    This is an **inflow boundary**: ``mdot`` must be non-negative (``>= 0``).  A
+    positive value injects the feed stream; ``mdot = 0`` is a quiescent (closed) inlet.
+    Reverse flow (a negative prescribed mass rate, i.e. suction out through the inlet)
+    is not permitted -- use a :func:`pressure_outlet`, which models ingestion/backflow,
+    for a boundary that may reverse.
     """
+    if float(mdot) < 0.0:
+        raise ValueError(
+            f"mass_flow_inlet is an inflow boundary; mdot must be >= 0 (got {mdot}). Reverse flow is not "
+            "permitted -- use a pressure_outlet (which models ingestion/backflow) for a reversing boundary."
+        )
     return ElementSpec(
         MASS_FLOW_INLET,
         [float(mdot), float(Tt)],
@@ -125,8 +136,8 @@ def mass_flow_outlet(mdot, name="outlet", perturbation_bc=None):
     :meth:`~fns.perturbation.boundary_bc.PerturbationBC.constant_mass_flow`).
 
     This is an **outflow-only** boundary: ``mdot`` must be positive and the element does
-    not model ingestion (use :func:`mass_flow_inlet`, which permits suction, for a
-    reversing boundary).
+    not model ingestion (use a :func:`pressure_outlet`, which models backflow, for a
+    boundary that may reverse).
 
     Parameters
     ----------
@@ -140,7 +151,7 @@ def mass_flow_outlet(mdot, name="outlet", perturbation_bc=None):
     if not float(mdot) > 0.0:
         raise ValueError(
             f"mass_flow_outlet is an outflow boundary; mdot must be > 0 (got {mdot}). "
-            "Use mass_flow_inlet (which permits suction) for an injecting/reversing boundary."
+            "Use a pressure_outlet (which models ingestion/backflow) for a reversing boundary."
         )
     return ElementSpec(MASS_FLOW_OUTLET, [float(mdot)], name, perturbation_bc=perturbation_bc)
 

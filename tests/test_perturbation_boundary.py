@@ -419,8 +419,74 @@ def test_bc_rejects_unknown_kind_and_family():
 # --------------------------------------------------------------------------
 
 
-def test_loader_parses_boundary_conditions_and_runs():
-    net = load_case(os.path.join(_EXAMPLES, "acoustic_terminations.yaml"))
+def _branched_terminations_case():
+    # reservoir --(feed)--> tee --(main)--> duct --> liner (impedance)
+    #                          \--(branch)--> duct --> wall (rigid; stagnant)
+    def node(nid, typ, **attrs):
+        return {"id": nid, "type": typ, "attributes": attrs}
+
+    def edge(eid, src, tgt, idx, area):
+        return {
+            "id": eid,
+            "source": src,
+            "target": tgt,
+            "sourceHandle": f"{src}-port-0",
+            "targetHandle": f"{tgt}-port-0",
+            "attributes": {"index": idx, "area": area},
+        }
+
+    return {
+        "version": "2.0.0",
+        "model": {
+            "id": "fns-flow-network",
+            "globalAttributes": {
+                "gasConstant": 287.0,
+                "heatCapacityRatio": 1.4,
+                "referencePressure": 101325.0,
+                "referenceTemperature": 300.0,
+                "referenceMassFlow": 5.0,
+            },
+            "nodes": [
+                node(
+                    "res",
+                    "TotalPressureInlet",
+                    index=0,
+                    label="reservoir",
+                    totalPressure=110000.0,
+                    totalTemperature=300.0,
+                    boundaryType="impedance",
+                    impedanceMagnitude=1.0,
+                    impedancePhase=0.0,
+                ),
+                node("tee", "JunctionStaticP", index=1, label="tee"),
+                node("main", "Duct", index=2, label="main-duct", length=0.60),
+                node(
+                    "liner",
+                    "PressureOutlet",
+                    index=3,
+                    label="liner",
+                    pressure=101325.0,
+                    backflowTotalTemperature=300.0,
+                    boundaryType="impedance",
+                    impedanceMagnitude=2.0,
+                    impedancePhase=0.0,
+                ),
+                node("branch", "Duct", index=4, label="branch-duct", length=0.25),
+                node("wend", "Wall", index=5, label="resonator-end", boundaryType="rigid"),
+            ],
+            "edges": [
+                edge("e0", "res", "tee", 0, 0.020),
+                edge("e1", "tee", "main", 1, 0.020),
+                edge("e2", "main", "liner", 2, 0.020),
+                edge("e3", "tee", "branch", 3, 0.010),
+                edge("e4", "branch", "wend", 4, 0.010),
+            ],
+        },
+    }
+
+
+def test_loader_parses_boundary_conditions_and_runs(tmp_path):
+    net = _load_case_dict(_branched_terminations_case(), tmp_path)
     kinds = {el.name: (None if el.perturbation_bc is None else el.perturbation_bc.kind) for el in net._elements}
     assert kinds["liner"] == "impedance"  # specific-impedance liner
     assert kinds["resonator-end"] == "hard_wall"  # rigid wall

@@ -248,23 +248,31 @@ def test_mass_source_feedback_on_node_rows():
     prob_s, xs = _mass_source_network(dynamic_source=ds, mdot_src=mdot_src, u_inj=u_inj)
     K = float(prob.tf[0]) / float(prob.tf[1])
     b0, b1 = build_acoustic_blocks(prob, x), build_acoustic_blocks(prob_s, xs)
-    assert not b1.flame_edges  # a mass source seats no flame edge
+    # the injected enthalpy modulates the outflow entropy row, so the outflow edge is an active source edge
+    (e_out,) = tuple(b1.flame_edges)
 
-    # the mass-source node rows are r0 (mass) and r0+1 (momentum)
+    # the feedback lands on the mass-source node rows r0 (mass) and r0+1 (momentum) plus the outflow
+    # energy transport row (the fuel pulse drags the convected total enthalpy at the outflow)
     n_src = 2
     r0 = int(prob.node_row_ptr[n_src])
+    tr0 = int(prob.transport_row0)
     D = (assemble_acoustic(0.0, b1) - assemble_acoustic(0.0, b0)).tocoo()
-    assert sorted(set(D.row.tolist())) == [r0, r0 + 1]
+    assert sorted(set(D.row.tolist())) == sorted([r0, r0 + 1, tr0 + e_out])
 
     est = states_table(prob, x)
     vec, ubar = _u_functional(est, ref, K)
     a0 = float(est[ES_AREA, int(prob.col_edge[int(prob.row_ptr[n_src])])])
     ns = int(prob.n_solve)
+    # outflow energy-row factor -mdot_src (h_t,src - h_t,out) / mdot_out, evaluated at the perturbed mean state
+    ests = states_table(prob_s, xs)
+    pb = int(prob_s.npar_fptr[n_src])
+    factor_e = -mdot_src * (float(prob_s.npar_f[pb + 2]) - float(xs[2, e_out])) / float(ests[ES_MDOT, e_out])
     Dcsr = D.tocsr()
     for v in range(3):
         coeff = n_gain * vec[v] / ubar
         assert Dcsr[r0, ns * ref + v] == pytest.approx(-mdot_src * coeff, rel=1e-8, abs=1e-12)
         assert Dcsr[r0 + 1, ns * ref + v] == pytest.approx(-mdot_src * u_inj / a0 * coeff, rel=1e-8, abs=1e-12)
+        assert Dcsr[tr0 + e_out, ns * ref + v] == pytest.approx(factor_e * coeff, rel=1e-8, abs=1e-12)
 
 
 # ==========================================================================

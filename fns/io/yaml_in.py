@@ -1,10 +1,4 @@
-"""Parse the node-graph UI export (YAML) into FNS connectivity.
-
-The UI export carries each node's integer ``index`` and each edge's
-``source``/``target`` node ids plus ``sourceHandle``/``targetHandle`` of the form
-``...-port-<k>``.  ``load_connectivity`` resolves these into the edge-endpoint
-table (CSC view), ordered by the edge's own ``index``.
-"""
+"""Parse the node-graph UI export (YAML) into FNS connectivity."""
 
 import re
 from typing import List, Tuple
@@ -63,27 +57,17 @@ _DEFERRED_TYPES = {"SupersonicInlet", "SupersonicOutlet"}
 def _parse_perturbation_bc(attrs: dict):
     """Build a ``PerturbationBC`` from a boundary node's UI acoustic attributes.
 
-    The UI exposes a deliberately small surface: a single ``boundaryType`` dropdown
-    selecting ``"inherit"`` (the element's natural closure -- its linearized mean
-    boundary row, e.g. ``mdot'=0`` for a mass-flow outlet or the compact choked-nozzle
-    reflection for a choked-nozzle outlet), ``"rigid"`` (an infinite impedance / hard
-    wall, ``u'=0``), ``"open"`` (an ideal pressure-release open end, ``p'=0``) or
-    ``"impedance"`` (a specific acoustic impedance given by ``impedanceMagnitude``
-    |Z|/rho c and ``impedancePhase`` in degrees).  Returns ``None`` for ``"inherit"`` or
-    when no ``boundaryType`` is present, so the element keeps its default closure
-    (``inherit`` for inlets/outlets; a hard wall for the wall element).  Richer closures
-    (reflection coefficients, excitation, mean-flow open end, frequency tables) are set
-    directly in Python via ``PerturbationBC``.
+    Maps the UI ``boundaryType`` dropdown: ``"rigid"`` -> hard wall, ``"open"`` -> open end, ``"impedance"`` ->
+    specific impedance from ``impedanceMagnitude`` (|Z|/rho c) and ``impedancePhase`` (degrees). Returns ``None``
+    for ``"inherit"`` or when ``boundaryType`` is absent, leaving the element's default closure.
     """
     from ..perturbation.boundary_bc import PerturbationBC
 
     btype = attrs.get("boundaryType")
     if btype == "inherit":
-        # the element's natural closure: its linearized mean boundary row (e.g. mdot' = 0 for
-        # a mass-flow outlet, the compact choked-nozzle reflection for a choked-nozzle outlet).
         return None
     if btype is None:
-        return None  # no acoustic field -> keep the element's default closure
+        return None
     if btype == "rigid":
         return PerturbationBC.hard_wall()
     if btype == "open":
@@ -96,6 +80,7 @@ def _parse_perturbation_bc(attrs: dict):
 
 
 def _port_of(handle: str) -> int:
+    """Extract the integer port ordinal from a UI handle of the form ``...-port-<k>``."""
     m = _PORT_RE.search(handle)
     if not m:
         raise ValueError(f"cannot parse port from handle {handle!r}")
@@ -133,6 +118,7 @@ def load_connectivity(path: str) -> Connectivity:
 
 
 def _build_ui_spec(node: dict):
+    """Build an ``ElementSpec`` from a UI node, attaching its name and perturbation BC if any."""
     ntype = node.get("type")
     attrs = node.get("attributes") or {}
     if ntype in _DEFERRED_TYPES:
@@ -145,24 +131,14 @@ def _build_ui_spec(node: dict):
     spec.name = str(attrs.get("label") or node.get("id") or ntype)
     if ntype in _BOUNDARY_TYPES:
         bc = _parse_perturbation_bc(attrs)
-        if bc is not None:  # else keep the factory default (None=inherit; Wall=hard wall)
+        if bc is not None:  # else keep the factory default
             spec.perturbation_bc = bc
     return spec
 
 
 def load_case(path: str):
-    """Load a UI-exported FNS case (``model.id == fns-flow-network``) into a ``Network``.
+    """Load a YAML file exported from the UI tool into a ``Network``."""
 
-    Reads the native YAML the FNetLibUI tool writes out: ``model.globalAttributes``
-    (gas + reference scales), ``model.nodes`` (element ``type`` + ``attributes``),
-    and ``model.edges`` (``source``/``target`` nodes, ``sourceHandle``/
-    ``targetHandle`` port ordinals, and ``attributes.area``).
-
-    Ports are preserved exactly: each edge's handle ordinals are kept, and each
-    element's incident ports are ordered by ordinal and densified to ``0..d-1``,
-    so port-0 conventions (loss reference area, junction/splitter reference port)
-    match the canvas.
-    """
     from ..shell import Network  # local import to avoid an import cycle
 
     with open(path, "r") as fh:
@@ -176,7 +152,9 @@ def load_case(path: str):
 
     g = dict(_GLOBAL_DEFAULTS)
     g.update({k: v for k, v in (model.get("globalAttributes") or {}).items() if v is not None})
+    # Create the ThermoConfig object
     gas = perfect_gas(R=float(g["gasConstant"]), gamma=float(g["heatCapacityRatio"]))
+    # Create the Network object
     net = Network(
         gas,
         p_ref=float(g["referencePressure"]),
@@ -189,7 +167,7 @@ def load_case(path: str):
     if not ui_nodes or not ui_edges:
         raise ValueError(f"{path}: the network has no nodes or no edges")
 
-    # Elements, ordered by the UI node index so fns indices match the canvas.
+    # Elements, ordered by the node index attribute. This is by default bandwidth optimized in the UI.
     nodes_sorted = sorted(ui_nodes, key=lambda n: int((n.get("attributes") or {}).get("index", 0)))
     id_to_index = {}
     for n in nodes_sorted:
@@ -221,6 +199,7 @@ def load_case(path: str):
         for local, (ei, side, _ord) in enumerate(sorted(lst, key=lambda x: x[2])):
             local_port[(ei, side)] = local
 
+    # Assemble topology from the parsed endpoints.
     for ei, s, t, area, name in parsed:
         net.connect(s, t, area, name=name, tail_port=local_port[(ei, "tail")], head_port=local_port[(ei, "head")])
 

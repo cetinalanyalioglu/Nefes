@@ -24,7 +24,7 @@
 ## To discuss
 
 - [ ] It could make sense to add a realistic frequency-dependent BC representing a open outlet or a reservoir, what would be the options here? What is available in the literature?
-- [ ] Is Marble-Candel BC frequency depentdent - if so why?
+- [ ] Is Marble-Candel BC frequency dependent - if so why?
 
 ## To test
 

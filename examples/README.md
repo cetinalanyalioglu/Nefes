@@ -4,11 +4,14 @@
   `fns-flow-network` model): reservoir → feed pipe → isentropic contraction →
   tailpipe → back-pressure outlet. The two ducts are inert in the mean flow but
   carry the wave phase used by the perturbation network.
-- **`acoustic_terminations.yaml`** — a UI case demonstrating the **perturbation
-  boundary conditions**: an acoustic **excitation** reservoir feeds a duct to an
-  **impedance** liner outlet, with a side branch closed by a **wall** (a
-  quarter-wave resonator with no mean flow). Load it, `solve()` the mean flow, then
-  sweep `fns.perturbation.boundary_response(sol.problem, sol.x, omegas)`.
+- **`perturbation_boundary_conditions.ipynb`** — exercises **every** named
+  `PerturbationBC` closure on a single driven duct, checking each against its analytic
+  value: the diagonal reflections (`hard_wall`, `open_end`, `mean_flow_open_end`,
+  `anechoic`, `reflection`, `impedance`/`impedance_polar`) read back as `g/f` at the
+  termination; the `excitation` source term `b` (with `base_R` and acoustic/entropy
+  `family`); the entropy→acoustic coupling `R_s` of the `choked_nozzle` /
+  `constant_mass_flow` outlets (indirect noise, vs Marble–Candel); and the default
+  `inherit`. All via `fns.perturbation.boundary_response`; Plotly, FNS theme.
 - **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
   **secondary-air / cooling** distribution), adapted from the preliminary-study
   prototype. Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`
@@ -162,19 +165,29 @@ Python-only):
 | `.reflection(R)` | prescribed `R` (constant, `(ω,values)` table, or callable) |
 | `.impedance(Z, specific=…)` / `.impedance_polar(mag, phase_deg)` | `R=(Z−ρc)/(Z+ρc)` |
 | `.excitation(amp, family=…)` | drive an incoming acoustic/entropy wave |
+| `.choked_nozzle()` / `.compact_nozzle()` | compact choked outlet, `g=Rf+R_s·h` (Marble–Candel) |
+| `.constant_mass_flow()` | outlet pinning `ṁ'=0`, `g=Rf+R_s·h` |
 
-The `Wall` element additionally blocks the **mean** flow (`ṁ=0` on its edge). To force
-the response, attach an excitation (a Python-only closure) and solve:
+See **`perturbation_boundary_conditions.ipynb`** for a worked demonstration of every
+closure checked against its analytic value. The `Wall` element additionally blocks the
+**mean** flow (`ṁ=0` on its edge). To force the response, attach an excitation (a
+Python-only closure) and solve:
 
 ```python
 import numpy as np
-from fns.io import load_case
+from fns.elements import catalog as cat
 from fns.perturbation import PerturbationBC, boundary_response
+from fns.solver import solve
+from fns.thermo.configure import perfect_gas
 
-net = load_case("examples/acoustic_terminations.yaml")
-net._elements[0].perturbation_bc = PerturbationBC.excitation(1.0)   # drive the reservoir
-sol = net.solve()
-fr = boundary_response(sol.problem, sol.x, np.linspace(50.0, 3000.0, 200))
+els = [
+    cat.total_pressure_inlet(108000.0, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)),  # drive
+    cat.duct(0.5),
+    cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.impedance_polar(2.0, 0.0)),
+]
+prob = cat.build_problem(perfect_gas(287.0, 1.4), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, 1004.5 * 300.0)
+res = solve(prob)
+fr = boundary_response(prob, res.x, np.linspace(50.0, 3000.0, 200))
 gamma_in = fr.reflection_at(0)   # input reflection g/f at the feed edge
 ```
 

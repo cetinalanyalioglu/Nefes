@@ -128,12 +128,32 @@ def _tex_text(s) -> str:
     return "".join(_TEX_ESCAPE.get(ch, ch) for ch in str(s))
 
 
-def _validate_excite(excite):
-    if "acoustic" not in excite:
-        raise ValueError("excite must include 'acoustic' (v1 always drives the acoustic waves)")
-    unknown = [f for f in excite if f not in _CHAR_OF_FAMILY]
+def _reject_unsupported_families(families, scalar_names=()):
+    """Reject any requested wave family the v1 driver cannot honor.
+
+    A name that is a transported reacting scalar (in ``scalar_names``) is a *deferred*
+    capability, so it raises :class:`NotImplementedError` -- driving a scalar wave needs the
+    compositional (scalar -> acoustic) scattering closure, which is not wired yet; read the
+    convected scalar response from :meth:`fns.perturbation.ForcedResponse.waves` instead.  Any
+    other unrecognized name is a typo and raises :class:`ValueError`.
+    """
+    scalars = tuple(scalar_names or ())
+    deferred = sorted({f for f in families if f in scalars})
+    if deferred:
+        raise NotImplementedError(
+            f"driving reacting-scalar wave families {deferred} is not implemented yet (compositional "
+            "scattering is deferred); only 'acoustic' and 'entropy' can be driven. Read the convected "
+            "scalar response from ForcedResponse.waves()/wave_labels instead."
+        )
+    unknown = sorted({f for f in families if f not in _CHAR_OF_FAMILY})
     if unknown:
         raise ValueError(f"unknown wave family/families {unknown}; choose from {sorted(_CHAR_OF_FAMILY)}")
+
+
+def _validate_excite(excite, scalar_names=()):
+    if "acoustic" not in excite:
+        raise ValueError("excite must include 'acoustic' (v1 always drives the acoustic waves)")
+    _reject_unsupported_families(excite, scalar_names)
 
 
 def _excited_char_indices(families):
@@ -244,12 +264,10 @@ def _build_excitation_context(prob, x_bar, freqs, forcing, *, eps, eps_fb, u_flo
     return _ExcitationContext(freqs, L, est, K, sel, all_terms, pres, lus, ns, n_col, float(u_floor), blocks.cals)
 
 
-def _validate_modes(modes):
+def _validate_modes(modes, scalar_names=()):
     if not modes:
         raise ValueError("modes must name at least one wave family")
-    unknown = [f for f in modes if f not in _CHAR_OF_FAMILY]
-    if unknown:
-        raise ValueError(f"unknown wave family/families {unknown}; choose from {sorted(_CHAR_OF_FAMILY)}")
+    _reject_unsupported_families(modes, scalar_names)
 
 
 def _driven_prescriptions(ctx: _ExcitationContext, node, modes) -> List[_Prescription]:
@@ -377,7 +395,7 @@ def excite_perturbation(
         entropy wave is requested at a terminal that carries no incoming entropy.
     """
     modes = tuple(modes)
-    _validate_modes(modes)
+    _validate_modes(modes, getattr(prob, "scalar_names", ()))
     ctx = _context or _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
     driven = _driven_prescriptions(ctx, node, modes)
     n_driven = len(driven)
@@ -444,7 +462,7 @@ def perturbation_response(
         requested with no inflow terminal to seat it.
     """
     excite = tuple(excite)
-    _validate_excite(excite)
+    _validate_excite(excite, getattr(prob, "scalar_names", ()))
     ctx = _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
 
     # One driven excitation per (terminal, family): all acoustic first, then the incoming

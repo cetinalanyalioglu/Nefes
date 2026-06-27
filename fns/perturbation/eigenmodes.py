@@ -79,6 +79,58 @@ _REFINE_GROWTH = 2
 _MAX_REFINE_ROUNDS = 3
 
 
+def build_operator(prob, x_bar, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
+    """Assemble the frozen perturbation operator ``A(omega)`` about a mean state.
+
+    The returned ``A_of`` is the *same* boundary-stamped operator that :func:`eigenmodes`
+    searches for singularities and :func:`fns.perturbation.forced_response` solves against a
+    forcing -- so any caller that needs ``A(omega)`` (a stability search, a Nyquist sweep, a
+    continuation/eigenvalue-trajectory tracker) shares one kernel, including the near-stagnant
+    entropy-wave decoupling baked in below.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        Compiled flow network (carries the terminal BCs in ``prob.node_bc``).
+    x_bar : ndarray
+        Converged mean-flow state, shape ``(n_solve, E)``.
+    eps, eps_fb, u_floor : float, optional
+        Operator-assembly regularizers forwarded to :func:`build_acoustic_blocks`.  ``u_floor``
+        is additionally raised to ``_ENTROPY_DECOUPLE_MACH * max(c)`` so the convected entropy
+        phase never overflows on a near-stagnant duct (exact for the acoustic spectrum).
+    isentropic : bool, optional
+        Pin the convected entropy wave to zero on every edge (acoustic-only), default False.
+
+    Returns
+    -------
+    A_of : callable
+        ``omega -> A(omega)``, the boundary-stamped sparse operator (angular frequency, rad/s).
+    blocks : AcousticBlocks
+        Frozen per-edge stamps (delays, sources, characteristic transforms).
+    est : ndarray
+        Frozen mean edge-state table.
+    K : float
+        ``cp / R`` of the mean gas.
+    cals : list
+        Per-edge caloric rows (reacting "network" flavor).
+    L : list of ndarray
+        Per-edge ``dx_to_char`` (3x3) maps at the mean state.
+    """
+    K = float(prob.tf[0]) / float(prob.tf[1])
+    est = states_table(prob, x_bar)
+    cals = edge_caloric(prob, x_bar)
+    _, L = edge_transforms(est, K, cals)
+    # decouple the entropy wave on near-stagnant ducts (tau_0 -> inf would overflow at
+    # complex omega); never affects the acoustic spectrum (theory.md s12.6).
+    u_floor = max(u_floor, _ENTROPY_DECOUPLE_MACH * float(np.max(est[ES_C])))
+    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
+
+    def A_of(omega):
+        return assemble_acoustic(omega, blocks, with_boundaries=True)
+
+    return A_of, blocks, est, K, cals, L
+
+
 def _max_tau(blocks) -> float:
     """Largest finite delay across the network: duct transit times + source FTF lags.
 
@@ -383,15 +435,10 @@ def eigenmodes(
     degeneracies therefore read as uncertified.  A large ``round_error`` or a mode on
     the region boundary likewise leaves the count ambiguous and is warned about.
     """
-    K = float(prob.tf[0]) / float(prob.tf[1])
-    est = states_table(prob, x_bar)
-    cals = edge_caloric(prob, x_bar)
-    _, L = edge_transforms(est, K, cals)
+    A_of, blocks, est, K, cals, L = build_operator(
+        prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic
+    )
     terminals = find_terminals(prob, x_bar)
-    # decouple the entropy wave on near-stagnant ducts (tau_0 -> inf would overflow at
-    # complex omega); never affects the acoustic spectrum (theory.md s12.6).
-    u_floor = max(u_floor, _ENTROPY_DECOUPLE_MACH * float(np.max(est[ES_C])))
-    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     n = int(blocks.J_alg.shape[0])
 
     if not blocks.duct_stamps and blocks.M.nnz == 0 and not blocks.has_sources:
@@ -419,9 +466,6 @@ def eigenmodes(
         raise ValueError("provide a freq_band (Hz) to search, or an explicit contour")
     else:
         subs, bound, n_probe, geom = _band_subcontours(freq_band, growth_band, n_nodes, blocks, n_probe)
-
-    def A_of(omega):
-        return assemble_acoustic(omega, blocks, with_boundaries=True)
 
     factorizer = _Factorizer(A_of)
 
@@ -728,7 +772,9 @@ class EigenmodeResult:
         body = []
         for i in np.argsort(self.freqs):
             unst = bool(self.unstable[i])
-            bg = "background:#fdecea;" if unst else ""
+            # Pin a dark foreground alongside the pink fill so the row stays legible on a
+            # dark notebook theme (a bare background would leave light theme-text on light pink).
+            bg = "background:#fdecea;color:#611a15;" if unst else ""
             tag = (
                 "<span style='color:#c0392b;font-weight:bold'>unstable</span>"
                 if unst
@@ -928,8 +974,13 @@ class EigenmodeResult:
             f"Mode {i}: f = {self.freqs[i]:.4g} Hz, growth = {self.growth_rates[i]:.4g} 1/s"
         )
         return _animate(
-            fields, var_label=label, title=title, n_frames=n_frames, normalize=normalize,
-            freq_hz=float(self.freqs[i]), **layout,
+            fields,
+            var_label=label,
+            title=title,
+            n_frames=n_frames,
+            normalize=normalize,
+            freq_hz=float(self.freqs[i]),
+            **layout,
         )
 
     def boundary_power(self, i=0):

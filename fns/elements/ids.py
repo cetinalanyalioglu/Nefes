@@ -35,6 +35,37 @@ KIND_MASS = 0
 KIND_PRESSURE = 1
 KIND_ENTHALPY = 2
 
+# Human-readable kind names, for per-equation residual reporting.
+KIND_NAMES = {KIND_MASS: "mass", KIND_PRESSURE: "pressure", KIND_ENTHALPY: "enthalpy"}
+
+
+def row_kind_tags(rid, deg):
+    """Equation-kind tag (``KIND_*``) for each band-1 residual row of an element.
+
+    The single source of truth for the per-row kinds; both the residual-row scaling
+    (:func:`fns.elements.catalog._row_kinds`) and the per-equation residual report
+    (:func:`fns.solver.control.residual_labels`) derive from it, so they cannot drift.
+
+    Parameters
+    ----------
+    rid : int
+        The element's ``residual_id``.
+    deg : int
+        The element's degree (its number of band-1 residual rows = its port count).
+
+    Returns
+    -------
+    list of int
+        One ``KIND_*`` tag per residual row, in row order.
+    """
+    if rid in (MASS_FLOW_INLET, WALL, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET):
+        return [KIND_MASS]  # single mass-flux row (WALL pins mdot = 0; outlets pin a mass-flux residual)
+    if rid in (PT_INLET, P_OUTLET):
+        return [KIND_PRESSURE]  # single absolute-pressure row
+    # interior element: a mass balance plus (deg - 1) pressure-coupling rows
+    return [KIND_MASS] + [KIND_PRESSURE] * (deg - 1)
+
+
 # Fixed n_ports for fixed-arity elements (None -> variable: junction/splitter).
 FIXED_NPORTS = {
     MASS_FLOW_INLET: 1,

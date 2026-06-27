@@ -332,6 +332,14 @@ class PerturbationField:
     node: int
     driven: list
 
+    def __repr__(self) -> str:
+        """One-line summary: driven node, the waves driven there, and the sweep extent."""
+        f = np.asarray(self.freqs, dtype=float)
+        n = f.size
+        span = "empty" if n == 0 else (f"f = {f[0]:.1f} Hz" if n == 1 else f"f in [{f.min():.1f}, {f.max():.1f}] Hz")
+        waves = ", ".join(f"{kind}:{char}" for kind, char in self.driven) or "none"
+        return f"PerturbationField: node {self.node} driving [{waves}], {n} frequenc{'y' if n == 1 else 'ies'} ({span})"
+
     def waves(self, edge):
         """Characteristic amplitudes ``(f, g, h)`` at ``edge`` for every driven wave.
 
@@ -529,6 +537,17 @@ class PerturbationResponse:
     def n_char(self) -> int:
         """Characteristic count per edge (3 for inert flow)."""
         return self.L[0].shape[0]
+
+    def __repr__(self) -> str:
+        """One-line summary: matrix dimension, forcing count, terminals driven, and sweep extent."""
+        f = np.asarray(self.freqs, dtype=float)
+        nf = f.size
+        span = "empty" if nf == 0 else (f"f = {f[0]:.1f} Hz" if nf == 1 else f"f in [{f.min():.1f}, {f.max():.1f}] Hz")
+        n_term = len(self.terminals) if self.terminals else len({t.node for t in self.forcing})
+        return (
+            f"PerturbationResponse: {self.n}x{self.n} matrices from {len(self.forcing)} forcing(s) "
+            f"on {n_term} terminal(s), {nf} frequenc{'y' if nf == 1 else 'ies'} ({span})"
+        )
 
     def _waves(self, edge):
         """Characteristic amplitudes (f, g, h) at ``edge`` for every (omega, case).

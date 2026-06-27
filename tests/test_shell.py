@@ -156,6 +156,175 @@ def test_print_states_subset_and_precision():
     assert f"{sol.edge(1)['M']:.8g}" in fine
 
 
+def _nozzle_solution():
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    net.add(cat.total_pressure_inlet(120000.0, 300.0))
+    net.add(cat.isentropic_area_change())
+    net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+    net.connect(0, 1, 0.10)
+    net.connect(1, 2, 0.05)
+    return net.solve()
+
+
+def test_format_residuals_labels_every_equation():
+    from fns.solver import format_residuals, residual_labels
+
+    sol = _nozzle_solution()
+    prob = sol.problem
+
+    # one label per residual row, in row order, and the table carries exactly that many rows
+    labels = residual_labels(prob)
+    assert len(labels) == prob.n_eq
+    # element (node) rows come first, then the per-edge h_t transport rows
+    assert labels[0].startswith("node 0")
+    assert labels[-1] == "edge 1 transport: h_t"
+
+    text = format_residuals(prob, sol.x, sort=False)
+    lines = text.splitlines()
+    # header + rule + one row per equation + the trailing ||R_hat|| summary
+    assert len(lines) == 2 + prob.n_eq + 1
+    assert lines[0].split() == ["row", "equation", "residual", "scaled"]
+    assert "IsentropicAreaChange: pressure" in text
+    # the summary line reports the same global norm the solver converged to
+    assert lines[-1].startswith("||R_hat|| =")
+    assert f"({prob.n_eq} equations)" in lines[-1]
+
+
+def test_residuals_dict_matches_global_norm():
+    sol = _nozzle_solution()
+    res = sol.residuals()
+    assert len(res) == sol.problem.n_eq
+    # the per-equation scaled residuals recompose the global convergence norm
+    norm = float(np.linalg.norm(list(res.values())))
+    assert norm == pytest.approx(sol.residual_norm, rel=1e-6, abs=1e-14)
+
+
+def test_format_residuals_sort_and_top():
+    from fns.solver import format_residuals, residual_breakdown
+
+    sol = _nozzle_solution()
+    _labels, _R, R_hat = residual_breakdown(sol.problem, sol.x)
+
+    # sorted + top=2 keeps only the two largest |scaled residual| equations, worst first
+    text = format_residuals(sol.problem, sol.x, sort=True, top=2)
+    body = text.splitlines()[2:-1]  # drop header, rule, and summary
+    assert len(body) == 2
+    shown = [int(line.split()[0]) for line in body]
+    expected = list(np.argsort(-np.abs(R_hat))[:2])
+    assert shown == expected
+
+
+def test_residuals_label_composition_scalars():
+    from fns.solver import residual_labels
+    from fns.thermo.configure import perfect_gas_passive_scalars
+
+    gas = perfect_gas_passive_scalars(2, names=["soot", "co2"])
+    net = Network(gas, p_ref=101325.0, T_ref=300.0)
+    net.add(cat.mass_flow_inlet(5.0, 300.0, composition=[0.3, 0.7]))
+    net.add(cat.duct(0.5))
+    net.add(cat.pressure_outlet(101325.0))
+    net.connect(0, 1, 0.05)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+
+    labels = residual_labels(sol.problem)
+    # transport rows carry the named scalars after the h_t rows, one per edge
+    assert "edge 0 transport: soot" in labels
+    assert "edge 1 transport: co2" in labels
+
+
+def test_residual_groups_partition_and_quadrature():
+    from fns.solver import residual_groups, residual_breakdown
+
+    sol = _nozzle_solution()
+    labels, ids = residual_groups(sol.problem)
+    # mass / pressure / energy are always present; no composition scalars here
+    assert labels == ["mass", "pressure", "energy"]
+    # every residual row is assigned to exactly one in-range group
+    assert ids.shape == (sol.problem.n_eq,)
+    assert ids.min() >= 0 and ids.max() < len(labels)
+
+    # the per-group 2-norms combine in quadrature to the global convergence norm
+    _lab, _R, R_hat = residual_breakdown(sol.problem, sol.x)
+    group_norms = [np.linalg.norm(R_hat[ids == g]) for g in range(len(labels))]
+    assert np.linalg.norm(group_norms) == pytest.approx(sol.residual_norm, rel=1e-6, abs=1e-14)
+
+
+def test_residual_groups_name_composition_columns():
+    from fns.solver import residual_groups
+    from fns.thermo.configure import perfect_gas_passive_scalars
+
+    gas = perfect_gas_passive_scalars(2, names=["CH4", "O2"])
+    net = Network(gas, p_ref=101325.0, T_ref=300.0)
+    net.add(cat.mass_flow_inlet(5.0, 300.0, composition=[0.05, 0.95]))
+    net.add(cat.duct(0.5))
+    net.add(cat.pressure_outlet(101325.0))
+    net.connect(0, 1, 0.05)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+
+    labels, _ids = residual_groups(sol.problem)
+    # the composition scalars become their own named columns after mass/pressure/energy
+    assert labels == ["mass", "pressure", "energy", "CH4", "O2"]
+
+
+def test_solve_verbose2_prints_grouped_table(capsys):
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    net.add(cat.total_pressure_inlet(120000.0, 300.0))
+    net.add(cat.isentropic_area_change())
+    net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+    net.connect(0, 1, 0.10)
+    net.connect(1, 2, 0.05)
+    net.solve(verbose=2)
+    out = capsys.readouterr().out
+    # the equation-kind header is printed (once per stage), not a per-iteration global norm
+    assert "mass" in out and "pressure" in out and "energy" in out
+    assert "total" in out  # the trailing gross-norm column (groups in quadrature)
+    assert "||R_hat||=" in out  # the gross-residual stage summary is still printed
+    # the header repeats per homotopy stage (3 stages); count its occurrences
+    assert out.count("it       mass") == 3
+    # the last per-iteration "total" of a stage equals that stage's gross ||R_hat||
+    lines = out.splitlines()
+    last_total = None
+    for ln in lines:
+        toks = ln.split()
+        if toks and toks[0].isdigit():
+            last_total = float(toks[-1])  # the trailing total column
+        elif ln.startswith("stab=") and last_total is not None:
+            gross = float(ln.split("||R_hat||=")[1].split(",")[0])
+            assert last_total == pytest.approx(gross, rel=1e-9, abs=1e-18)
+            last_total = None
+
+
+def test_solve_verbose1_is_gross_only(capsys):
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    net.add(cat.total_pressure_inlet(120000.0, 300.0))
+    net.add(cat.isentropic_area_change())
+    net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+    net.connect(0, 1, 0.10)
+    net.connect(1, 2, 0.05)
+    net.solve(verbose=1)
+    out = capsys.readouterr().out
+    # verbose=1 keeps the gross residual and emits no per-equation grouped table
+    assert "||R_hat||=" in out
+    assert "it       mass" not in out
+
+
+def test_solve_verbose_failure_dumps_per_equation(capsys):
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    net.add(cat.total_pressure_inlet(120000.0, 300.0))
+    net.add(cat.isentropic_area_change())
+    net.add(cat.pressure_outlet(101325.0, Tt_backflow=300.0))
+    net.connect(0, 1, 0.10)
+    net.connect(1, 2, 0.05)
+    # a 1-iteration cap forces non-convergence; verbose=1 dumps the worst equations
+    sol = net.solve(max_iter=1, verbose=1)
+    assert not sol.converged
+    out = capsys.readouterr().out
+    assert "did not converge" in out
+    assert "equation" in out
+
+
 def test_edge_between_lookup():
     net = Network(perfect_gas(R_AIR, GAMMA))
     a = net.add(cat.mass_flow_inlet(5.0, 300.0))
@@ -353,6 +522,54 @@ def test_load_multiport_showcase_conserves_mass():
 def test_deferred_supersonic_raises():
     with pytest.raises(ValueError, match="deferred"):
         load_case(os.path.join(SHOWCASE, "cd_nozzle_supersonic.yaml"))
+
+
+def test_network_repr_summarizes_topology_and_thermo():
+    from fns.elements.dynamic_source import n_tau_flame
+
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
+    inlet = net.add(cat.mass_flow_inlet(0.5, 300.0, name="air-in"))
+    duct = net.add(cat.duct(0.3, name="duct"))
+    flame = net.add(cat.heat_release_flame(2.0e4, name="flame"))
+    outlet = net.add(cat.pressure_outlet(101325.0, name="out"))
+    net.connect(inlet, duct, 0.01)
+    ref = net.connect(duct, flame, 0.01, name="pre-flame")
+    net.connect(flame, outlet, 0.01)
+    net.set_dynamic_source(flame, n_tau_flame(1.0, 3.0e-3, ref_edge=ref))
+
+    text = repr(net)
+    # size, thermo model and reference conditions
+    assert "4 elements, 3 edges" in text
+    assert "perfect gas" in text
+    assert "mdot=0.5 kg/s (auto)" in text
+    # element + edge listings with their names, and the dynamic-source marker on the flame
+    assert "air-in" in text and "HeatReleaseFlame *" in text
+    assert "duct -> flame" in text and "pre-flame" in text
+    assert "carries a dynamic S(omega) source" in text
+
+    html = net._repr_html_()
+    assert html.startswith("<div") and "<table" in html
+    assert "<b>Network</b>" in html and "air-in" in html
+
+
+def test_network_repr_handles_empty_and_truncates(recwarn):
+    # An edge-less network reports mdot as n/a and emits no numpy warning while probing it.
+    empty = repr(Network())
+    assert "0 elements, 0 edges" in empty and "mdot=n/a" in empty
+    assert len(recwarn) == 0
+
+    # Long listings are truncated past the per-table cap, with a "... (N more)" footer.
+    net = Network()
+    prev = net.add(cat.mass_flow_inlet(0.5, 300.0, name="in"))
+    for k in range(25):
+        nxt = net.add(cat.duct(0.1, name=f"duct{k}"))
+        net.connect(prev, nxt, 0.01)
+        prev = nxt
+    out = net.add(cat.pressure_outlet(101325.0, name="out"))
+    net.connect(prev, out, 0.01)
+    text = repr(net)
+    assert "27 elements, 26 edges" in text
+    assert "... (7 more)" in text and "... (6 more)" in text
 
 
 @pytest.mark.skipif(not os.path.exists(DEMO_YAML), reason="demonstrator YAML not present")

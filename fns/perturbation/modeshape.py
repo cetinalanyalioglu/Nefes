@@ -83,6 +83,14 @@ class NetworkGeometry:
         """``{node id: DuctSegment}`` for the length-bearing elements."""
         return {d.node: d for d in self.ducts}
 
+    def __repr__(self) -> str:
+        """One-line summary: node/edge/duct counts and the total developed length."""
+        total = sum(d.length for d in self.ducts)
+        return (
+            f"NetworkGeometry: {self.n_nodes} nodes, {self.n_edges} edges, "
+            f"{len(self.ducts)} duct{'' if len(self.ducts) == 1 else 's'} ({total:.4g} m total length)"
+        )
+
 
 def build_geometry(prob) -> NetworkGeometry:
     """Extract a :class:`NetworkGeometry` from a compiled problem.
@@ -136,6 +144,15 @@ class PathField:
     x: np.ndarray
     values: np.ndarray
     markers: List[Tuple[float, str]]
+
+    def __repr__(self) -> str:
+        """One-line summary: path name, sample/marker counts, and the developed-length span."""
+        x = np.asarray(self.x, dtype=float)
+        span = f"0 to {x.max():.4g} m" if x.size else "empty"
+        return (
+            f"PathField {self.name!r}: {x.size} samples over {span}, "
+            f"{len(self.markers)} marker{'' if len(self.markers) == 1 else 's'}"
+        )
 
 
 def _duct_chars(chars_tail, chars_head, c, u, omega, length, n_x):

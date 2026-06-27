@@ -7,6 +7,8 @@ the acoustic eigenmodes solve ``det A(omega) = 0``; for a closed-closed
 (rigid-rigid, R = +1) quiescent duct these are ``omega_n = n*pi*c/L``.
 """
 
+# CA: Do we need this file at all?
+
 from dataclasses import dataclass
 
 import numpy as np

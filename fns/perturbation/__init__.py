@@ -71,7 +71,8 @@ from .power import (
 )
 from .drivers import modes_from_det, scattering_2port
 from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
-from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning
+from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
+from .trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning
 from .modeshape import build_geometry, reconstruct_field, NetworkGeometry, PathField, DuctSegment
 from .nyquist import open_loop_response, nyquist_stability, NyquistResponse, NyquistWarning
 
@@ -144,6 +145,12 @@ __all__ = [
     "eigenmodes",
     "EigenmodeResult",
     "EigenmodeWarning",
+    "build_operator",
+    # eigenvalue trajectories (parameter continuation of the spectrum)
+    "eigenvalue_trajectory",
+    "TrajectoryResult",
+    "TrajectoryBranch",
+    "TrajectoryWarning",
     # spatial mode-shape reconstruction (analytic intra-duct field)
     "build_geometry",
     "reconstruct_field",

@@ -60,6 +60,12 @@ class AcousticBlocks:
     # cached fixed-pattern assemblers keyed by with_boundaries (lazy; see _build_plan)
     _plans: dict = field(default_factory=dict, repr=False, compare=False)
 
+    def __repr__(self) -> str:
+        """Concise operator summary: dimension, duct count, wave model, and any dynamic sources."""
+        kind = "isentropic (2-wave)" if self.isentropic else "full (3-wave)"
+        src = f", {len(self.source_stamps)} dynamic source(s)" if self.source_stamps else ""
+        return f"AcousticBlocks: operator dim {self.n}, {len(self.duct_stamps)} duct(s), {kind}{src}"
+
     @property
     def has_sources(self) -> bool:
         """Whether any dynamic-source ``S(omega)`` feedback is present."""

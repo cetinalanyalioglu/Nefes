@@ -5,6 +5,8 @@ Two of the three theory.md s12.7 analyses are provided for v1: ``modes_from_det`
 ``scattering_2port`` (a 2-port transfer/scattering helper used by the duct model).
 """
 
+# CA: Do we need this file at all?
+
 import numpy as np
 from scipy.optimize import minimize_scalar
 

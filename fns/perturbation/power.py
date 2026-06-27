@@ -202,6 +202,47 @@ class BoundaryPower:
         lines.append(f"{'NET':<16}{'':8}{'':7}{'':9}{'':9}{100.0 * self.net / self.gross:>8.1f}%   ({tag})")
         return "\n".join(lines)
 
+    def __repr__(self) -> str:
+        """Per-terminal acoustic-power budget table (see :meth:`table`)."""
+        flag = "" if self.sign_consistent else "   [sign-inconsistent: net vs growth disagree]"
+        return f"BoundaryPower ({len(self.entries)} terminals){flag}\n" + self.table()
+
+    def _repr_html_(self) -> str:
+        """Rich HTML budget table for notebooks: sources (red) and sinks (blue) by share."""
+        tag = "drives growth" if self.net > 0 else "net dissipative"
+        warn = "" if self.sign_consistent else " &nbsp;<b style='color:#c0392b'>sign-inconsistent</b>"
+        header = (
+            "<div style='font-family:sans-serif;margin-bottom:4px'>"
+            "<b>BoundaryPower</b> &nbsp;&middot;&nbsp; "
+            f"f = {self.freq_hz:.2f} Hz &nbsp;|&nbsp; growth = {self.growth_rate:+.3f} s<sup>-1</sup> "
+            f"&nbsp;|&nbsp; net {100.0 * self.net / self.gross:+.1f}% ({tag}){warn}</div>"
+        )
+        th = "style='text-align:right;padding:2px 8px;border-bottom:1px solid #ccc'"
+        thl = "style='text-align:left;padding:2px 8px;border-bottom:1px solid #ccc'"
+        head_row = (
+            f"<tr><th {thl}>boundary</th><th {thl}>kind</th><th {th}>M</th>"
+            f"<th {th}>|R|</th><th {th}>neutral |R|</th><th {th}>share</th></tr>"
+        )
+        td = "style='text-align:right;padding:2px 8px'"
+        tdl = "style='text-align:left;padding:2px 8px'"
+        body = []
+        for e in sorted(self.entries, key=lambda d: d["power_in"]):
+            color = "#d62728" if e["power_in"] > 0 else "#1f77b4"
+            body.append(
+                f"<tr><td {tdl}>{e['name']}</td><td {tdl}>{e['kind']}</td>"
+                f"<td {td}>{e['mach']:.3f}</td><td {td}>{e['reflection']:.3f}</td>"
+                f"<td {td}>{e['passive_bound']:.3f}</td>"
+                f"<td style='text-align:right;padding:2px 8px;color:{color}'>"
+                f"<b>{100.0 * e['fraction']:+.1f}%</b></td></tr>"
+            )
+        table = (
+            "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>"
+            + head_row
+            + "".join(body)
+            + "</table>"
+        )
+        return header + table
+
     def plot(self, **kwargs):
         """Horizontal bar chart of each terminal's signed power share.
 
@@ -519,6 +560,21 @@ class ForcedPowerBalance:
         """Budget closure ``generation + net_boundary_flux`` -- ``~0``; its size is the numerical dissipation."""
         return self.generation + self.net_boundary_flux
 
+    def __repr__(self) -> str:
+        """One-line sweep summary: frequency span and the worst budget-closure residual."""
+        f = np.asarray(self.freqs, dtype=float)
+        n = f.size
+        if n == 0:
+            return "ForcedPowerBalance (empty sweep)"
+        gross = float(np.max(np.abs(self.generation))) or 1.0
+        worst = float(np.max(np.abs(self.residual)))
+        span = f"f in [{f.min():.1f}, {f.max():.1f}] Hz" if n > 1 else f"f = {f[0]:.1f} Hz"
+        return (
+            f"ForcedPowerBalance: {n} frequenc{'y' if n == 1 else 'ies'}, {span}\n"
+            f"  max |generation| = {gross:.3g}, worst closure |residual| = {worst:.2g} "
+            f"({100.0 * worst / gross:.2g}% of generation)"
+        )
+
 
 def forced_power_balance(fr, prob, *, n_x: int = 120) -> ForcedPowerBalance:
     """Node-wise acoustic-energy budget of a forced frequency sweep.
@@ -603,6 +659,43 @@ class ModalEnergyBalance:
         """Whether the energy-derived and contour growth rates agree (to 1% of the modal scale)."""
         scale = max(abs(self.growth_rate), 2.0 * np.pi * abs(self.freq_hz), 1.0)
         return abs(self.growth_rate_energy - self.growth_rate) < 1e-2 * scale
+
+    def __repr__(self) -> str:
+        """Energy budget of the mode plus the two growth rates it must reconcile."""
+        ok = "agree" if self.consistent else "DISAGREE"
+        return (
+            f"ModalEnergyBalance: f = {self.freq_hz:.2f} Hz\n"
+            f"  generation     = {self.generation:+.4g}\n"
+            f"  boundary_flux  = {self.boundary_flux:+.4g}\n"
+            f"  stored_energy  = {self.stored_energy:.4g}\n"
+            f"  growth (contour) = {self.growth_rate:+.4g} 1/s\n"
+            f"  growth (energy)  = {self.growth_rate_energy:+.4g} 1/s   [{ok}]"
+        )
+
+    def _repr_html_(self) -> str:
+        """Rich HTML energy budget and growth-rate cross-check for notebooks."""
+        ok = self.consistent
+        verdict = (
+            "<span style='color:#2a8a4a'>agree</span>"
+            if ok
+            else "<span style='color:#c0392b;font-weight:bold'>disagree</span>"
+        )
+        td = "style='text-align:right;padding:2px 8px'"
+        tdl = "style='text-align:left;padding:2px 8px'"
+        rows = [
+            ("generation", f"{self.generation:+.4g}"),
+            ("boundary flux", f"{self.boundary_flux:+.4g}"),
+            ("stored energy", f"{self.stored_energy:.4g}"),
+            ("growth rate (contour)", f"{self.growth_rate:+.4g} s<sup>-1</sup>"),
+            ("growth rate (energy)", f"{self.growth_rate_energy:+.4g} s<sup>-1</sup>"),
+        ]
+        body = "".join(f"<tr><td {tdl}>{k}</td><td {td}>{v}</td></tr>" for k, v in rows)
+        return (
+            "<div style='font-family:sans-serif;margin-bottom:4px'>"
+            f"<b>ModalEnergyBalance</b> &nbsp;&middot;&nbsp; f = {self.freq_hz:.2f} Hz "
+            f"&nbsp;|&nbsp; growth rates {verdict}</div>"
+            "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>" + body + "</table>"
+        )
 
 
 def modal_energy_balance(result, mode: int = 0, *, n_x: int = 160) -> ModalEnergyBalance:

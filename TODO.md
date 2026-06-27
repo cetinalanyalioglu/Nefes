@@ -10,8 +10,9 @@
 - [ ] Dedicated sudden-contraction element resolving the vena-contracta state (composite: isentropic to vena contracta + Borda re-expansion) for exact loss and minimum static pressure at higher Mach. The current `sudden_area_change` `cc`-loss uses the incompressible 1/2 rho u^2 head, accurate only to O(M^2).
 - [ ] Extend acoustic-power diagnostics (`perturbation/power.py`): full-domain energy integral E (integrate the per-duct energy density along its length) to close `2 sigma E = net boundary power` *quantitatively* (now only sign-checked), plus a `boundary_power` for `ForcedResponse` (driven-case power balance) and an intensity-along-ducts field.
 - [ ] Nyquist driver: locate off-axis unstable-mode frequencies from the real-axis sweep (the `|D|` minima are onset/least-stable points, not the strongly-unstable mode frequencies); and a reliable `N(A0)` for the source-free passive operator so the encirclement count is absolute (not just `N(A)-N(A0)`) when the reacting/convective spectrum defeats the contour eigensolver.
-- [ ] Print residuals equation-by-equation instead of a global residual value.
 - [ ] Find a proper name for the parameter "stab" that reads well both in mathematical documentation and as a variable in the codebase. A greek letter can be considered here.
+- [ ] Visualize search contour and found eigenvalues in the complex plane
+- [ ] Helper to easily generate mixtures, e.g. specify fuel, oxidizer and desired equivalence ratio - obtain mole/mass fractions
 
 ## To verify
 
@@ -28,6 +29,8 @@
 - [ ] It could make sense to add a realistic frequency-dependent BC representing a open outlet or a reservoir, what would be the options here? What is available in the literature?
 - [ ] Is Marble-Candel BC frequency dependent - if so why?
 - [ ] Why do we need a "h_ref" in addition to "T_ref"?
+- [ ] Verify residual normalization approach, it could be better if we normalize with the total stored quantities within the domain.
+- [ ] We could make homotopy parameter dependent on the largest dP in the domain - for very small dP existing values seemed a bit high.
 
 ## To test
 

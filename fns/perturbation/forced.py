@@ -138,10 +138,20 @@ class ForcedResponse:
     X: np.ndarray  # (n_freq, n_col) nodal perturbation vectors
     L: List[np.ndarray]  # per-edge dx_to_char (3x3) at the mean state
     est: np.ndarray  # frozen mean edge-state table
-    K: float  # cp / R
+    K: float  # cp / R # CA: Why do we have cp/R here? There is no point.
     n_solve: int
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
     scalar_names: tuple = ()  # transported reacting scalars (feed-stream labels), in band-1 order
+
+    def __repr__(self) -> str:
+        """One-line summary: sweep extent, edge count, and the transported wave labels."""
+        f = np.asarray(self.freqs, dtype=float)
+        n = f.size
+        span = "empty" if n == 0 else (f"f = {f[0]:.1f} Hz" if n == 1 else f"f in [{f.min():.1f}, {f.max():.1f}] Hz")
+        return (
+            f"ForcedResponse: {n} frequenc{'y' if n == 1 else 'ies'} ({span}), "
+            f"{len(self.L)} edges, waves {self.wave_labels}"
+        )
 
     @property
     def _n_acoustic(self) -> int:

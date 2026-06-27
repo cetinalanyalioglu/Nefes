@@ -168,19 +168,24 @@ def test_verbose_level1_prints_one_line_per_stage(capsys):
     assert all(ln.startswith("stab=") and "converged=True" in ln for ln in lines)
 
 
+def _iter_rows(out):
+    """Per-iteration data rows of the verbose=2 group table (lead with the iter index)."""
+    return [ln for ln in out.splitlines() if ln.split() and ln.split()[0].isdigit()]
+
+
 def test_verbose_level2_prints_per_iteration(capsys):
     prob = _nozzle(120000.0, 300.0, 101325.0)
     solve(prob, verbose=2)
     out = capsys.readouterr().out
-    assert "||R_hat||=" in out
-    iter_lines = [ln for ln in out.splitlines() if ln.strip().startswith("it ")]
-    assert len(iter_lines) > 3  # more detail than the per-stage summary
+    assert "||R_hat||=" in out  # the gross-residual stage summary is still printed
+    assert "mass" in out and "pressure" in out and "energy" in out  # equation-kind header
+    assert len(_iter_rows(out)) > 3  # more detail than the per-stage summary
 
 
 def test_progress_interval_thins_iteration_prints(capsys):
     prob = _nozzle(120000.0, 300.0, 101325.0)
     solve(prob, verbose=2, progress_interval=1)
-    every = len([ln for ln in capsys.readouterr().out.splitlines() if ln.strip().startswith("it ")])
+    every = len(_iter_rows(capsys.readouterr().out))
     solve(prob, verbose=2, progress_interval=100)  # only iteration 0 of each stage
-    sparse = len([ln for ln in capsys.readouterr().out.splitlines() if ln.strip().startswith("it ")])
+    sparse = len(_iter_rows(capsys.readouterr().out))
     assert sparse < every

@@ -38,6 +38,14 @@ class Terminal:
     outgoing: int  # the reflected/transmitted acoustic wave index read here
     inflowing: bool  # True if the mean flow *enters* the domain here (carries entropy in)
 
+    def __repr__(self) -> str:
+        """Readable 1-port summary: node, edge/face, the wave injected vs read, and flow direction."""
+        face = "tail" if self.at_tail else "head"
+        inj = "f" if self.incoming == 0 else "g"
+        out = "f" if self.outgoing == 0 else "g"
+        flow = "inflow" if self.inflowing else "outflow"
+        return f"Terminal: node {self.node} on edge {self.edge} ({face}), inject {inj}' / read {out}', mean {flow}"
+
 
 def find_terminals(prob, x_bar=None) -> List[Terminal]:
     """All 1-port boundary terminals of the network (edges at a boundary node).

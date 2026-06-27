@@ -406,6 +406,54 @@ class NyquistResponse:
         """
         return float(np.min(np.abs(self.D)))
 
+    def _quiet_count(self) -> int:
+        """The unstable-mode count without raising the band-edge/parity warnings (for reprs)."""
+        return max(0, int(round(-self._winding / 2.0)))
+
+    def __repr__(self) -> str:
+        """Stability verdict, swept band, source rank, and the margin to the critical point."""
+        f = np.asarray(self.freqs, dtype=float)
+        band = f"f in [0, {f.max():.1f}] Hz" if f.size else "empty"
+        n = self._quiet_count()
+        verdict = "STABLE" if n == 0 else f"UNSTABLE ({n} mode{'' if n == 1 else 's'})"
+        caveat = "" if self.closed else "   [band edge not quiet: count is the tally up to f_max]"
+        srcs = ", ".join(self.source_labels) if self.source_labels else f"{self.rank} source(s)"
+        flavor = "isentropic (acoustic-only)" if self.isentropic else "entropy/composition included"
+        return (
+            f"NyquistResponse: {verdict}{caveat}\n"
+            f"  {band}, rank {self.rank} [{srcs}], {flavor}\n"
+            f"  stability margin min|D| = {self.margin:.3g}"
+        )
+
+    def _repr_html_(self) -> str:
+        """Rich HTML stability card for notebooks: verdict, band, rank, and margin."""
+        n = self._quiet_count()
+        if n == 0:
+            verdict = "<span style='color:#2a8a4a;font-weight:bold'>STABLE</span>"
+        else:
+            verdict = f"<span style='color:#c0392b;font-weight:bold'>UNSTABLE ({n} mode{'' if n == 1 else 's'})</span>"
+        f = np.asarray(self.freqs, dtype=float)
+        band = f"0 &ndash; {f.max():.1f} Hz" if f.size else "empty"
+        srcs = ", ".join(self.source_labels) if self.source_labels else f"{self.rank} source(s)"
+        flavor = "isentropic (acoustic-only)" if self.isentropic else "entropy/composition included"
+        caveat = (
+            ""
+            if self.closed
+            else "<div style='color:#c0392b;font-size:0.85em'>band edge not quiet: count is the tally up to f_max</div>"
+        )
+        td = "style='text-align:right;padding:2px 8px'"
+        tdl = "style='text-align:left;padding:2px 8px'"
+        rows = [
+            ("verdict", verdict),
+            ("swept band", band),
+            ("source rank", f"{self.rank} [{srcs}]"),
+            ("flavor", flavor),
+            ("margin min|D|", f"{self.margin:.3g}"),
+        ]
+        body = "".join(f"<tr><td {tdl}>{k}</td><td {td}>{v}</td></tr>" for k, v in rows)
+        table = "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>" + body + "</table>"
+        return "<div style='font-family:sans-serif;margin-bottom:4px'><b>NyquistResponse</b></div>" + table + caveat
+
     def crossings(self, tol=0.25):
         """Real frequencies where the locus skims the critical point (``|D| < tol``).
 

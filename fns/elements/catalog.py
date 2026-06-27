@@ -30,6 +30,9 @@ from .ids import (
     FIXED_NPORTS,
     ALLOWS_AREA_CHANGE,
     RESIDUAL_NAMES,
+    KIND_MASS,
+    KIND_PRESSURE,
+    row_kind_tags,
 )
 
 # Relative tolerance for the equal-area check on constant-area elements.
@@ -570,13 +573,9 @@ def _check_pressure_reference(elements: List[ElementSpec]) -> None:
 
 
 def _row_kinds(rid: int, deg: int, mdot_ref, p_ref):
-    """Residual-row scale magnitudes for one element."""
-    if rid in (MASS_FLOW_INLET, WALL, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET):
-        return [mdot_ref]  # WALL pins mdot = 0; the outlets pin a mass-flux residual
-    if rid in (PT_INLET, P_OUTLET):
-        return [p_ref]
-    # interior: mass balance + (deg-1) pressure rows
-    return [mdot_ref] + [p_ref] * (deg - 1)
+    """Residual-row scale magnitudes for one element (derived from its kind tags)."""
+    scale = {KIND_MASS: mdot_ref, KIND_PRESSURE: p_ref}
+    return [scale[tag] for tag in row_kind_tags(rid, deg)]
 
 
 def _onehot(k: int, n: int):

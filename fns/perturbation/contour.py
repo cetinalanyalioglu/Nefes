@@ -61,6 +61,15 @@ class Contour:
     rx: float
     ry: float
 
+    def __repr__(self) -> str:
+        """Concise summary: node count, ellipse center/semi-axes, and the frequency band covered."""
+        f_lo = (self.center.real - self.rx) / (2.0 * np.pi)
+        f_hi = (self.center.real + self.rx) / (2.0 * np.pi)
+        return (
+            f"Contour: {np.asarray(self.nodes).size} nodes, center {self.center:.4g} rad/s, "
+            f"semi-axes (rx={self.rx:.4g}, ry={self.ry:.4g}), f in [{f_lo:.1f}, {f_hi:.1f}] Hz"
+        )
+
     def inside(self, z, margin: float = 1.0) -> bool:
         """Whether ``z`` lies inside the contour's ellipse (scaled by ``margin``)."""
         d = z - self.center

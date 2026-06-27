@@ -14,11 +14,25 @@ from typing import List
 import numpy as np
 
 from ..assemble import residual, jacobian
-from ..elements.ids import MASS_FLOW_INLET, PT_INLET, MASS_SOURCE
+from ..elements.ids import (
+    MASS_FLOW_INLET,
+    PT_INLET,
+    MASS_SOURCE,
+    KIND_MASS,
+    KIND_PRESSURE,
+    KIND_NAMES,
+    RESIDUAL_NAMES,
+    row_kind_tags,
+)
 from ..thermo.api import EQ_KERNEL, PERFECT_GAS
 from .linear import newton_step, lm_step, scaled_system, col_scale
 
 EPS_FB = 1e-5
+
+
+def _stage_eps(mdot_ref, stab):
+    """Complementarity smoothing width for a homotopy stage (vanishes with ``stab``)."""
+    return max(0.3 * stab, 1e-4) * mdot_ref
 
 
 def flatten(x2d):
@@ -170,29 +184,73 @@ class SolveResult:
     residual_norm: float
     history: List[float] = field(default_factory=list)
 
+    def __repr__(self) -> str:
+        """One-line solver outcome: convergence, iteration count, residual, and state shape."""
+        status = "converged" if self.converged else "NOT converged"
+        shape = "x".join(str(s) for s in np.shape(self.x))
+        return (
+            f"SolveResult: {status} in {self.iterations} iteration(s), "
+            f"residual_norm = {self.residual_norm:.3e}, state ({shape})"
+        )
+
 
 @dataclass
 class _Reporter:
     """Newton-progress printer (see ``solve``'s ``verbose``/``progress_interval``).
 
-    ``level`` 0 is silent; 1 prints a one-line summary per homotopy stage; 2 also
-    prints the scaled residual norm every ``interval`` iterations within a stage.
+    ``level`` 0 is silent; 1 prints a one-line gross-residual summary per homotopy
+    stage; 2 additionally prints the scaled residual broken down by equation kind
+    (mass, pressure, energy, then each composition scalar) every ``interval``
+    iterations within a stage -- a column header once per stage, then the per-group
+    2-norms on each iteration line.
     """
 
     level: int = 0
     interval: int = 1
+    prob: object = None
+    _grp: tuple = None  # cached (labels, ids, header, widths) for the per-iteration group table
+    _IT_W: int = 4  # width of the leading iteration-index column
+
+    def _groups(self):
+        if self._grp is None:
+            labels, ids = residual_groups(self.prob)
+            header = labels + ["total"]  # trailing column: the gross ||R_hat|| (groups in quadrature)
+            widths = [max(len(lab), 9) for lab in header]  # 9 fits a "-1.234e-05" magnitude
+            self._grp = (labels, ids, header, widths)
+        return self._grp
+
+    def _row(self, first, cells, widths):
+        parts = [first.rjust(self._IT_W)] + [c.rjust(w) for c, w in zip(cells, widths)]
+        return "  " + "  ".join(parts)
 
     def stage_start(self, stab, eps):
         if self.level >= 2:
             print(f"[stab={stab:<5g} eps={eps:.2e}]")
+            _labels, _ids, header, widths = self._groups()
+            print(self._row("it", header, widths))
 
-    def iteration(self, it, norm):
-        if self.level >= 2 and (it % self.interval == 0):
-            print(f"  it {it:3d}   ||R_hat||={norm:.3e}")
+    def iteration(self, it, R):
+        if self.level < 2 or (it % self.interval != 0):
+            return
+        labels, ids, _header, widths = self._groups()
+        if R is None:
+            print(self._row(str(it), ["(non-physical)"], [len("(non-physical)")]))
+            return
+        R_hat = R / self.prob.res_scale
+        cells = [f"{float(np.linalg.norm(R_hat[ids == g])):.3e}" for g in range(len(labels))]
+        cells.append(f"{float(np.linalg.norm(R_hat)):.3e}")  # the gross norm (matches stage_end)
+        print(self._row(str(it), cells, widths))
 
     def stage_end(self, stab, it, norm, converged):
         if self.level >= 1:
             print(f"stab={stab:<5g} -> {it:3d} iters, ||R_hat||={norm:.3e}, converged={converged}")
+
+    def failure(self, prob, x2d, stab, top=10):
+        """Dump the worst-converged equations after a failed solve (verbose >= 1)."""
+        if self.level >= 1:
+            shown = min(top, prob.n_eq)
+            print(f"did not converge; {shown} largest residual(s) (equation-by-equation):")
+            print(format_residuals(prob, x2d, stab=stab, top=top))
 
 
 def _merit(prob, x2d, eps, stab, res_scale):
@@ -228,7 +286,7 @@ def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter=None):
     for it in range(max_iter):
         history.append(norm)
         if reporter is not None:
-            reporter.iteration(it, norm)
+            reporter.iteration(it, R)
         if norm < tol:
             return x2d, True, it, norm
         J = jacobian(prob, x2d, eps, EPS_FB, stab)
@@ -283,8 +341,9 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), v
         Vanishing-friction homotopy schedule, warm-started in order.
     verbose : int or bool, optional
         Progress verbosity.  ``0``/``False`` is silent; ``1``/``True`` prints a
-        one-line summary per homotopy stage; ``2`` additionally prints the scaled
-        residual norm every ``progress_interval`` iterations within each stage.
+        one-line gross-residual summary per homotopy stage; ``2`` additionally prints
+        the scaled residual broken down by equation kind (mass, pressure, energy, then
+        each composition scalar) every ``progress_interval`` iterations within a stage.
     progress_interval : int, optional
         Iteration stride for the per-iteration prints at ``verbose >= 2``.
 
@@ -301,18 +360,19 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), v
         x2d = auto_initial_guess(prob)
     else:
         x2d = initial_guess(prob)
-    reporter = _Reporter(level=int(verbose), interval=max(1, int(progress_interval)))
+    reporter = _Reporter(level=int(verbose), interval=max(1, int(progress_interval)), prob=prob)
     history: List[float] = []
     total_it = 0
     converged = False
     norm = np.inf
     for stab in stab_stages:
-        eps = max(0.3 * stab, 1e-4) * mdot_ref
+        eps = _stage_eps(mdot_ref, stab)
         reporter.stage_start(stab, eps)
         x2d, converged, it, norm = _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter)
         total_it += it
         reporter.stage_end(stab, it, norm, converged)
         if not converged and stab == 0.0:
+            reporter.failure(prob, x2d, stab)
             break
     return SolveResult(x=x2d, converged=converged, iterations=total_it, residual_norm=norm, history=history)
 
@@ -324,6 +384,38 @@ def states_table(prob, x2d):
     est = np.zeros((NS_EST, prob.n_edges))
     recover_all(prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, est)
     return est
+
+
+def _states_columns(prob, x2d, edges=None, precision=5):
+    """Shared column extraction for the state-table formatters.
+
+    Returns ``(headers, rows)`` where ``headers`` is the list of column titles
+    (``"edge"`` followed by ``"<label> [<unit>]"`` per quantity) and ``rows`` is a
+    list of pre-formatted string cells, one list per edge.
+    """
+    from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
+
+    # (label, est-row index, unit) in edge-state-table column order
+    cols = (
+        ("mdot", ES_MDOT, "kg/s"),
+        ("p", ES_P, "Pa"),
+        ("h_t", ES_HT, "J/kg"),
+        ("rho", ES_RHO, "kg/m^3"),
+        ("u", ES_U, "m/s"),
+        ("T", ES_T, "K"),
+        ("c", ES_C, "m/s"),
+        ("M", ES_M, "-"),
+        ("p_t", ES_PT, "Pa"),
+        ("area", ES_AREA, "m^2"),
+    )
+    est = states_table(prob, x2d)
+    if edges is None:
+        edges = range(prob.n_edges)
+    edges = [int(e) for e in edges]
+
+    headers = ["edge"] + [f"{label} [{unit}]" for label, _idx, unit in cols]
+    rows = [[str(e)] + [f"{est[idx, e]:.{precision}g}" for _label, idx, _unit in cols] for e in edges]
+    return headers, rows
 
 
 def format_states(prob, x2d, edges=None, precision=5):
@@ -348,28 +440,7 @@ def format_states(prob, x2d, edges=None, precision=5):
     str
         A newline-joined, column-aligned table ready to print.
     """
-    from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
-
-    # (label, est-row index, unit) in edge-state-table column order
-    cols = (
-        ("mdot", ES_MDOT, "kg/s"),
-        ("p", ES_P, "Pa"),
-        ("h_t", ES_HT, "J/kg"),
-        ("rho", ES_RHO, "kg/m^3"),
-        ("u", ES_U, "m/s"),
-        ("T", ES_T, "K"),
-        ("c", ES_C, "m/s"),
-        ("M", ES_M, "-"),
-        ("p_t", ES_PT, "Pa"),
-        ("area", ES_AREA, "m^2"),
-    )
-    est = states_table(prob, x2d)
-    if edges is None:
-        edges = range(prob.n_edges)
-    edges = [int(e) for e in edges]
-
-    headers = ["edge"] + [f"{label} [{unit}]" for label, _idx, unit in cols]
-    rows = [[str(e)] + [f"{est[idx, e]:.{precision}g}" for _label, idx, _unit in cols] for e in edges]
+    headers, rows = _states_columns(prob, x2d, edges=edges, precision=precision)
     widths = [max([len(headers[c])] + [len(r[c]) for r in rows]) for c in range(len(headers))]
 
     def _row(cells):
@@ -379,10 +450,230 @@ def format_states(prob, x2d, edges=None, precision=5):
     return "\n".join(lines)
 
 
+def format_states_html(prob, x2d, edges=None, precision=5):
+    """Return an HTML ``<table>`` of the recovered per-edge mean-flow states.
+
+    Same columns as :func:`format_states`, rendered as an HTML table for rich
+    display in notebook environments.  See :func:`format_states` for the parameters.
+
+    Returns
+    -------
+    str
+        An HTML ``<table>`` element ready to hand to :class:`IPython.display.HTML`.
+    """
+    from html import escape
+
+    headers, rows = _states_columns(prob, x2d, edges=edges, precision=precision)
+    th = "; ".join(["text-align:right", "padding:2px 10px", "border-bottom:1px solid currentColor"])
+    td = "; ".join(["text-align:right", "padding:2px 10px", "font-family:monospace"])
+    head = "".join(f"<th style='{th}'>{escape(h)}</th>" for h in headers)
+    body = "".join("<tr>" + "".join(f"<td style='{td}'>{escape(c)}</td>" for c in r) + "</tr>" for r in rows)
+    return f"<table style='border-collapse:collapse'><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def _in_notebook():
+    """Return ``True`` when running inside a Jupyter/IPython kernel that renders HTML.
+
+    Detects the ZMQ-based interactive shell used by Jupyter notebooks, JupyterLab and
+    qtconsole; a plain IPython terminal or a bare interpreter returns ``False``.
+    """
+    try:
+        from IPython import get_ipython
+
+        return get_ipython().__class__.__name__ == "ZMQInteractiveShell"
+    except Exception:
+        return False
+
+
 def print_states(prob, x2d, edges=None, precision=5, file=None):
     """Print the per-edge mean-flow state table to the screen.
 
     Thin wrapper over :func:`format_states`; see it for the column layout and parameters.
-    ``file`` is forwarded to :func:`print` (default ``sys.stdout``).
+    In a notebook (and when ``file`` is not given) the table is rendered as rich HTML via
+    :func:`format_states_html`; otherwise the fixed-width text table is forwarded to
+    :func:`print` (``file`` defaults to ``sys.stdout``).
     """
+    if file is None and _in_notebook():
+        from IPython.display import display, HTML
+
+        display(HTML(format_states_html(prob, x2d, edges=edges, precision=precision)))
+        return
     print(format_states(prob, x2d, edges=edges, precision=precision), file=file)
+
+
+def residual_labels(prob):
+    """Human-readable label for every residual equation, in row order.
+
+    The residual vector is laid out as the element (node) equations first -- each
+    element contributes its band-1 algebraic rows (a mass balance plus pressure
+    couplings for an interior element, or a single boundary row) -- followed by the
+    per-edge advected-scalar transport equations (total enthalpy ``h_t`` for every
+    edge, then each composition scalar for every edge).  This returns one label per
+    row so a residual vector can be read equation-by-equation.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem whose equation layout is described.
+
+    Returns
+    -------
+    list of str
+        ``prob.n_eq`` labels, in residual-row order.
+    """
+    names = prob.node_names or ()
+    scalars = prob.scalar_names or ()
+    nrp = prob.node_row_ptr
+    labels = []
+    for n in range(prob.n_nodes):
+        rid = int(prob.node_rid[n])
+        deg = int(nrp[n + 1] - nrp[n])
+        type_name = RESIDUAL_NAMES.get(rid, f"residual#{rid}")
+        label = names[n] if n < len(names) and names[n] else f"#{n}"
+        for tag in row_kind_tags(rid, deg):
+            labels.append(f"node {n} [{label}] {type_name}: {KIND_NAMES[tag]}")
+    E = prob.n_edges
+    for s in range(prob.n_solve - 2):
+        if s == 0:
+            field = "h_t"  # the s=0 transport row carries total enthalpy
+        elif (s - 1) < len(scalars) and scalars[s - 1]:
+            field = scalars[s - 1]
+        else:
+            field = f"scalar#{s - 1}"
+        for e in range(E):
+            labels.append(f"edge {e} transport: {field}")
+    return labels
+
+
+def residual_groups(prob):
+    """Group the residual rows by equation kind, for compact reporting.
+
+    The per-equation residual is coarsened into a handful of physically meaningful
+    groups: ``mass`` (every mass-balance / mass-flux row), ``pressure`` (every
+    pressure / absolute-pressure row), ``energy`` (the per-edge total-enthalpy
+    ``h_t`` transport rows), then one group per composition scalar (named by the
+    feed-stream / mixture-fraction labels).  Each group's scaled-residual 2-norm
+    combines in quadrature to the global convergence norm.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem whose equation layout is grouped.
+
+    Returns
+    -------
+    labels : list of str
+        One label per group, in group-index order.
+    ids : ndarray of int
+        Length ``n_eq``; the group index of each residual row.
+    """
+    group_of_kind = {KIND_MASS: 0, KIND_PRESSURE: 1}
+    nrp = prob.node_row_ptr
+    ids = np.empty(prob.n_eq, dtype=np.int64)
+    for n in range(prob.n_nodes):
+        rid = int(prob.node_rid[n])
+        r0 = int(nrp[n])
+        for j, tag in enumerate(row_kind_tags(rid, int(nrp[n + 1] - nrp[n]))):
+            ids[r0 + j] = group_of_kind[tag]
+    # advected-scalar transport rows: s=0 is the energy (h_t) group, s>=1 the scalars
+    E = prob.n_edges
+    base = prob.transport_row0
+    for s in range(prob.n_solve - 2):
+        ids[base + s * E : base + (s + 1) * E] = 2 + s
+    scalars = prob.scalar_names or ()
+    labels = ["mass", "pressure", "energy"]
+    for s in range(prob.n_solve - 3):  # one column per composition scalar
+        labels.append(scalars[s] if s < len(scalars) and scalars[s] else f"scalar#{s}")
+    return labels, ids
+
+
+def residual_breakdown(prob, x2d, stab=0.0, eps=None):
+    """Per-equation residual: ``(labels, R, R_hat)``.
+
+    ``R`` is the raw residual in physical units; ``R_hat = R / res_scale`` is the
+    nondimensional residual whose 2-norm the solver tests for convergence.  Together
+    with :func:`residual_labels` this resolves the single global residual norm into
+    its contribution from every equation.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem to evaluate.
+    x2d : ndarray
+        A converged (or trial) mean-flow state, shape ``(n_solve, n_edges)``.
+    stab : float, optional
+        Vanishing-friction homotopy parameter (default ``0.0``, the exact equations).
+    eps : float, optional
+        Complementarity smoothing width.  Defaults to the homotopy-stage width for
+        ``stab`` (``max(0.3*stab, 1e-4) * mdot_ref``), matching what the solver used.
+
+    Returns
+    -------
+    labels : list of str
+        Per-row equation labels (see :func:`residual_labels`).
+    R : ndarray
+        Raw residual, length ``n_eq``.
+    R_hat : ndarray
+        Scaled residual, length ``n_eq``.
+    """
+    if eps is None:
+        eps = _stage_eps(prob.var_scale[0], stab)
+    R = residual(prob, x2d, eps, EPS_FB, stab)
+    R_hat = R / prob.res_scale
+    return residual_labels(prob), R, R_hat
+
+
+def format_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precision=4):
+    """Return a fixed-width table of the residual, equation-by-equation.
+
+    One row per equation: its index, label, raw residual (physical units), and scaled
+    residual (the nondimensional value the convergence test sums).  A trailing summary
+    line reports the scaled residual 2-norm so the global figure is still available.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem to evaluate.
+    x2d : ndarray
+        A converged (or trial) mean-flow state, shape ``(n_solve, n_edges)``.
+    stab, eps : float, optional
+        Homotopy parameter and smoothing width; see :func:`residual_breakdown`.
+    sort : bool, optional
+        If ``True`` (default), order rows by descending ``|scaled residual|`` so the
+        worst-converged equations come first; otherwise keep natural row order.
+    top : int, optional
+        Show only the first ``top`` rows after ordering (default: all rows).
+    precision : int, optional
+        Significant digits printed per residual value (default 4).
+
+    Returns
+    -------
+    str
+        A newline-joined, column-aligned table ready to print.
+    """
+    labels, R, R_hat = residual_breakdown(prob, x2d, stab=stab, eps=eps)
+    order = np.argsort(-np.abs(R_hat)) if sort else np.arange(len(R_hat))
+    if top is not None:
+        order = order[: int(top)]
+
+    headers = ["row", "equation", "residual", "scaled"]
+    rows = [[str(int(i)), labels[i], f"{R[i]:.{precision}e}", f"{R_hat[i]:.{precision}e}"] for i in order]
+    widths = [max([len(headers[c])] + [len(r[c]) for r in rows]) for c in range(len(headers))]
+    # left-justify the text columns (row index, equation label), right-justify the numbers
+    just = (str.ljust, str.ljust, str.rjust, str.rjust)
+
+    def _row(cells):
+        return "  ".join(just[c](s, widths[c]) for c, s in enumerate(cells))
+
+    lines = [_row(headers), _row(["-" * w for w in widths])] + [_row(r) for r in rows]
+    lines.append(f"||R_hat|| = {float(np.linalg.norm(R_hat)):.{precision}e}  ({len(R_hat)} equations)")
+    return "\n".join(lines)
+
+
+def print_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precision=4, file=None):
+    """Print the residual broken down equation-by-equation.
+
+    Thin wrapper over :func:`format_residuals`; see it for the column layout and
+    parameters.  ``file`` is forwarded to :func:`print` (default ``sys.stdout``).
+    """
+    print(format_residuals(prob, x2d, stab=stab, eps=eps, sort=sort, top=top, precision=precision), file=file)

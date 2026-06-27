@@ -65,7 +65,7 @@ lower-half plane).
 import dataclasses
 import warnings
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import scipy.sparse.linalg as spla
@@ -567,3 +567,304 @@ class NyquistResponse:
             **layout,
         )
         return fig
+
+
+# ===================================================================================================
+# Parameter sweep: the Nyquist stability map (the entropy-regime analog of eigenvalue_trajectory)
+# ===================================================================================================
+#
+# The contour eigensolver tracks where the *modes* sit, so a parameter sweep of it
+# (:func:`fns.perturbation.eigenvalue_trajectory`) draws each eigenvalue's path in the complex
+# plane.  That breaks down once a convected entropy / composition wave is retained or the flame
+# response is a measured table -- the very regime this Nyquist driver was built for.  There the
+# right "trajectory" is not a mode path but the **stability verdict over the sweep**: how the
+# unstable-mode count, the margin to the critical point, and the onset (crossing) frequencies move
+# as one setup parameter is varied.  That is a bifurcation / stability-boundary diagram, and it is
+# obtainable wherever the real-frequency winding is -- including the entropy regime.
+
+
+@dataclass
+class NyquistStabilityMap:
+    """Nyquist stability verdict of a network over a one-parameter sweep.
+
+    The robust real-frequency analog of :class:`fns.perturbation.TrajectoryResult`: rather than
+    tracking eigenvalue *positions* (which needs an analytic flame model and an off-axis-stable
+    operator), it records, at each parameter value, the **integer unstable-mode count** (the
+    encirclement number), the **stability margin** ``min|D|``, and the **onset frequencies** where
+    the locus skims the critical point.  Stepping the count locates a stability boundary; the
+    margin collapsing to zero pins where (and the crossing pins at what frequency) a mode crosses
+    it.  Works in the entropy / composition / tabulated-FTF regime where the eigenvalue trajectory
+    cannot be drawn.
+
+    Attributes
+    ----------
+    params : ndarray
+        Swept parameter values, in march order, shape ``(k,)``.
+    param_name : str
+        Label for the swept parameter (for reprs / plots).
+    n_unstable : ndarray of int
+        Unstable-mode count in ``[0, max(freqs)]`` at each parameter value, shape ``(k,)``.
+    margin : ndarray
+        Stability margin ``min|D| = min|det(I - L)|`` at each value (0 at marginal), shape ``(k,)``.
+    closed : ndarray of bool
+        Whether the locus closed (band edge quiet, ``|D(f_max)| ~ 1``) at each value; where False
+        the count is a tally up to ``f_max`` rather than the converged total.
+    crossings : list of list of dict
+        Per parameter value, the near-critical crossings ``{"freq_hz", "abs_D"}`` -- the onset
+        frequencies (see :meth:`NyquistResponse.crossings`).
+    responses : list of NyquistResponse or None
+        The full per-step responses when ``store_responses=True`` (for the locus at any step),
+        else ``None``.
+    isentropic : bool
+        Whether the convected entropy/composition waves were dropped (pure-acoustic test).
+    """
+
+    params: np.ndarray
+    param_name: str
+    n_unstable: np.ndarray
+    margin: np.ndarray
+    closed: np.ndarray
+    crossings: list
+    responses: Optional[list] = None
+    isentropic: bool = False
+
+    @property
+    def onsets(self) -> List[tuple]:
+        """Bracketed parameter intervals where the unstable-mode count changes.
+
+        Each entry ``(p_lo, p_hi, delta)`` says the count stepped by ``delta`` (signed) between
+        consecutive samples ``p_lo`` and ``p_hi`` -- a stability boundary was crossed in that
+        interval.  Refine the sweep there (and read :attr:`crossings`) for the onset frequency.
+        """
+        out = []
+        n = self.n_unstable
+        for k in range(1, len(n)):
+            if int(n[k]) != int(n[k - 1]):
+                out.append((float(self.params[k - 1]), float(self.params[k]), int(n[k]) - int(n[k - 1])))
+        return out
+
+    @property
+    def all_closed(self) -> bool:
+        """Whether every swept point's locus closed (so every count is a converged total)."""
+        return bool(np.all(self.closed))
+
+    def __repr__(self) -> str:
+        p = np.asarray(self.params, dtype=float)
+        span = "empty" if p.size == 0 else f"{self.param_name} {p[0]:.4g} -> {p[-1]:.4g} ({p.size} steps)"
+        nmin, nmax = int(np.min(self.n_unstable)), int(np.max(self.n_unstable))
+        lines = [
+            f"NyquistStabilityMap: {span}",
+            f"  unstable modes: {nmin}..{nmax}; {len(self.onsets)} bifurcation(s)",
+            f"  margin min|D|: {float(np.min(self.margin)):.3g} .. {float(np.max(self.margin)):.3g}",
+        ]
+        for lo, hi, d in self.onsets:
+            lines.append(f"  bifurcation: n {d:+d} between {self.param_name} {lo:.4g} and {hi:.4g}")
+        if not self.all_closed:
+            lines.append("  [some sweeps' band edge not quiet: those counts are tallies up to f_max]")
+        return "\n".join(lines)
+
+    def _repr_html_(self) -> str:
+        p = np.asarray(self.params, dtype=float)
+        span = "empty" if p.size == 0 else f"{self.param_name}: {p[0]:.4g} &rarr; {p[-1]:.4g} ({p.size} steps)"
+        nmin, nmax = int(np.min(self.n_unstable)), int(np.max(self.n_unstable))
+        head = (
+            f"<b>NyquistStabilityMap</b> &mdash; unstable modes {nmin}&ndash;{nmax}, "
+            f"{len(self.onsets)} bifurcation(s)<br><span style='color:#52606d'>{span}</span>"
+        )
+        td = "style='text-align:right;padding:2px 8px'"
+        tdl = "style='text-align:left;padding:2px 8px'"
+        rows = [f"<tr><th {tdl}>bifurcation</th><th {tdl}>between</th></tr>"]
+        for lo, hi, d in self.onsets:
+            rows.append(f"<tr><td {td}>n {d:+d}</td><td {tdl}>{self.param_name} {lo:.4g} &rarr; {hi:.4g}</td></tr>")
+        if len(rows) == 1:
+            rows.append(f"<tr><td {tdl} colspan='2'>no count change over the sweep</td></tr>")
+        table = "<table style='border-collapse:collapse;font-size:0.9em'>" + "".join(rows) + "</table>"
+        caveat = (
+            ""
+            if self.all_closed
+            else (
+                "<div style='color:#c0392b;font-size:0.85em'>"
+                "some band edges not quiet: those counts are tallies up to f_max</div>"
+            )
+        )
+        return head + "<br>" + table + caveat
+
+    def plot(self, *, title=None, **layout):
+        """Stability map: unstable-mode count, margin, and onset frequencies versus the parameter.
+
+        Three stacked panels sharing the parameter axis: the integer unstable-mode count (a step
+        plot -- each step is a stability boundary), the margin ``min|D|`` (its dips mark the
+        boundaries), and the near-critical crossing frequencies (the onset frequencies, where a
+        mode reaches the real axis).
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        from ..plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
+
+        fig = make_subplots(
+            rows=3,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.06,
+            subplot_titles=("unstable modes", "stability margin  min|D|", "onset (crossing) frequencies [Hz]"),
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=self.params,
+                y=self.n_unstable,
+                mode="lines+markers",
+                line=dict(color=COLORWAY[0], width=2, shape="hv"),
+                marker=dict(size=5, color=COLORWAY[0]),
+                name="n_unstable",
+            ),
+            row=1,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=self.params,
+                y=self.margin,
+                mode="lines+markers",
+                line=dict(color=COLORWAY[1], width=2),
+                marker=dict(size=4, color=COLORWAY[1]),
+                name="min|D|",
+            ),
+            row=2,
+            col=1,
+        )
+        cx, cy, cs = [], [], []
+        for p, cl in zip(self.params, self.crossings):
+            for c in cl:
+                cx.append(p)
+                cy.append(c["freq_hz"])
+                cs.append(c["abs_D"])
+        if cx:
+            fig.add_trace(
+                go.Scatter(
+                    x=cx,
+                    y=cy,
+                    mode="markers",
+                    marker=dict(size=8, color=COLORWAY[3], symbol="x"),
+                    name="onset crossing",
+                    customdata=cs,
+                    hovertemplate=(
+                        f"{self.param_name} = %{{x:.4g}}<br>f = %{{y:.4g}} Hz"
+                        "<br>|D| = %{customdata:.3g}<extra></extra>"
+                    ),
+                ),
+                row=3,
+                col=1,
+            )
+        for lo, hi, _ in self.onsets:
+            fig.add_vline(x=0.5 * (lo + hi), line_dash="dot", line_color="#9aa5b1", line_width=1.2)
+        fig.update_yaxes(title_text="count", row=1, col=1)
+        fig.update_yaxes(title_text="min|D|", row=2, col=1)
+        fig.update_yaxes(title_text="f [Hz]", row=3, col=1)
+        fig.update_xaxes(title_text=self.param_name, row=3, col=1)
+        fig.update_layout(template=FNS_TEMPLATE_NAME, title=title or f"Nyquist stability map vs {self.param_name}")
+        fig.update_layout(**layout)
+        return fig
+
+
+def nyquist_stability_map(
+    build,
+    params,
+    freqs,
+    *,
+    isentropic=False,
+    eps=None,
+    eps_fb=1e-6,
+    u_floor=1e-8,
+    refine=True,
+    warm_start=True,
+    crossing_tol=0.25,
+    param_name="parameter",
+    store_responses=False,
+):
+    """Sweep one setup parameter and track the Nyquist stability verdict at each value.
+
+    The real-frequency, count-based companion to :func:`fns.perturbation.eigenvalue_trajectory`.
+    For each parameter value it solves the mean flow (warm-started from the previous step), runs
+    the Nyquist open-loop test (:func:`nyquist_stability`), and records the unstable-mode count,
+    the margin ``min|D|`` and the onset (crossing) frequencies.  The result is a bifurcation /
+    stability-boundary diagram that is valid in the entropy / composition / tabulated-FTF regime
+    where the eigenvalue trajectory cannot be drawn (and is a robust cross-check where it can).
+
+    Parameters
+    ----------
+    build : callable
+        ``build(p)`` returning the network at parameter value ``p`` -- an **unsolved**
+        :class:`fns.shell.Network` (solved here, warm-started when ``warm_start``) or an
+        already-solved solution (exposing ``.problem``, ``.x``, ``.converged``).  The network must
+        carry at least one dynamic source (a flame FTF / fluctuating injector) at every value.
+    params : array_like
+        Parameter values to sweep, in march order (e.g. ``np.linspace(1.0, 0.0, 41)``).
+    freqs : array_like
+        Real frequencies (Hz) for the open-loop sweep at each value; span ``~0`` to past the
+        highest acoustic mode so the locus closes (see :func:`open_loop_response`).
+    isentropic : bool, optional
+        Drop the convected entropy/composition waves (pure-acoustic test), default False.
+    eps, eps_fb, u_floor : float, optional
+        Operator-assembly regularizers forwarded to :func:`open_loop_response`.
+    refine : bool, optional
+        Adaptively refine each frequency locus so the winding is unambiguous (default True).
+    warm_start : bool, optional
+        Seed each mean-flow solve from the previous step's converged state (default True).
+    crossing_tol : float, optional
+        ``|D|`` threshold for recording an onset crossing (default 0.25).
+    param_name : str, optional
+        Label for the swept parameter, used in reprs and plots.
+    store_responses : bool, optional
+        Keep the full :class:`NyquistResponse` at every step (default False) for plotting an
+        individual locus; set True only if you need them (memory).
+
+    Returns
+    -------
+    NyquistStabilityMap
+        The count / margin / onset-frequency map over the sweep.
+
+    Raises
+    ------
+    ValueError
+        If fewer than two parameter values are given, or a built network carries no dynamic
+        source (use :func:`fns.perturbation.eigenvalue_trajectory` for a passive sweep).
+    """
+    from .trajectory import _solved_state  # lazy import: shared warm-start solve, avoids a cycle
+
+    params = np.asarray(params, dtype=float)
+    if params.size < 2:
+        raise ValueError("provide at least two parameter values to trace a stability map")
+
+    n_unstable = np.empty(params.size, dtype=int)
+    margin = np.empty(params.size, dtype=float)
+    closed = np.empty(params.size, dtype=bool)
+    crossings: list = []
+    responses: Optional[list] = [] if store_responses else None
+    x_warm = None
+    for k, p in enumerate(params):
+        prob, x = _solved_state(build(float(p)), x_warm, warm_start)
+        x_warm = x
+        resp = open_loop_response(
+            prob, x, freqs, isentropic=isentropic, eps=eps, eps_fb=eps_fb, u_floor=u_floor, refine=refine
+        )
+        n_unstable[k] = resp._quiet_count()
+        margin[k] = resp.margin
+        closed[k] = resp.closed
+        crossings.append([{"freq_hz": c["freq_hz"], "abs_D": c["abs_D"]} for c in resp.crossings(crossing_tol)])
+        if store_responses:
+            responses.append(resp)
+    return NyquistStabilityMap(
+        params=params,
+        param_name=param_name,
+        n_unstable=n_unstable,
+        margin=margin,
+        closed=closed,
+        crossings=crossings,
+        responses=responses,
+        isentropic=bool(isentropic),
+    )

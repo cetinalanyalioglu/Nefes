@@ -74,7 +74,14 @@ from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_cou
 from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
 from .trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning
 from .modeshape import build_geometry, reconstruct_field, NetworkGeometry, PathField, DuctSegment
-from .nyquist import open_loop_response, nyquist_stability, NyquistResponse, NyquistWarning
+from .nyquist import (
+    open_loop_response,
+    nyquist_stability,
+    nyquist_stability_map,
+    NyquistResponse,
+    NyquistStabilityMap,
+    NyquistWarning,
+)
 
 # perturbation-network primary names (thin aliases over the original spellings)
 build_blocks = build_acoustic_blocks
@@ -166,6 +173,8 @@ __all__ = [
     # Nyquist open-loop stability (real-frequency sweep; entropy/reacting regime)
     "open_loop_response",
     "nyquist_stability",
+    "nyquist_stability_map",
     "NyquistResponse",
+    "NyquistStabilityMap",
     "NyquistWarning",
 ]

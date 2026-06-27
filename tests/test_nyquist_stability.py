@@ -285,3 +285,84 @@ def test_nyquist_stability_wrapper_returns_response():
         r = nyquist_stability(prob, x, np.linspace(0.0, 1200.0, 900), isentropic=True)
     assert r.summary()["n_unstable"] == r.n_unstable
     assert r.rank == 1
+
+
+# --------------------------------------------------------------------------
+# Parameter sweep: the Nyquist stability map (bifurcation diagram)
+# --------------------------------------------------------------------------
+
+
+def _net_rijke(n, tau=3.0e-3):
+    """Unsolved near-stagnant Rijke *network* with an n-tau flame -- the public sweep interface."""
+    from fns.shell import Network
+    from fns.elements.dynamic_source import n_tau_flame
+
+    mdot, dT, area, L1, L2 = 0.001, 1000.0, 0.01, 0.25, 0.75
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1.0e5, T_ref=300.0)
+    inlet = net.add(cat.mass_flow_inlet(mdot, 300.0, perturbation_bc=PerturbationBC.open_end()))
+    cold = net.add(cat.duct(L1))
+    flame = net.add(cat.heat_release_flame(mdot * CP * dT))
+    hot = net.add(cat.duct(L2))
+    outlet = net.add(cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()))
+    net.connect(inlet, cold, area=area)
+    ref = net.connect(cold, flame, area=area)
+    net.connect(flame, hot, area=area)
+    net.connect(hot, outlet, area=area)
+    net.set_dynamic_source(flame, n_tau_flame(n, tau, ref_edge=ref))
+    return net
+
+
+def test_stability_map_detects_the_ita_bifurcation():
+    """Dialing the FTF gain to zero steps the unstable count down as the ITA mode restabilizes.
+
+    The count is the robust integer the contour eigensolver sprays artifacts around at mid-gain;
+    the step (3 -> 2) and the margin collapse pin the stability boundary and its onset frequency.
+    """
+    from fns.perturbation import nyquist_stability_map, NyquistStabilityMap
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mp = nyquist_stability_map(
+            build=_net_rijke,
+            params=np.linspace(1.0, 0.05, 25),
+            freqs=np.linspace(0.0, 1000.0, 801),
+            isentropic=True,
+            param_name="FTF gain n",
+        )
+    assert isinstance(mp, NyquistStabilityMap)
+    assert mp.n_unstable[0] == 3 and mp.n_unstable[-1] == 2  # the ITA mode leaves the unstable set
+    assert len(mp.onsets) == 1  # exactly one count change over the sweep
+    _, _, delta = mp.onsets[0]
+    assert delta == -1  # a single mode restabilizes
+    assert float(np.min(mp.margin)) < 0.05  # the margin collapses where the mode crosses
+    assert mp.all_closed  # every locus closed -> every count is a converged total
+
+
+def test_stability_map_accepts_presolved_and_rejects_sourceless():
+    """``build`` may return a solved solution; a network without a dynamic source is rejected."""
+    from fns.shell import Network
+    from fns.perturbation import nyquist_stability_map
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mp = nyquist_stability_map(
+            build=lambda n: _net_rijke(n).solve(),  # a Solution, not a Network
+            params=np.linspace(1.0, 0.7, 5),
+            freqs=np.linspace(0.0, 1000.0, 401),
+            isentropic=True,
+        )
+    assert mp.n_unstable.shape == (5,)
+
+    def sourceless(_p):
+        net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1.0e5, T_ref=300.0)
+        a = net.add(cat.mass_flow_inlet(0.005, 300.0, perturbation_bc=PerturbationBC.hard_wall()))
+        d = net.add(cat.duct(0.6))
+        b = net.add(cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()))
+        net.connect(a, d, area=0.01)
+        net.connect(d, b, area=0.01)
+        return net
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="dynamic source"):
+            nyquist_stability_map(build=sourceless, params=np.linspace(1.0, 0.5, 3), freqs=np.linspace(0.0, 600.0, 200))

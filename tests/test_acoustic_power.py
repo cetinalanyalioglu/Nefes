@@ -19,9 +19,11 @@ from fns.perturbation import (
     acoustic_energy_density,
     passive_reflection_bound,
     boundary_power,
+    acoustic_flux_spectrum,
+    compact_power_spectrum,
     duct_energy_spectrum,
-    boundary_power_spectrum,
     forced_power_balance,
+    modal_energy_balance,
     find_terminals,
 )
 from fns.perturbation.boundary_bc import PerturbationBC
@@ -176,10 +178,10 @@ def test_boundary_power_requires_terminals():
 # --------------------------------------------------------------------------
 
 
-def _driven_tube(n, tau):
-    """A driven-open-end Rijke tube: inlet -> duct -> n-tau flame -> duct -> open end."""
+def _driven_tube(n, tau, drive=True):
+    """A Rijke tube inlet -> duct -> n-tau flame -> duct -> open end (driven for forced sweeps)."""
     net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1.0e5, T_ref=300.0, mdot_ref=0.006)
-    bc = PerturbationBC.mean_flow_open_end(driven=("acoustic",))
+    bc = PerturbationBC.mean_flow_open_end(driven=("acoustic",) if drive else ())
     i_in = net.add(cat.mass_flow_inlet(0.006, 300.0))
     i_cold = net.add(cat.duct(0.6))
     i_flame = net.add(cat.heat_release_flame(0.006 * CP * 400.0))
@@ -210,29 +212,101 @@ def test_intensity_and_density_are_array_safe():
 
 
 def test_forced_power_balance_matches_its_components():
-    """The one-call balance equals its two building blocks, and stores non-negative energy."""
+    """The one-call balance equals its building blocks, and stores non-negative energy."""
     sol = _driven_tube(0.0, 0.0)
     freqs = np.linspace(60.0, 320.0, 80)
     fr = forced_response(sol.problem, sol.x, freqs, isentropic=True)
     bal = forced_power_balance(fr, sol.problem)
+    # energy is the duct integral; the interior generation is the flame node's flux jump
     energy = duct_energy_spectrum(fr, build_geometry(sol.problem).ducts)
-    power = boundary_power_spectrum(fr, find_terminals(sol.problem))
+    generation = compact_power_spectrum(fr, sol.problem, 2)  # node 2 is the flame
+
+    # net boundary flux is the signed face flux summed over the terminals
+    def _into_domain(t):
+        face = acoustic_flux_spectrum(fr, t.edge)
+        return face if t.at_tail else -face
+
+    total_flux = sum(_into_domain(t) for t in find_terminals(sol.problem))
     assert np.array_equal(bal.freqs, freqs)
     assert np.allclose(bal.energy, energy)
-    assert np.allclose(bal.net_power, power)
+    assert np.allclose(bal.generation, generation)
+    assert np.allclose(bal.net_boundary_flux, total_flux)
     assert np.all(bal.energy >= 0.0)
 
 
-def test_passive_absorbs_drive_while_active_tube_radiates():
-    """A passive tube only ever absorbs the drive; the active flame radiates net power near its mode.
+def test_generation_is_the_flame_flux_jump():
+    """The flame's produced power is the jump in acoustic flux across it -- what the balance sums."""
+    sol = _driven_tube(0.8, 4.0e-3)
+    freqs = np.linspace(80.0, 200.0, 60)
+    fr = forced_response(sol.problem, sol.x, freqs, isentropic=True)
+    flame = 2  # inlet, cold duct, FLAME, hot duct, outlet -> node 2
+    jump = acoustic_flux_spectrum(fr, 2) - acoustic_flux_spectrum(fr, 1)  # downstream(out) - upstream(in)
+    assert np.allclose(compact_power_spectrum(fr, sol.problem, flame), jump)
+    assert np.allclose(forced_power_balance(fr, sol.problem).generation, jump)
 
-    This is the energy fingerprint of self-excitation: with the flame inert the boundary power is into
-    the domain at every frequency (the resonator dissipates the injected wave), but the n-tau flame
-    sources acoustic energy near its unstable fundamental, so the domain radiates net power back out.
+
+def test_energy_budget_closes():
+    """generation + net_boundary_flux ~ 0: a steady forced state neither stores nor loses energy.
+
+    The reflecting ends carry essentially no net flux on their own, so whatever the flame exchanges
+    with the field must cross the (driven) open end -- the two terms are equal and opposite to within
+    the tiny numerical / mean-flow dissipation.
+    """
+    sol = _driven_tube(0.8, 4.0e-3)
+    freqs = np.linspace(80.0, 200.0, 150)
+    bal = forced_power_balance(forced_response(sol.problem, sol.x, freqs, isentropic=True), sol.problem)
+    assert np.abs(bal.residual).max() < 1e-6 * np.abs(bal.generation).max()
+
+
+def test_passive_flame_absorbs_while_active_flame_pumps():
+    """The energy fingerprint of self-excitation, read off the flame's acoustic power production.
+
+    The inert flame's mean density jump makes it a passive scatterer that only *absorbs* acoustic
+    power (the drive feeds energy in), whereas the n-tau flame *produces* acoustic power near its
+    unstable mode -- and since the real ends reflect, that excess can only leave through the driven
+    open end (net boundary flux turns negative, the mirror of the generation).
     """
     freqs = np.linspace(80.0, 200.0, 150)
     sol_p, sol_a = _driven_tube(0.0, 0.0), _driven_tube(0.8, 4.0e-3)
-    p_passive = forced_power_balance(forced_response(sol_p.problem, sol_p.x, freqs, isentropic=True), sol_p.problem)
-    p_active = forced_power_balance(forced_response(sol_a.problem, sol_a.x, freqs, isentropic=True), sol_a.problem)
-    assert p_passive.net_power.min() / np.abs(p_passive.net_power).max() > -1e-6
-    assert p_active.net_power.min() < 0.0
+    pas = forced_power_balance(forced_response(sol_p.problem, sol_p.x, freqs, isentropic=True), sol_p.problem)
+    act = forced_power_balance(forced_response(sol_a.problem, sol_a.x, freqs, isentropic=True), sol_a.problem)
+    # inert flame never produces acoustic power, and the passive boundaries only absorb (net flux in)
+    assert pas.generation.max() <= 1e-6 * np.abs(pas.generation).max()
+    assert pas.net_boundary_flux.min() >= -1e-6 * np.abs(pas.net_boundary_flux).max()
+    # active flame pumps the field near its mode, and that power radiates out the driven end
+    assert act.generation.max() > 0.0
+    assert act.net_boundary_flux.min() < 0.0
+
+
+def test_boundary_split_keeps_the_excitation_out_of_the_reflector_flux():
+    """The reflectors carry ~no net flux; the excitation source mirrors the flame generation."""
+    sol = _driven_tube(0.8, 4.0e-3)
+    freqs = np.linspace(80.0, 200.0, 150)
+    bal = forced_power_balance(forced_response(sol.problem, sol.x, freqs, isentropic=True), sol.problem)
+    gscale = np.abs(bal.generation).max()
+    # the (near) energy-neutral ends carry only their O(M) leak -- a few percent of the budget at most
+    assert np.abs(bal.boundary_reflection).max() < 5e-2 * gscale
+    # the drive sinks the flame's generation: boundary_source ~ -generation
+    assert np.allclose(bal.boundary_source, -bal.generation, atol=5e-2 * gscale)
+    # and the buckets reconstruct the total boundary flux exactly
+    assert np.allclose(bal.net_boundary_flux, bal.boundary_reflection + bal.boundary_source)
+
+
+def test_modal_energy_balance_recovers_growth_rate():
+    """The node-wise energy budget reproduces each eigenmode's growth rate (sign and value)."""
+    sol = _driven_tube(0.8, 4.0e-3, drive=False)  # eigenmodes use the passive (undriven) ends
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = eigenmodes(sol.problem, sol.x, freq_band=(40.0, 320.0), growth_band=(-200.0, 200.0), isentropic=True)
+    assert res.n_modes >= 1
+    for m in range(res.n_modes):
+        eb = res.energy_balance(m)
+        assert eb.consistent
+        assert eb.growth_rate_energy == pytest.approx(eb.growth_rate, rel=1e-3, abs=1e-2)
+        # an unstable mode is the flame's generation trapped by the (near-neutral) ends
+        if eb.growth_rate > 0.0:
+            assert eb.generation > 0.0
+
+    # the convenience function and the method agree
+    direct = modal_energy_balance(res, 0)
+    assert direct.growth_rate_energy == pytest.approx(res.energy_balance(0).growth_rate_energy)

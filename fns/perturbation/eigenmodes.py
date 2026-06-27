@@ -953,6 +953,26 @@ class EigenmodeResult:
 
         return _bp(self, i, terminals=self.terminals)
 
+    def energy_balance(self, i=0):
+        """Acoustic-energy budget and energy-derived growth rate of mode ``i``.
+
+        Forms the node-wise ledger (interior generation, boundary flux, stored duct energy) and
+        returns the growth rate it implies, ``(generation + boundary_flux) / (2 E)``, beside this
+        result's contour eigenvalue -- a cross-check on the eigensolver.
+
+        Parameters
+        ----------
+        i : int, optional
+            Mode index (default 0).
+
+        Returns
+        -------
+        fns.perturbation.power.ModalEnergyBalance
+        """
+        from .power import modal_energy_balance as _meb
+
+        return _meb(self, i)
+
     def plot_boundary_power(self, i=0, **kwargs):
         """Bar chart of each boundary's signed acoustic-power share for mode ``i``.
 

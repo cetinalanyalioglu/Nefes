@@ -27,6 +27,12 @@ pure ``f`` wave).  Two consequences drive these diagnostics:
   the **net boundary power and the growth rate share a sign**: :func:`boundary_power`
   attributes any instability to the boundaries that feed it.
 
+With interior sources (a flame), this generalizes to a **node-wise ledger**: the
+acoustic power produced at every node telescopes to the storage rate, so
+``2 sigma E = sum_interior Phi_n + boundary flux``.  That powers the forced-sweep
+budget (:func:`forced_power_balance`) and an energy-derived growth rate
+(:func:`modal_energy_balance`), every term a real time-averaged power.
+
 These are post-processing diagnostics on an already-converged complex mode shape,
 not residual math -- they use ``|.|^2`` freely and carry no complex-step
 constraint.
@@ -299,41 +305,63 @@ def boundary_power(result, mode: int = 0, terminals=None) -> BoundaryPower:
 
 
 # ---------------------------------------------------------------------------
-# Forced-sweep power balance (a real-frequency drive, not a single eigenmode)
+# Acoustic-energy budget (node-wise): one ledger for forced sweeps and eigenmodes
 # ---------------------------------------------------------------------------
+#
+# The time-averaged acoustic energy flux F_e = I_e * A_e lives on each edge.  At every
+# node the net flux it sends into the network is its *produced* power,
+#
+#     Phi_n = sum_{e at n} sigma_{n,e} F_e ,   sigma = +1 at the tail, -1 at the head,
+#
+# (a flame is a source, Phi > 0; a passive scatterer / loss a sink, Phi < 0; a lossless
+# duct conserves flux, Phi = 0).  Summing over all nodes telescopes to zero, which *is*
+# the energy balance once the storage carried by the (length-bearing) ducts is split out:
+#
+#     d E / d t  =  sum_interior Phi_n  +  boundary flux ,
+#
+# zero on average for a steady forced state, and 2*sigma*E for a free eigenmode -- so the
+# same ledger yields the growth rate, sigma = (generation + boundary flux) / (2 E).  Every
+# term is a real time-averaged power.  Forced sweeps (per real frequency) and eigenmodes
+# (per complex mode) share the helpers below, differing only in the field they read
+# (`fr.waves` vs `result.mode_waves`) and whether omega is real.
 
 
-def duct_energy_spectrum(fr, ducts, *, n_x: int = 120):
-    """Acoustic energy stored in the duct volumes at each forced frequency.
+def _edge_flux(waves, est, e):
+    """Downstream-positive acoustic energy flux ``F_e`` at one edge, shape ``(K,)``.
 
-    A :class:`~fns.perturbation.ForcedResponse` carries the wave amplitudes only at
-    the edge stations.  Inside each uniform duct the field is reconstructed in closed
-    form -- the duct's own phase relation, ``f`` riding downstream at ``u + c`` and
-    ``g`` upstream at ``c - u`` (theory.md s12.3) -- and the Myers energy density
-    (:func:`acoustic_energy_density`) is integrated along the length and over the
-    cross-section.
-
-    Parameters
-    ----------
-    fr : ForcedResponse
-        The solved forced field over a frequency sweep.
-    ducts : iterable of DuctSegment
-        The length-bearing duct segments (e.g. ``build_geometry(prob).ducts``); each
-        carries its two face edges and its length.
-    n_x : int, optional
-        Interior samples per duct for the spatial integral (default 120).
-
-    Returns
-    -------
-    ndarray
-        Stored acoustic energy at each frequency, shape ``(n_freq,)``, in mode-scale
-        units (the forcing amplitude sets the overall scale).
+    ``waves`` maps an edge to its ``(K, n_char)`` wave amplitudes (``K`` swept frequencies,
+    or 1 for a single mode); the rest is the Myers intensity times the edge area.
     """
-    est = fr.est
-    omega = 2.0 * np.pi * np.asarray(fr.freqs, dtype=float)
-    energy = np.zeros(omega.size)
+    e = int(e)
+    w = waves(e)
+    intensity = acoustic_intensity(float(est[ES_RHO, e]), float(est[ES_C, e]), float(est[ES_M, e]), w[:, 0], w[:, 1])
+    return intensity * float(est[ES_AREA, e])
+
+
+def _node_power(waves, est, tail, head, n_edges, node):
+    """Net acoustic power produced at ``node``: ``sum_e sigma_{n,e} F_e``, shape ``(K,)``."""
+    node = int(node)
+    power = 0.0
+    for e in range(int(n_edges)):
+        if int(tail[e]) == node:
+            power = power + _edge_flux(waves, est, e)  # downstream flux leaves the node here
+        elif int(head[e]) == node:
+            power = power - _edge_flux(waves, est, e)  # downstream flux enters the node here
+    return power
+
+
+def _stored_energy(waves, est, ducts, omega, n_x):
+    """Acoustic energy stored in the duct volumes, shape ``(K,)``; ``omega`` shape ``(K,)``.
+
+    The field is reconstructed inside each uniform duct from its face amplitudes -- ``f``
+    riding downstream at ``u + c``, ``g`` upstream at ``c - u`` (theory.md s12.3, a complex
+    ``omega`` capturing a mode's interior growth) -- and the Myers energy density
+    (:func:`acoustic_energy_density`) integrated along the length and cross-section.
+    """
+    omega = np.asarray(omega, dtype=np.complex128)
+    energy = np.zeros(omega.shape, dtype=float)
     for d in ducts:
-        e_t, e_h, length = d.e_tail, d.e_head, d.length
+        e_t, e_h, length = int(d.e_tail), int(d.e_head), float(d.length)
         # A duct is uniform, so its tail-face mean state holds along the whole length.
         rho = float(est[ES_RHO, e_t])
         c = float(est[ES_C, e_t])
@@ -341,104 +369,282 @@ def duct_energy_spectrum(fr, ducts, *, n_x: int = 120):
         mach = float(est[ES_M, e_t])
         area = float(est[ES_AREA, e_t])
         s = np.linspace(0.0, length, n_x)
-        # f propagates from the tail face, g from the head face; broadcast over (freq, station).
-        f = fr.waves(e_t)[:, 0][:, None] * np.exp(-1j * omega[:, None] * s[None, :] / (u + c))
-        g = fr.waves(e_h)[:, 1][:, None] * np.exp(-1j * omega[:, None] * (length - s)[None, :] / (c - u))
-        e_dens = acoustic_energy_density(rho, mach, f, g)
-        energy += _trapz(e_dens, s, axis=1) * area
+        f = waves(e_t)[:, 0][:, None] * np.exp(-1j * omega[:, None] * s[None, :] / (u + c))
+        g = waves(e_h)[:, 1][:, None] * np.exp(-1j * omega[:, None] * (length - s)[None, :] / (c - u))
+        energy = energy + _trapz(acoustic_energy_density(rho, mach, f, g), s, axis=1) * area
     return energy
 
 
-def boundary_power_spectrum(fr, terminals):
-    """Net acoustic power into the domain across all terminals, per forced frequency.
+def _interior_nodes(geo, terminals):
+    """Node ids that are neither length-bearing ducts nor 1-port terminals (the compact sources/sinks)."""
+    duct_nodes = {int(d.node) for d in geo.ducts}
+    term_nodes = {int(t.node) for t in terminals}
+    return [n for n in range(int(geo.n_nodes)) if n not in duct_nodes and n not in term_nodes]
 
-    The forced-sweep analogue of :func:`boundary_power`'s single-mode net: the Myers
-    acoustic intensity (:func:`acoustic_intensity`) through each terminal face, signed
-    positive *into* the domain and summed.  A positive value means the boundaries feed
-    net acoustic power to the drive; negative means they absorb it.
+
+def _boundary_split(waves, est, terminals, node_bc, freqs):
+    """Split the net boundary flux into a passive reflection part and an excitation source.
+
+    The wave returning into the domain at a terminal is ``g = R f_out + d`` -- the reflection of
+    the outgoing wave plus any imposed drive.  Scoring the boundary on the reflected wave alone
+    (``R f_out``) gives the *reflection* flux (``~0`` for an energy-neutral reflector); the rest of
+    the terminal's net flux is the *excitation source* ``d``.  An undriven terminal contributes its
+    whole flux to the reflection part (no source).
+
+    Returns ``(reflection, source)``, each shape ``(K,)`` and signed *into* the domain.
+    """
+    freqs = np.asarray(freqs, dtype=float)
+    reflection = np.zeros(freqs.size)
+    source = np.zeros(freqs.size)
+    for t in terminals:
+        e = int(t.edge)
+        rho, c = float(est[ES_RHO, e]), float(est[ES_C, e])
+        mach, area = float(est[ES_M, e]), float(est[ES_AREA, e])
+        sign = 1.0 if t.at_tail else -1.0
+        w = waves(e)
+        face_total = sign * acoustic_intensity(rho, c, mach, w[:, 0], w[:, 1]) * area
+        bc = node_bc[t.node] if node_bc is not None and t.node < len(node_bc) else None
+        if bc is not None and "acoustic" in getattr(bc, "driven", ()):
+            r = np.array([complex(bc.reflection_coefficient(f, rho, c, mach)) for f in freqs])
+            w_refl = w.copy()
+            w_refl[:, t.incoming] = r * w[:, t.outgoing]  # the return wave without the drive
+            face_refl = sign * acoustic_intensity(rho, c, mach, w_refl[:, 0], w_refl[:, 1]) * area
+            reflection = reflection + face_refl
+            source = source + (face_total - face_refl)
+        else:
+            reflection = reflection + face_total
+    return reflection, source
+
+
+# -- public per-quantity spectra (thin wrappers over the shared ledger) --------------------------------------------
+
+
+def acoustic_flux_spectrum(fr, edge):
+    """Downstream-positive time-averaged acoustic energy flux through ``edge``, per frequency.
+
+    The Myers intensity (:func:`acoustic_intensity`) across the edge face times the area.  At a
+    boundary edge it is the flux the terminal exchanges with the domain; the *jump* across a
+    compact element is that element's acoustic power production (:func:`compact_power_spectrum`).
+
+    Returns
+    -------
+    ndarray
+        Shape ``(n_freq,)``.
+    """
+    return _edge_flux(fr.waves, fr.est, edge)
+
+
+def compact_power_spectrum(fr, prob, node):
+    """Net acoustic power produced by a compact element, ``Phi_n``, per frequency.
+
+    The flux is conserved along a lossless duct, so the net flux a compact element injects is its
+    own acoustic power production -- the signed sum of its face fluxes (out on the tail side, in on
+    the head side).  An active flame gives ``> 0`` (it pumps the field); a passive scatterer ``< 0``.
+
+    Returns
+    -------
+    ndarray
+        Shape ``(n_freq,)``.
+    """
+    return _node_power(fr.waves, fr.est, prob.tail_node, prob.head_node, prob.n_edges, node)
+
+
+def duct_energy_spectrum(fr, ducts, *, n_x: int = 120):
+    """Acoustic energy stored in the duct volumes at each forced frequency.
 
     Parameters
     ----------
     fr : ForcedResponse
         The solved forced field over a frequency sweep.
-    terminals : iterable of Terminal
-        The boundary terminals (e.g. ``find_terminals(prob)``).
+    ducts : iterable of DuctSegment
+        The length-bearing duct segments (e.g. ``build_geometry(prob).ducts``).
+    n_x : int, optional
+        Interior samples per duct for the spatial integral (default 120).
 
     Returns
     -------
     ndarray
-        Net into-domain acoustic power at each frequency, shape ``(n_freq,)``.
+        Stored acoustic energy at each frequency, shape ``(n_freq,)`` (drive-scale units).
     """
-    est = fr.est
-    power = np.zeros(np.asarray(fr.freqs).size)
-    for t in terminals:
-        e = t.edge
-        rho = float(est[ES_RHO, e])
-        c = float(est[ES_C, e])
-        mach = float(est[ES_M, e])
-        area = float(est[ES_AREA, e])
-        w = fr.waves(e)
-        flux = acoustic_intensity(rho, c, mach, w[:, 0], w[:, 1]) * area
-        # At a tail terminal the incident f-wave enters here, so downstream-positive flux is
-        # power into the domain; at a head terminal the sign flips.
-        power = power + (flux if t.at_tail else -flux)
-    return power
+    return _stored_energy(fr.waves, fr.est, ducts, 2.0 * np.pi * np.asarray(fr.freqs, dtype=float), n_x)
+
+
+# -- forced sweep: the node-wise energy budget ---------------------------------------------------------------------
 
 
 @dataclass
 class ForcedPowerBalance:
-    """Energy stored in the ducts and net boundary power over a forced sweep.
+    """Node-wise acoustic-energy budget of a forced sweep, frequency by frequency.
 
-    Both are per-frequency traces in arbitrary (mode-scale) units fixed by the drive
-    amplitude, so read them by *shape*: the energy peaks locate the resonances, and
-    the sign of :attr:`net_power` says whether the domain absorbs the drive
-    (``> 0``, power into the domain) or radiates net acoustic power back out
-    (``< 0`` -- the fingerprint of an active, self-amplifying element).
+    In a steady forced state the stored energy is constant on average, so the budget closes::
+
+        generation + boundary_reflection + boundary_source  ~  0   ( = -dissipation ).
+
+    The three buckets are the net power produced by the interior elements (:attr:`generation`,
+    the flame's Rayleigh source ``> 0``), the flux through the boundary *reflectors*
+    (:attr:`boundary_reflection`, ``~0`` -- a rigid wall ``u'=0`` or open end ``p'=0`` carries no
+    net flux of its own), and the power injected by the boundary *excitation*
+    (:attr:`boundary_source`, the drive).  Keeping the excitation out of the reflector flux is the
+    point of the split: the reflectors stay near zero and the drive mirrors the generation.  All
+    terms are real time-averaged powers in arbitrary (drive-scale) units; read them by shape and
+    sign.
 
     Attributes
     ----------
     freqs : ndarray
-        Sweep frequencies [Hz], shape ``(n_freq,)``.
+        Sweep frequencies [Hz].
     energy : ndarray
-        Acoustic energy stored in the duct volumes at each frequency.
-    net_power : ndarray
-        Net acoustic power crossing all boundaries into the domain at each frequency.
+        Acoustic energy stored in the duct volumes.
+    generation : ndarray
+        Net acoustic power produced by the interior (compact) elements.
+    boundary_reflection : ndarray
+        Net flux through the boundary reflectors (excitation excluded).
+    boundary_source : ndarray
+        Net acoustic power injected by the boundary excitation.
     """
 
     freqs: np.ndarray
     energy: np.ndarray
-    net_power: np.ndarray
+    generation: np.ndarray
+    boundary_reflection: np.ndarray
+    boundary_source: np.ndarray
+
+    @property
+    def net_boundary_flux(self) -> np.ndarray:
+        """Total net flux into the domain across the boundaries, ``boundary_reflection + boundary_source``."""
+        return self.boundary_reflection + self.boundary_source
+
+    @property
+    def residual(self) -> np.ndarray:
+        """Budget closure ``generation + net_boundary_flux`` -- ``~0``; its size is the numerical dissipation."""
+        return self.generation + self.net_boundary_flux
 
 
 def forced_power_balance(fr, prob, *, n_x: int = 120) -> ForcedPowerBalance:
-    """Energy stored in the ducts and net boundary power, frequency by frequency.
+    """Node-wise acoustic-energy budget of a forced frequency sweep.
 
-    A one-call diagnostic for a forced frequency sweep: it reconstructs the intra-duct
-    field to integrate the stored acoustic energy (:func:`duct_energy_spectrum`) and
-    sums the Myers flux through the terminals (:func:`boundary_power_spectrum`).  The
-    energy trace locates the resonances; the boundary-power trace shows whether the
-    domain is absorbing the drive or feeding energy back out.
+    Assembles the ledger: the interior generation/sink (summed over the compact nodes), the
+    boundary flux split into its reflector and excitation parts, and the stored duct energy.  In a
+    steady forced state ``generation + boundary_reflection + boundary_source ~ 0``.
 
     Parameters
     ----------
     fr : ForcedResponse
         The solved forced field over a frequency sweep.
     prob : CompiledProblem
-        The compiled network ``fr`` was solved on; supplies the duct geometry and the
-        boundary terminals.
+        The compiled network ``fr`` was solved on (geometry, terminals, and terminal BCs).
     n_x : int, optional
         Interior samples per duct for the energy integral (default 120).
 
     Returns
     -------
     ForcedPowerBalance
-        The per-frequency stored-energy and net boundary-power traces.
     """
     from .modeshape import build_geometry
     from .terminals import find_terminals
 
     geo = build_geometry(prob)
     terms = find_terminals(prob)
-    energy = duct_energy_spectrum(fr, geo.ducts, n_x=n_x)
-    net_power = boundary_power_spectrum(fr, terms)
-    return ForcedPowerBalance(freqs=np.asarray(fr.freqs, dtype=float), energy=energy, net_power=net_power)
+    waves, est = fr.waves, fr.est
+    generation = np.zeros(np.asarray(fr.freqs).size)
+    for node in _interior_nodes(geo, terms):
+        generation = generation + _node_power(waves, est, geo.tail_node, geo.head_node, geo.n_edges, node)
+    reflection, source = _boundary_split(waves, est, terms, getattr(prob, "node_bc", None), fr.freqs)
+    energy = _stored_energy(waves, est, geo.ducts, 2.0 * np.pi * np.asarray(fr.freqs, dtype=float), n_x)
+    return ForcedPowerBalance(
+        freqs=np.asarray(fr.freqs, dtype=float),
+        energy=energy,
+        generation=generation,
+        boundary_reflection=reflection,
+        boundary_source=source,
+    )
+
+
+# -- eigenmode: the same ledger, yielding the growth rate ----------------------------------------------------------
+
+
+@dataclass
+class ModalEnergyBalance:
+    """Acoustic-energy budget of one eigenmode, and the growth rate it implies.
+
+    A free mode carries no excitation, so the budget is ``2 sigma E = generation + boundary_flux``
+    (energy-neutral ends make ``boundary_flux ~ 0``, so the growth is the trapped generation).
+    This gives an **energy-derived growth rate** independent of the contour eigenvalue,
+
+        growth_rate_energy = (generation + boundary_flux) / (2 * stored_energy),
+
+    which must match :attr:`growth_rate` -- a cross-check on the eigensolver, not a restatement.
+
+    Attributes
+    ----------
+    freq_hz : float
+        Modal frequency (Hz).
+    growth_rate : float
+        The contour eigenvalue's growth rate ``-Im(omega)`` (1/s).
+    growth_rate_energy : float
+        The growth rate from the energy budget, ``(generation + boundary_flux) / (2 E)`` (1/s).
+    generation : float
+        Net acoustic power produced by the interior elements (mode-scale units).
+    boundary_flux : float
+        Net acoustic energy flux into the domain across the boundaries (mode-scale units).
+    stored_energy : float
+        Total acoustic energy stored in the ducts (mode-scale units).
+    """
+
+    freq_hz: float
+    growth_rate: float
+    growth_rate_energy: float
+    generation: float
+    boundary_flux: float
+    stored_energy: float
+
+    @property
+    def consistent(self) -> bool:
+        """Whether the energy-derived and contour growth rates agree (to 1% of the modal scale)."""
+        scale = max(abs(self.growth_rate), 2.0 * np.pi * abs(self.freq_hz), 1.0)
+        return abs(self.growth_rate_energy - self.growth_rate) < 1e-2 * scale
+
+
+def modal_energy_balance(result, mode: int = 0, *, n_x: int = 160) -> ModalEnergyBalance:
+    """Acoustic-energy budget and energy-derived growth rate of one eigenmode.
+
+    Reads the mode shape off ``result`` and forms the same ledger the forced balance uses --
+    interior generation, boundary flux, stored duct energy -- then returns the growth rate the
+    budget implies, ``(generation + boundary_flux) / (2 E)``, beside the contour eigenvalue's.
+
+    Parameters
+    ----------
+    result : EigenmodeResult
+        A resolved eigenmode set (must carry its geometry and terminals).
+    mode : int, optional
+        Mode index (default 0).
+    n_x : int, optional
+        Interior samples per duct for the stored-energy integral (default 160).
+
+    Returns
+    -------
+    ModalEnergyBalance
+    """
+    geo = getattr(result, "geometry", None)
+    if geo is None:
+        raise ValueError("modal_energy_balance needs the network geometry; rebuild via eigenmodes()")
+    est = result.est
+    terms = result.terminals or []
+
+    def waves(e):
+        return result.mode_waves(mode, int(e))[None, :]  # (1, n_char) for the shared ledger
+
+    generation = 0.0
+    for node in _interior_nodes(geo, terms):
+        generation += float(_node_power(waves, est, geo.tail_node, geo.head_node, geo.n_edges, node)[0])
+    boundary_flux = float(boundary_power(result, mode, terminals=terms).net) if terms else 0.0
+    energy = float(_stored_energy(waves, est, geo.ducts, np.array([complex(result.omega[mode])]), n_x)[0])
+    sigma = (generation + boundary_flux) / (2.0 * energy) if energy != 0.0 else float("nan")
+    return ModalEnergyBalance(
+        freq_hz=float(result.freqs[mode]),
+        growth_rate=float(result.growth_rates[mode]),
+        growth_rate_energy=sigma,
+        generation=generation,
+        boundary_flux=boundary_flux,
+        stored_energy=energy,
+    )

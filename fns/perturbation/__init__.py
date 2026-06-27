@@ -61,6 +61,10 @@ from .power import (
     passive_reflection_bound,
     boundary_power,
     BoundaryPower,
+    duct_energy_spectrum,
+    boundary_power_spectrum,
+    forced_power_balance,
+    ForcedPowerBalance,
 )
 from .drivers import modes_from_det, scattering_2port
 from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
@@ -126,6 +130,10 @@ __all__ = [
     "passive_reflection_bound",
     "boundary_power",
     "BoundaryPower",
+    "duct_energy_spectrum",
+    "boundary_power_spectrum",
+    "forced_power_balance",
+    "ForcedPowerBalance",
     # stability / eigenmodes (nonlinear eigenproblem det A(omega) = 0)
     "eigenmodes",
     "EigenmodeResult",

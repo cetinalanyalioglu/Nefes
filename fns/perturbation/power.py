@@ -37,10 +37,13 @@ from typing import List
 
 import numpy as np
 
-from ..derive import ES_RHO, ES_C, ES_M, ES_AREA
+from ..derive import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
 from ..elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
 
 _INLET_RIDS = (MASS_FLOW_INLET, PT_INLET)
+
+# np.trapezoid is the NumPy >= 2.0 spelling; fall back to the older np.trapz.
+_trapz = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
 
 
 def acoustic_intensity(rho, c, mach, f, g):
@@ -53,17 +56,18 @@ def acoustic_intensity(rho, c, mach, f, g):
     mach : float
         Mean Mach number ``u / c`` in the downstream (``f``-wave) direction; may be
         signed (negative for reverse mean flow).
-    f, g : complex
-        Downstream- and upstream-running characteristic wave amplitudes.
+    f, g : complex or ndarray
+        Downstream- and upstream-running characteristic wave amplitudes (arrays are
+        taken element-wise, e.g. one entry per swept frequency).
 
     Returns
     -------
-    float
+    float or ndarray
         ``1/2 rho c [(1+M)^2 |f|^2 - (1-M)^2 |g|^2]`` -- positive when net acoustic
         power flows downstream.
     """
-    f2 = float((f * np.conj(f)).real)
-    g2 = float((g * np.conj(g)).real)
+    f2 = np.real(f * np.conj(f))
+    g2 = np.real(g * np.conj(g))
     return 0.5 * rho * c * ((1.0 + mach) ** 2 * f2 - (1.0 - mach) ** 2 * g2)
 
 
@@ -76,17 +80,18 @@ def acoustic_energy_density(rho, mach, f, g):
         Mean density of the section.
     mach : float
         Mean Mach number ``u / c`` (downstream positive).
-    f, g : complex
-        Downstream- and upstream-running characteristic wave amplitudes.
+    f, g : complex or ndarray
+        Downstream- and upstream-running characteristic wave amplitudes (arrays are
+        taken element-wise, e.g. one entry per swept frequency / axial station).
 
     Returns
     -------
-    float
+    float or ndarray
         ``1/2 rho [(1+M) |f|^2 + (1-M) |g|^2]`` -- always non-negative for subsonic
         flow.
     """
-    f2 = float((f * np.conj(f)).real)
-    g2 = float((g * np.conj(g)).real)
+    f2 = np.real(f * np.conj(f))
+    g2 = np.real(g * np.conj(g))
     return 0.5 * rho * ((1.0 + mach) * f2 + (1.0 - mach) * g2)
 
 
@@ -291,3 +296,149 @@ def boundary_power(result, mode: int = 0, terminals=None) -> BoundaryPower:
         freq_hz=float(result.freqs[mode]),
         omega=complex(result.omega[mode]),
     )
+
+
+# ---------------------------------------------------------------------------
+# Forced-sweep power balance (a real-frequency drive, not a single eigenmode)
+# ---------------------------------------------------------------------------
+
+
+def duct_energy_spectrum(fr, ducts, *, n_x: int = 120):
+    """Acoustic energy stored in the duct volumes at each forced frequency.
+
+    A :class:`~fns.perturbation.ForcedResponse` carries the wave amplitudes only at
+    the edge stations.  Inside each uniform duct the field is reconstructed in closed
+    form -- the duct's own phase relation, ``f`` riding downstream at ``u + c`` and
+    ``g`` upstream at ``c - u`` (theory.md s12.3) -- and the Myers energy density
+    (:func:`acoustic_energy_density`) is integrated along the length and over the
+    cross-section.
+
+    Parameters
+    ----------
+    fr : ForcedResponse
+        The solved forced field over a frequency sweep.
+    ducts : iterable of DuctSegment
+        The length-bearing duct segments (e.g. ``build_geometry(prob).ducts``); each
+        carries its two face edges and its length.
+    n_x : int, optional
+        Interior samples per duct for the spatial integral (default 120).
+
+    Returns
+    -------
+    ndarray
+        Stored acoustic energy at each frequency, shape ``(n_freq,)``, in mode-scale
+        units (the forcing amplitude sets the overall scale).
+    """
+    est = fr.est
+    omega = 2.0 * np.pi * np.asarray(fr.freqs, dtype=float)
+    energy = np.zeros(omega.size)
+    for d in ducts:
+        e_t, e_h, length = d.e_tail, d.e_head, d.length
+        # A duct is uniform, so its tail-face mean state holds along the whole length.
+        rho = float(est[ES_RHO, e_t])
+        c = float(est[ES_C, e_t])
+        u = float(est[ES_U, e_t])
+        mach = float(est[ES_M, e_t])
+        area = float(est[ES_AREA, e_t])
+        s = np.linspace(0.0, length, n_x)
+        # f propagates from the tail face, g from the head face; broadcast over (freq, station).
+        f = fr.waves(e_t)[:, 0][:, None] * np.exp(-1j * omega[:, None] * s[None, :] / (u + c))
+        g = fr.waves(e_h)[:, 1][:, None] * np.exp(-1j * omega[:, None] * (length - s)[None, :] / (c - u))
+        e_dens = acoustic_energy_density(rho, mach, f, g)
+        energy += _trapz(e_dens, s, axis=1) * area
+    return energy
+
+
+def boundary_power_spectrum(fr, terminals):
+    """Net acoustic power into the domain across all terminals, per forced frequency.
+
+    The forced-sweep analogue of :func:`boundary_power`'s single-mode net: the Myers
+    acoustic intensity (:func:`acoustic_intensity`) through each terminal face, signed
+    positive *into* the domain and summed.  A positive value means the boundaries feed
+    net acoustic power to the drive; negative means they absorb it.
+
+    Parameters
+    ----------
+    fr : ForcedResponse
+        The solved forced field over a frequency sweep.
+    terminals : iterable of Terminal
+        The boundary terminals (e.g. ``find_terminals(prob)``).
+
+    Returns
+    -------
+    ndarray
+        Net into-domain acoustic power at each frequency, shape ``(n_freq,)``.
+    """
+    est = fr.est
+    power = np.zeros(np.asarray(fr.freqs).size)
+    for t in terminals:
+        e = t.edge
+        rho = float(est[ES_RHO, e])
+        c = float(est[ES_C, e])
+        mach = float(est[ES_M, e])
+        area = float(est[ES_AREA, e])
+        w = fr.waves(e)
+        flux = acoustic_intensity(rho, c, mach, w[:, 0], w[:, 1]) * area
+        # At a tail terminal the incident f-wave enters here, so downstream-positive flux is
+        # power into the domain; at a head terminal the sign flips.
+        power = power + (flux if t.at_tail else -flux)
+    return power
+
+
+@dataclass
+class ForcedPowerBalance:
+    """Energy stored in the ducts and net boundary power over a forced sweep.
+
+    Both are per-frequency traces in arbitrary (mode-scale) units fixed by the drive
+    amplitude, so read them by *shape*: the energy peaks locate the resonances, and
+    the sign of :attr:`net_power` says whether the domain absorbs the drive
+    (``> 0``, power into the domain) or radiates net acoustic power back out
+    (``< 0`` -- the fingerprint of an active, self-amplifying element).
+
+    Attributes
+    ----------
+    freqs : ndarray
+        Sweep frequencies [Hz], shape ``(n_freq,)``.
+    energy : ndarray
+        Acoustic energy stored in the duct volumes at each frequency.
+    net_power : ndarray
+        Net acoustic power crossing all boundaries into the domain at each frequency.
+    """
+
+    freqs: np.ndarray
+    energy: np.ndarray
+    net_power: np.ndarray
+
+
+def forced_power_balance(fr, prob, *, n_x: int = 120) -> ForcedPowerBalance:
+    """Energy stored in the ducts and net boundary power, frequency by frequency.
+
+    A one-call diagnostic for a forced frequency sweep: it reconstructs the intra-duct
+    field to integrate the stored acoustic energy (:func:`duct_energy_spectrum`) and
+    sums the Myers flux through the terminals (:func:`boundary_power_spectrum`).  The
+    energy trace locates the resonances; the boundary-power trace shows whether the
+    domain is absorbing the drive or feeding energy back out.
+
+    Parameters
+    ----------
+    fr : ForcedResponse
+        The solved forced field over a frequency sweep.
+    prob : CompiledProblem
+        The compiled network ``fr`` was solved on; supplies the duct geometry and the
+        boundary terminals.
+    n_x : int, optional
+        Interior samples per duct for the energy integral (default 120).
+
+    Returns
+    -------
+    ForcedPowerBalance
+        The per-frequency stored-energy and net boundary-power traces.
+    """
+    from .modeshape import build_geometry
+    from .terminals import find_terminals
+
+    geo = build_geometry(prob)
+    terms = find_terminals(prob)
+    energy = duct_energy_spectrum(fr, geo.ducts, n_x=n_x)
+    net_power = boundary_power_spectrum(fr, terms)
+    return ForcedPowerBalance(freqs=np.asarray(fr.freqs, dtype=float), energy=energy, net_power=net_power)

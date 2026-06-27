@@ -13,12 +13,9 @@
 - [ ] Find a proper name for the parameter "stab" that reads well both in mathematical documentation and as a variable in the codebase. A greek letter can be considered here.
 - [ ] Visualize search contour and found eigenvalues in the complex plane
 - [ ] Helper to easily generate mixtures, e.g. specify fuel, oxidizer and desired equivalence ratio - obtain mole/mass fractions
+- [ ] EigenmodeResult.animate_mode() shall accept plotting of multiple variables and multiple modes - but we may need to discuss about the multiple modes part, because the phase relationship may become a bit interesting. Also, the routine should provide a toggle for the user to disable background shading showing the span of the mode.
 
 ## To verify
-
-- [ ] Make sure the default BC for mass flow inlet in the UI is "inherited"
-- [ ] Make sure the default BC for total pressure inlet in the UI is "inherited"
-- [ ] Total pressure inlet can allow reverse flow, the total pressure value would be used as static pressure - do we already support this?
 
 ## To brainstorm
 

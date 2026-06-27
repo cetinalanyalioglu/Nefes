@@ -1,13 +1,18 @@
 """Parse the node-graph UI export (YAML) into FNS connectivity."""
 
+import json
+import os
 import re
-from typing import List, Tuple
+from collections import defaultdict
+from typing import List, Optional, Tuple
 
 import yaml
 
 from ..connectivity import build_connectivity, Connectivity
 from ..elements import catalog as cat
-from ..thermo.configure import perfect_gas
+from ..elements.ids import FLAME_EQUILIBRIUM, MASS_FLOW_INLET, MASS_SOURCE, PT_INLET, P_OUTLET
+from ..thermo.api import EQ_FROZEN, EQ_KERNEL
+from ..thermo.configure import equilibrium, perfect_gas
 from .provenance import UIProvenance
 
 _PORT_RE = re.compile(r"port-(\d+)$")
@@ -17,19 +22,43 @@ MODEL_ID = "fns-flow-network"
 
 # Model-level (globalAttributes) defaults, kept in sync with the UI model.
 _GLOBAL_DEFAULTS = {
+    "thermoModel": "perfect_gas",
     "gasConstant": 287.0,
     "heatCapacityRatio": 1.4,
+    "mechanismFile": "",
+    "species": "",
+    "equilibriumTInit": 3000.0,
+    "frozenTInit": 300.0,
     "referencePressure": 101325.0,
     "referenceTemperature": 300.0,
     "referenceMassFlow": 0.0,
 }
 
+
+def _comp(a: dict):
+    """Parse a node's UI ``composition`` string into a species mixture (or ``None``)."""
+    return _parse_composition(a.get("composition"))
+
+
+def _basis(a: dict) -> str:
+    """A node's composition basis (``"mole"`` or ``"mass"``); defaults to ``"mole"``."""
+    return str(a.get("basis") or "mole")
+
+
 # UI node type -> (catalog factory, kwargs extracted from node attributes).
-# Each builder takes the node's `attributes` dict and returns an ElementSpec.
+# Each builder takes the node's `attributes` dict and returns an ElementSpec.  The
+# composition / basis attributes feed the reacting model; the perfect-gas model
+# ignores them (no transported scalars), so they are harmless to pass always.
 _UI_NODE_BUILDERS = {
-    "MassFlowInlet": lambda a: cat.mass_flow_inlet(a["massFlowRate"], a["totalTemperature"]),
-    "TotalPressureInlet": lambda a: cat.total_pressure_inlet(a["totalPressure"], a["totalTemperature"]),
-    "PressureOutlet": lambda a: cat.pressure_outlet(a["pressure"], a.get("backflowTotalTemperature", 300.0)),
+    "MassFlowInlet": lambda a: cat.mass_flow_inlet(
+        a["massFlowRate"], a["totalTemperature"], composition=_comp(a), basis=_basis(a)
+    ),
+    "TotalPressureInlet": lambda a: cat.total_pressure_inlet(
+        a["totalPressure"], a["totalTemperature"], composition=_comp(a), basis=_basis(a)
+    ),
+    "PressureOutlet": lambda a: cat.pressure_outlet(
+        a["pressure"], a.get("backflowTotalTemperature", 300.0), composition=_comp(a), basis=_basis(a)
+    ),
     "MassFlowOutlet": lambda a: cat.mass_flow_outlet(a["massFlowRate"]),
     "ChokedNozzleOutlet": lambda a: cat.choked_nozzle_outlet(a["throatArea"]),
     "Wall": lambda a: cat.wall(),
@@ -37,6 +66,11 @@ _UI_NODE_BUILDERS = {
     "SuddenAreaChange": lambda a: cat.sudden_area_change(cc=a.get("contractionCoefficient", 1.0)),
     "LossElement": lambda a: cat.loss(a["lossCoefficient"]),
     "Duct": lambda a: cat.duct(a.get("length", 0.0)),
+    "HeatReleaseFlame": lambda a: cat.heat_release_flame(a["heatRelease"]),
+    "EquilibriumFlame": lambda a: cat.equilibrium_flame(),
+    "MassSource": lambda a: cat.mass_source(
+        a["massFlowRate"], a["injectionTemperature"], _comp(a), u_inj=a.get("injectionVelocity", 0.0), basis=_basis(a)
+    ),
     "JunctionStaticP": lambda a: cat.junction(),
     "LosslessSplitter": lambda a: cat.splitter(),
 }
@@ -52,6 +86,150 @@ _BOUNDARY_TYPES = {
 }
 
 _DEFERRED_TYPES = {"SupersonicInlet", "SupersonicOutlet"}
+
+# Per-edge thermochemistry closure tokens (UI edge ``thermoModel``) -> model id.
+_EDGE_CLOSURE = {"frozen": EQ_FROZEN, "equilibrium": EQ_KERNEL}
+
+
+def _parse_composition(spec):
+    """Parse a UI composition into a ``{species: fraction}`` dict (or ``None`` if empty).
+
+    Accepts a JSON object (``{"O2": 0.21, "N2": 0.79}``) or a comma/newline separated
+    list of ``species:fraction`` (``species=fraction`` / ``species fraction``) entries
+    (``"O2:0.21, N2:0.79"``).  A dict is returned as-is (floats).  Returns ``None`` for an
+    empty / missing value -- the reacting builders then raise their own clear error where a
+    composition is mandatory.
+    """
+    if spec is None:
+        return None
+    if isinstance(spec, dict):
+        return {str(k): float(v) for k, v in spec.items()}
+    text = str(spec).strip()
+    if not text:
+        return None
+    if text[0] == "{":
+        return {str(k): float(v) for k, v in json.loads(text).items()}
+    comp = {}
+    for token in re.split(r"[,\n]+", text):
+        token = token.strip()
+        if not token:
+            continue
+        parts = re.split(r"[:=\s]+", token)
+        if len(parts) != 2:
+            raise ValueError(f"cannot parse composition entry {token!r}; use 'species:fraction'")
+        comp[parts[0].strip()] = float(parts[1].strip())
+    return comp or None
+
+
+def _parse_species(spec) -> Optional[List[str]]:
+    """Parse a comma/whitespace separated species list (``None`` if empty)."""
+    if not spec:
+        return None
+    names = [s.strip() for s in re.split(r"[,\s]+", str(spec)) if s.strip()]
+    return names or None
+
+
+def _resolve_path(path: str, case_dir: str) -> str:
+    """Resolve a mechanism path: absolute, else relative to the case file, else the CWD."""
+    if not path:
+        raise ValueError("the reacting (equilibrium) thermo model needs a 'mechanismFile' set in the Model pane")
+    path = str(path)
+    candidates = [path] if os.path.isabs(path) else [os.path.join(case_dir, path), os.path.abspath(path)]
+    for cand in candidates:
+        if os.path.isfile(cand):
+            return cand
+    raise FileNotFoundError(f"mechanism file {path!r} not found (looked in {candidates})")
+
+
+def _build_library(mech_path: str, species_spec, case_dir: str):
+    """Build a ``thermolib`` species library from a mechanism file + optional species list.
+
+    A native mechanism YAML (Cantera-subset, ``.yaml``/``.yml``) loads every species in the
+    file, optionally narrowed to the listed subset.  A CEA ``thermo.inp`` requires an explicit
+    species list (the file defines thousands of species).
+    """
+    from thermolib import SpeciesLibrary, ThermoInp
+
+    path = _resolve_path(mech_path, case_dir)
+    species = _parse_species(species_spec)
+    if path.lower().endswith((".yaml", ".yml")):
+        lib = SpeciesLibrary.from_native(path)
+        return lib.subset(species) if species else lib
+    if not species:
+        raise ValueError(
+            f"the reacting model with a CEA thermo.inp ({path!r}) needs an explicit 'species' list "
+            "(the file defines thousands of species)"
+        )
+    return ThermoInp(path).library(species)
+
+
+def _reacting_h_ref(gas, specs) -> float:
+    """A representative absolute-enthalpy datum for the reacting solve.
+
+    Mirrors the examples: the largest-magnitude feed/source/backflow enthalpy at its supply
+    temperature, floored at ``1e4`` J/kg.  The reacting closures need this absolute datum (the
+    perfect-gas ``cp * T_ref`` fallback is meaningless for a variable-composition gas).
+    """
+    from ..composition import enthalpy_mass, species_mass_fractions
+
+    lib = gas.library
+    h_max = 0.0
+    for sp in specs:
+        comp = sp.composition_spec
+        if comp is None:
+            continue
+        if sp.residual_id in (MASS_FLOW_INLET, PT_INLET, P_OUTLET):
+            t_supply = float(sp.fparams[1])
+        elif sp.residual_id == MASS_SOURCE:
+            t_supply = float(sp.fparams[2])
+        else:
+            continue
+        Y = species_mass_fractions(lib, comp, sp.basis)
+        h_max = max(h_max, abs(enthalpy_mass(lib, Y, t_supply)))
+    return max(h_max, 1e4)
+
+
+def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
+    """Per-edge thermo-model ids for the compiled problem (``None`` -> the gas default).
+
+    Perfect gas: every edge follows the gas default (``None``).  Reacting: an explicit edge
+    closure (``frozen`` / ``equilibrium``) wins; an ``auto`` edge is frozen (unburnt) upstream of
+    an :func:`~fns.elements.catalog.equilibrium_flame` and equilibrium (burnt) downstream of one
+    (flood-filled along the flow direction).  With no flame in the network every ``auto`` edge is
+    equilibrium (equilibrium-everywhere, the base reacting model).
+    """
+    n_edges = len(parsed)
+    if not reacting:
+        return [None] * n_edges
+
+    flame_nodes = {i for i, sp in enumerate(specs) if sp.residual_id == FLAME_EQUILIBRIUM}
+    burnt = set()
+    if flame_nodes:
+        adj = defaultdict(list)  # node -> [(edge id, head node)], following the flow direction
+        for ei, s, _t, _area, _name in parsed:
+            adj[s].append((ei, _t))
+        stack = []
+        for f in flame_nodes:  # seed: every edge leaving a flame is burnt
+            for ei, t in adj[f]:
+                if ei not in burnt:
+                    burnt.add(ei)
+                    stack.append(t)
+        while stack:  # flood downstream
+            for ei, t in adj[stack.pop()]:
+                if ei not in burnt:
+                    burnt.add(ei)
+                    stack.append(t)
+
+    models = [None] * n_edges
+    for ei, _s, _t, _area, _name in parsed:
+        token = edge_tokens[ei]
+        if token in _EDGE_CLOSURE:
+            models[ei] = _EDGE_CLOSURE[token]
+        elif token == "auto":
+            models[ei] = EQ_KERNEL if (not flame_nodes or ei in burnt) else EQ_FROZEN
+        else:
+            raise ValueError(f"unknown edge closure {token!r}; choose 'auto', 'frozen' or 'equilibrium'")
+    return models
 
 
 def _parse_perturbation_bc(attrs: dict):
@@ -152,32 +330,51 @@ def load_case(path: str):
 
     g = dict(_GLOBAL_DEFAULTS)
     g.update({k: v for k, v in (model.get("globalAttributes") or {}).items() if v is not None})
-    # Create the ThermoConfig object
-    gas = perfect_gas(R=float(g["gasConstant"]), gamma=float(g["heatCapacityRatio"]))
-    # Create the Network object
-    net = Network(
-        gas,
-        p_ref=float(g["referencePressure"]),
-        T_ref=float(g["referenceTemperature"]),
-        mdot_ref=float(g["referenceMassFlow"]) or None,
-    )
 
     ui_nodes = model.get("nodes") or []
     ui_edges = model.get("edges") or []
     if not ui_nodes or not ui_edges:
         raise ValueError(f"{path}: the network has no nodes or no edges")
 
-    # Elements, ordered by the node index attribute. This is by default bandwidth optimized in the UI.
+    # Thermo model: a calorically-perfect gas, or the reacting equilibrium model (transported
+    # feed-stream mixture fractions slaved to HP equilibrium).
+    model_kind = str(g.get("thermoModel") or "perfect_gas")
+    case_dir = os.path.dirname(os.path.abspath(path))
+    if model_kind == "perfect_gas":
+        gas = perfect_gas(R=float(g["gasConstant"]), gamma=float(g["heatCapacityRatio"]))
+        reacting = False
+    elif model_kind == "equilibrium":
+        library = _build_library(g.get("mechanismFile"), g.get("species"), case_dir)
+        gas = equilibrium(library, T_init=float(g["equilibriumTInit"]), T_init_frozen=float(g["frozenTInit"]))
+        reacting = True
+    else:
+        raise ValueError(f"{path}: unknown thermoModel {model_kind!r} (expected 'perfect_gas' or 'equilibrium')")
+
+    # Elements, ordered by the node index attribute (bandwidth-optimized in the UI).
     nodes_sorted = sorted(ui_nodes, key=lambda n: int((n.get("attributes") or {}).get("index", 0)))
+    specs = [_build_ui_spec(n) for n in nodes_sorted]
+
+    # The reacting closures need an absolute-enthalpy datum derived from the feed streams; the
+    # perfect-gas Network default (cp * T_ref) is meaningless for a variable-composition gas.
+    h_ref = _reacting_h_ref(gas, specs) if reacting else None
+
+    net = Network(
+        gas,
+        p_ref=float(g["referencePressure"]),
+        T_ref=float(g["referenceTemperature"]),
+        mdot_ref=float(g["referenceMassFlow"]) or None,
+        h_ref=h_ref,
+    )
+
     id_to_index = {}
-    for n in nodes_sorted:
-        idx = net.add(_build_ui_spec(n))
-        id_to_index[n["id"]] = idx
+    for n, spec in zip(nodes_sorted, specs):
+        id_to_index[n["id"]] = net.add(spec)
 
     # Per node, gather incident (edge, side, port ordinal); densify by ordinal.
     edges_sorted = sorted(ui_edges, key=lambda e: int((e.get("attributes") or {}).get("index", 0)))
     incident = {i: [] for i in range(len(nodes_sorted))}
     parsed = []
+    edge_tokens = []  # per-edge thermochemistry closure token (UI edge thermoModel)
     for ei, e in enumerate(edges_sorted):
         attrs = e.get("attributes") or {}
         for end in ("source", "target"):
@@ -193,15 +390,27 @@ def load_case(path: str):
         incident[s].append((ei, "tail", so))
         incident[t].append((ei, "head", to))
         parsed.append((ei, s, t, area, str(attrs.get("label") or e.get("id"))))
+        edge_tokens.append(str(attrs.get("thermoModel") or "auto"))
 
     local_port = {}  # (edge_index, side) -> dense local port at that node
     for node, lst in incident.items():
         for local, (ei, side, _ord) in enumerate(sorted(lst, key=lambda x: x[2])):
             local_port[(ei, side)] = local
 
+    # Resolve each edge's thermochemistry closure (frozen / equilibrium / auto-from-flames).
+    edge_models = _resolve_edge_models(reacting, specs, parsed, edge_tokens)
+
     # Assemble topology from the parsed endpoints.
     for ei, s, t, area, name in parsed:
-        net.connect(s, t, area, name=name, tail_port=local_port[(ei, "tail")], head_port=local_port[(ei, "head")])
+        net.connect(
+            s,
+            t,
+            area,
+            name=name,
+            tail_port=local_port[(ei, "tail")],
+            head_port=local_port[(ei, "head")],
+            edge_model=edge_models[ei],
+        )
 
     # Retain the UI-only metadata (positions, counters, ids, title) so the case
     # can be saved back for the UI verbatim -- see fns.io.yaml_out.

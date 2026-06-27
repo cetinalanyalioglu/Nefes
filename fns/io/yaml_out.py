@@ -52,7 +52,11 @@ from ..elements.ids import (
     SPLITTER,
     DUCT,
     WALL,
+    FLAME_HEAT_RELEASE,
+    FLAME_EQUILIBRIUM,
+    MASS_SOURCE,
 )
+from ..thermo.api import EQ_FROZEN, EQ_KERNEL
 from .yaml_in import MODEL_ID
 
 # The UI save-file schema version this writer targets (matches yaml_in / the UI).
@@ -61,6 +65,12 @@ DEFAULT_TITLE = "FNS case"
 
 # Single-port boundary elements that carry an acoustic boundary-condition group.
 _BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)
+
+# Elements that introduce a composition (a feed / injected / backflow stream).
+_COMPOSITION_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
+
+# Per-edge thermo-model id -> UI edge closure token.
+_EDGE_CLOSURE_TOKEN = {EQ_FROZEN: "frozen", EQ_KERNEL: "equilibrium"}
 
 # Mean-flow edge field -> (UI display name, unit).  Order defines the "all" set.
 _FIELD_META = {
@@ -422,6 +432,7 @@ def _build_model(network, prov):
     # display labels must identify a node uniquely in the exported case
     ensure_unique_names(elements)
     edges = network._edges
+    reacting = network.gas.model_id == EQ_KERNEL
     ids = _node_ids(network, prov)
     prov_nodes = {n["id"]: n for n in prov.doc["model"].get("nodes", [])} if prov else {}
     prov_edges = {e["id"]: e for e in prov.doc["model"].get("edges", [])} if prov else {}
@@ -435,6 +446,8 @@ def _build_model(network, prov):
         attrs["label"] = spec.name or attrs.get("label") or ui_type
         if spec.residual_id in _BOUNDARY_RIDS:
             attrs.update(_bc_to_ui(getattr(spec, "perturbation_bc", None)))
+        if reacting and spec.residual_id in _COMPOSITION_RIDS:
+            attrs.update(_composition_to_ui(spec))
         if not prov:
             attrs.update(port_attrs.get(i, {}))
         attrs["index"] = i
@@ -459,6 +472,9 @@ def _build_model(network, prov):
         eattrs["label"] = name or eattrs.get("label") or f"e{ei}"
         eattrs["index"] = ei
         eattrs["area"] = float(area)
+        if reacting:
+            model = network._edge_models[ei] if ei < len(network._edge_models) else None
+            eattrs["thermoModel"] = _EDGE_CLOSURE_TOKEN.get(model, "auto")
         edges_out.append(
             {
                 "id": eid,
@@ -471,19 +487,65 @@ def _build_model(network, prov):
             }
         )
 
-    return {"id": MODEL_ID, "globalAttributes": _global_attributes(network), "nodes": nodes, "edges": edges_out}
-
-
-def _global_attributes(network):
-    cp, R = float(network.gas.tf[0]), float(network.gas.tf[1])
-    gamma = cp / (cp - R)
     return {
-        "gasConstant": R,
-        "heatCapacityRatio": gamma,
-        "referencePressure": float(network.p_ref),
-        "referenceTemperature": float(network.T_ref),
-        "referenceMassFlow": float(network._mdot_ref or 0.0),
+        "id": MODEL_ID,
+        "globalAttributes": _global_attributes(network, prov),
+        "nodes": nodes,
+        "edges": edges_out,
     }
+
+
+def _global_attributes(network, prov=None):
+    gas = network.gas
+    if gas.model_id == EQ_KERNEL:
+        # The reacting model: the species list and the T guesses are recoverable from the config,
+        # but the mechanism *file path* is not stored on the library.  Reuse the original path from
+        # the loaded provenance when available; otherwise emit an empty path with a warning (the
+        # user must re-point it on reload).
+        prov_global = (prov.doc.get("model") or {}).get("globalAttributes", {}) if prov else {}
+        mech = str(prov_global.get("mechanismFile") or "")
+        if not mech:
+            warnings.warn(
+                "the reacting mechanism file path is not recoverable from the gas config; the "
+                "exported case carries an empty 'mechanismFile' -- set it before loading the case "
+                "again",
+                stacklevel=4,
+            )
+        g = {
+            "thermoModel": "equilibrium",
+            "mechanismFile": mech,
+            "species": ", ".join(gas.species_names),
+            "equilibriumTInit": float(gas.t_init),
+            "frozenTInit": float(gas.t_init_frozen),
+        }
+    else:
+        cp, R = float(gas.tf[0]), float(gas.tf[1])
+        g = {
+            "thermoModel": "perfect_gas",
+            "gasConstant": R,
+            "heatCapacityRatio": cp / (cp - R),
+        }
+    g["referencePressure"] = float(network.p_ref)
+    g["referenceTemperature"] = float(network.T_ref)
+    g["referenceMassFlow"] = float(network._mdot_ref or 0.0)
+    return g
+
+
+def _composition_to_ui(spec):
+    """UI ``composition`` / ``basis`` attributes for a stream-introducing element.
+
+    Serializes the retained ``composition_spec`` back to the ``"species:fraction, ..."`` string
+    the UI uses.  Returns ``{}`` when the element carries no composition (e.g. an inert-backflow
+    outlet).  Only emitted for the reacting model (the perfect gas ignores composition).
+    """
+    comp = getattr(spec, "composition_spec", None)
+    if comp is None:
+        return {}
+    if isinstance(comp, dict):
+        comp_str = ", ".join(f"{k}:{float(v):g}" for k, v in comp.items())
+    else:  # a raw scalar array (uncommon on the reacting backend); best-effort
+        comp_str = ", ".join(f"{float(v):g}" for v in comp)
+    return {"composition": comp_str, "basis": getattr(spec, "basis", "mole") or "mole"}
 
 
 def _build_ui_attributes(network, prov):
@@ -545,6 +607,17 @@ def _spec_to_ui(spec):
         return "Duct", {"length": float(fp[0]) if fp else 0.0}
     if rid == WALL:
         return "Wall", {}
+    if rid == FLAME_HEAT_RELEASE:
+        return "HeatReleaseFlame", {"heatRelease": float(fp[0])}
+    if rid == FLAME_EQUILIBRIUM:
+        return "EquilibriumFlame", {}
+    if rid == MASS_SOURCE:
+        # fparams = [mdot, u_inj, T]; the composition is added separately (reacting only).
+        return "MassSource", {
+            "massFlowRate": float(fp[0]),
+            "injectionVelocity": float(fp[1]),
+            "injectionTemperature": float(fp[2]),
+        }
     raise ValueError(f"cannot serialize element with residual id {rid} to the UI format")
 
 

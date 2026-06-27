@@ -441,10 +441,11 @@ def _terminal_scalar_seats(prob, t, bc, e, specify, freq):
 
     A transported composition scalar convects at the mean speed ``u`` like the entropy wave, so
     it is to-specify exactly when the entropy wave is -- at a genuine inflow.  Seating it is a
-    diagonal identity on its own transport row (``xi'_edge = amplitude``); the scalar -> acoustic
-    coupling at non-uniform sections (compositional / indirect noise) is **not** modelled.  Raises
-    if a scalar drive is requested where the convected waves are outgoing, or names a scalar the
-    network does not transport.
+    diagonal identity on its own transport row (``xi'_edge = amplitude``); the seat itself is
+    decoupled, but the seated wave *does* radiate sound downstream wherever the linearization is
+    inherited (the full Jacobian carries composition -> acoustic -- a flame, an area change, an
+    inherited compact nozzle).  Raises if a scalar drive is requested where the convected waves are
+    outgoing, or names a scalar the network does not transport.
     """
     families = [f for f in bc.driven if f not in ("acoustic", "entropy")]
     if not families:
@@ -485,7 +486,7 @@ def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
     m_out = (u / c) if not t.at_tail else (-u / c)  # outward-normal mean Mach
     specify, arriving = partition(u, c, "a" if t.at_tail else "b")
     freq = omega / (2.0 * np.pi)  # BC carriers (tables/callables) are in Hz; operator stays in omega
-    Amat, bvec = bc.closure(freq, rho, c, u, m_out, K, specify, arriving)
+    Amat, bvec = bc.closure(freq, rho, c, u, m_out, K, specify, arriving, p=p)
     L_e = dx_to_char(rho, c, u, p, area, K, cal)
     acou_cols = tuple(int(prob.n_solve) * e + v for v in range(3))
     out = []

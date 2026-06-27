@@ -30,20 +30,41 @@ from ..solver.control import states_table
 
 
 class CompositionalNoiseWarning(UserWarning):
-    """A driven scalar wave convects and feeds composition-sensitive elements, but its scattering
-    into sound at non-uniform sections (compositional / indirect noise) is not modelled."""
+    """A **hand-written compact-nozzle closure** drops composition -> acoustic (compositional /
+    indirect) noise.
+
+    Composition -> acoustic coupling is captured *everywhere the linearization is inherited*: the
+    full algebraic Jacobian carries it (a flame, an area change, a resolved nozzle, the compact
+    ``choked_nozzle_outlet`` *element* -- whose critical-mass-flux row is complex-stepped through
+    its composition dependence).  It is dropped only by the explicit analytic terminal closures
+    :meth:`~fns.perturbation.boundary_bc.PerturbationBC.choked_nozzle` /
+    :meth:`~fns.perturbation.boundary_bc.PerturbationBC.constant_mass_flow`, which overwrite that
+    row with a 3-wave ``(f, g, h)`` relation: they keep the entropy off-diagonal ``R_s`` but have
+    no composition column ``R_xi``.  Use the inherited element (or resolve the nozzle) to capture
+    it."""
 
 
-def _driven_scalar_families(prob):
-    """Scalar (non-acoustic, non-entropy) families any terminal BC drives, sorted and de-duplicated."""
-    fams = set()
+# The explicit analytic terminal closures whose hand-written 3-wave (f, g, h) form drops the
+# composition -> acoustic off-diagonal R_xi (everywhere else the inherited J_alg retains it).
+_COMPOSITIONAL_NOISE_DROPPING_KINDS = ("choked_nozzle", "constant_mass_flow")
+
+
+def _compositional_noise_gap(prob):
+    """Compact analytic closures that drop composition -> acoustic noise, *if* scalars are present.
+
+    Returns the sorted, de-duplicated closure kinds (e.g. ``["choked_nozzle"]``) only when the
+    network actually transports reacting scalars (``prob.scalar_names`` non-empty) and at least one
+    terminal is closed by a hand-written compact-nozzle BC; empty otherwise.  This is the *only*
+    configuration where a composition fluctuation reaches a section that physically radiates sound
+    yet has its composition -> acoustic coupling discarded -- see :class:`CompositionalNoiseWarning`.
+    """
+    if not getattr(prob, "scalar_names", ()):
+        return []
+    kinds = set()
     for bc in getattr(prob, "node_bc", None) or []:
-        if bc is None:
-            continue
-        for f in getattr(bc, "driven", ()):
-            if f not in ("acoustic", "entropy"):
-                fams.add(f)
-    return sorted(fams)
+        if bc is not None and getattr(bc, "kind", None) in _COMPOSITIONAL_NOISE_DROPPING_KINDS:
+            kinds.add(bc.kind)
+    return sorted(kinds)
 
 
 def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
@@ -75,11 +96,13 @@ def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, 
         The nodal perturbation field at every frequency.
     """
     freqs = np.asarray(freqs, dtype=float)
-    driven_scalars = _driven_scalar_families(prob)
-    if driven_scalars:  # one reminder per call: the seated scalar convects but does not radiate sound
+    gap = _compositional_noise_gap(prob)
+    if gap:  # one reminder per call: the compact closure radiates entropy noise but not compositional
         warnings.warn(
-            f"driving scalar wave(s) {driven_scalars}: they convect and feed composition-sensitive "
-            "elements, but scalar -> acoustic coupling (compositional / indirect noise) is not modelled.",
+            f"compact nozzle closure(s) {gap} terminate a reacting (multi-stream) flow: they carry the "
+            "entropy -> acoustic (entropy/indirect) noise R_s but drop the composition -> acoustic "
+            "(compositional/indirect) noise R_xi. Use the inherited choked_nozzle_outlet element, or "
+            "resolve the nozzle, to capture it (the inherited linearization keeps the composition column).",
             CompositionalNoiseWarning,
             stacklevel=2,
         )

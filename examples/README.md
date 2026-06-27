@@ -32,6 +32,14 @@
   **perturbation** transfer / scattering analysis (two acoustic waves **plus the
   entropy wave**) on top of the converged mean flow. All figures are Plotly,
   styled with the shared FNS theme (`fns.plotting`).
+- **`compositional_noise.ipynb`** — **compositional (indirect) noise** at a choked
+  nozzle. Validates the inert acoustic limit (the inherited `choked_nozzle_outlet`
+  element, the hand-written Marble–Candel closure, and a **resolved** convergent
+  nozzle all agree on the reflection `R`), then shows that the inherited /
+  resolved routes also carry the composition → acoustic coupling `R_xi` — the
+  compositional noise — that the hand-written closure silently drops (the
+  `CompositionalNoiseWarning`), all from the same complex step that gives `R` and
+  the entropy noise `R_s`. Closes with the `M = 1` subsonic-scope note.
 - **`entropy_generator.ipynb`** — a **validation** notebook replicating De Domenico,
   Rolland & Hochgreb (2019, *JSV* 440), "nozzles with losses", at the Cambridge
   Entropy Generator geometry. Builds the orifice-plate / isentropic / non-isentropic

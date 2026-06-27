@@ -309,6 +309,24 @@ def test_choked_nozzle_coefficients_and_limits():
         bc.closure(0.0, rho, c, 0.0, 0.0, K, specify=(0, 2), arriving=(1,))
 
 
+def test_choked_nozzle_effective_gamma_from_state():
+    # The effective gamma is taken from the state (rho c^2 / p) when p is given -- backend-correct --
+    # and equals the perfect-gas K result exactly when p is the perfect-gas pressure.  A *different* p
+    # (a non-1.4 effective gamma, as a reacting mixture would have) shifts R, proving p is honoured.
+    bc = PerturbationBC.choked_nozzle()
+    rho, c, M = 1.2, 340.0, 0.4
+    K = GAMMA / (GAMMA - 1.0)
+    p_pg = rho * c * c / GAMMA  # the pressure consistent with gamma = 1.4
+    assert bc.reflection_coefficient(0.0, rho, c, M, p=p_pg) == pytest.approx(
+        bc.reflection_coefficient(0.0, rho, c, M, K)
+    )
+    g_eff = 1.3  # a different effective gamma -> a different (correct-for-that-gas) reflection
+    p_eff = rho * c * c / g_eff
+    R_eff = bc.reflection_coefficient(0.0, rho, c, M, K, p=p_eff)  # p overrides K
+    assert R_eff == pytest.approx((2 - (g_eff - 1) * M) / (2 + (g_eff - 1) * M))
+    assert R_eff != pytest.approx((2 - (GAMMA - 1) * M) / (2 + (GAMMA - 1) * M))
+
+
 def test_generic_outlet_entropy_coupling():
     # The generic off-diagonal carrier: g = R f + R_s h with user-set constants.
     Rv, Rsv = 0.3 - 0.1j, 0.45 + 0.2j
@@ -480,17 +498,29 @@ def _scalar_duct(inlet_bc, outlet_bc=None, *, L=0.7, mdot=2.0):
 def test_driven_scalar_wave_seats_and_convects():
     # Seat a scalar wave Z1 at the inflow; it must appear on the inlet edge and convect to the
     # outlet at the mean speed u (phase e^{-i w L/u}), decoupled from sound, with the undriven
-    # scalar Z2 staying zero.  A reminder warns that scalar->acoustic noise is not modelled.
+    # scalar Z2 staying zero.  No compact-nozzle closure here, so the (narrowed) compositional-noise
+    # warning must NOT fire -- a driven scalar through inherited/anechoic terminals drops nothing.
     amp, L = 0.4 - 0.2j, 0.7
     sol = _scalar_duct(PerturbationBC.anechoic(driven=("Z1",), amplitudes={"Z1": amp}), L=L)
     u = float(sol.table()[ES_U, 0])
     assert u > 1.0  # genuinely flowing
-    with pytest.warns(CompositionalNoiseWarning):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", CompositionalNoiseWarning)  # a spurious warning would fail here
         fr = forced_response(sol.problem, sol.x, FREQS, isentropic=False)
     iz = fr.wave_labels.index("Z1")
     assert np.allclose(fr.waves(0)[:, iz], amp, atol=1e-9)  # seated at the inlet edge
     assert np.allclose(fr.waves(1)[:, iz], amp * np.exp(-1j * OMEGAS * (L / u)), atol=1e-6)  # convected out
     assert np.allclose(fr.waves(0)[:, fr.wave_labels.index("Z2")], 0.0, atol=1e-12)  # undriven scalar
+
+
+def test_compact_nozzle_closure_warns_in_reacting_flow():
+    # The narrowed warning: a *hand-written* compact-nozzle closure on a scalar-carrying flow drops
+    # the composition -> acoustic noise (R_xi), so forced_response warns once.  (Driving a scalar is
+    # incidental -- the gap is the closure, which discards composition whether or not a scalar is
+    # driven; here the mere presence of transported scalars + the compact closure triggers it.)
+    sol = _scalar_duct(PerturbationBC.inherit(), PerturbationBC.choked_nozzle())
+    with pytest.warns(CompositionalNoiseWarning, match="compact nozzle closure"):
+        forced_response(sol.problem, sol.x, FREQS, isentropic=False)
 
 
 def test_driving_scalar_rejected_at_outlet():

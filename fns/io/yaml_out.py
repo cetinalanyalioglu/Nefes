@@ -16,7 +16,10 @@ Pass ``node_data=True`` to additionally emit each (non-phase) edge field reduced
 onto the nodes as the mean over each node's incident edges -- a provision until
 genuinely nodal state exists.  Forced-response (acoustic) results are emitted as
 one named dataset per selected frequency (``"<f> Hz"``), each carrying the
-magnitude and phase of the requested perturbation quantities.
+magnitude and phase of the requested perturbation quantities.  Eigenmode (stability)
+results are emitted as one dataset per mode (``"Mode <i>: <f> Hz"``) carrying the
+per-edge mode shape, with the modal frequency, growth rate, damping ratio and
+residual as dataset metadata.
 
 Layout / identity
 -----------------
@@ -204,6 +207,9 @@ def dump_case(
     forced=None,
     forced_freqs=None,
     forced_fields=("p", "u"),
+    eigenmodes=None,
+    eig_modes=None,
+    eig_fields=("p", "u"),
     title=None,
     extra_datasets=None,
     include_in_save=True,
@@ -233,6 +239,17 @@ def dump_case(
         Perturbation quantities per snapshot (default ``("p", "u")``); keys of
         :data:`_FORCED_FIELDS`, plus ``"reflection"``.  Magnitude and phase are
         emitted for each.
+    eigenmodes : EigenmodeResult, optional
+        A stability (eigenmode) result to snapshot.  Each mode is emitted as its own
+        ``"Mode <i>: <f> Hz"`` dataset carrying the per-edge mode-shape magnitude and
+        phase, with the modal frequency, growth rate, damping ratio, residual and
+        unstable flag as dataset metadata.  The mode-shape amplitude is relative (the
+        eigenvector's arbitrary normalization).
+    eig_modes : sequence of int, optional
+        Which mode indices to snapshot (default: every mode in ``eigenmodes``).
+    eig_fields : sequence of str, optional
+        Perturbation quantities per mode (default ``("p", "u")``); keys of
+        :data:`_FORCED_FIELDS`.  Magnitude and phase are emitted for each.
     title : str, optional
         Case title (``meta.title``).  Defaults to the loaded title or
         ``"FNS case"``.
@@ -249,7 +266,17 @@ def dump_case(
         The YAML document.
     """
     datasets = _build_datasets(
-        network, solution, fields, node_data, forced, forced_freqs, forced_fields, include_in_save
+        network,
+        solution,
+        fields,
+        node_data,
+        forced,
+        forced_freqs,
+        forced_fields,
+        eigenmodes,
+        eig_modes,
+        eig_fields,
+        include_in_save,
     )
     if extra_datasets:
         datasets = list(datasets) + list(extra_datasets)
@@ -279,7 +306,19 @@ def save_case(network, path: str, **kwargs) -> None:
 # --------------------------------------------------------------------------- #
 # Dataset construction
 # --------------------------------------------------------------------------- #
-def _build_datasets(network, solution, fields, node_data, forced, forced_freqs, forced_fields, include_in_save):
+def _build_datasets(
+    network,
+    solution,
+    fields,
+    node_data,
+    forced,
+    forced_freqs,
+    forced_fields,
+    eigenmodes,
+    eig_modes,
+    eig_fields,
+    include_in_save,
+):
     datasets = []
     if solution is not None:
         items = []
@@ -295,6 +334,8 @@ def _build_datasets(network, solution, fields, node_data, forced, forced_freqs, 
         datasets.append(DataSet("Mean flow", items, include_in_save, info=info))
     if forced is not None:
         datasets += _forced_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save)
+    if eigenmodes is not None:
+        datasets += _eigenmode_datasets(network, eigenmodes, eig_modes, eig_fields, node_data, include_in_save)
     return datasets
 
 
@@ -356,6 +397,53 @@ def _forced_items(fr, j, key, n_edges):
         raise ValueError(f"unknown forced field {key!r}; choose from {list(_FORCED_FIELDS) + ['reflection']}")
     label, basis, comp, unit = _FORCED_FIELDS[key]
     cvals = [complex(fr.field(e, basis)[j, comp]) for e in range(n_edges)]
+    return [
+        DataItem(f"{label} amplitude", "edge", [abs(c) for c in cvals], unit),
+        DataItem(f"{label} phase", "edge", [math.degrees(cmath.phase(c)) for c in cvals], "deg", phase=True),
+    ]
+
+
+def _eigenmode_datasets(network, result, eig_modes, eig_fields, node_data, include_in_save):
+    """One dataset per eigenmode: per-edge mode shape + the modal scalars as metadata."""
+    n_edges = len(network._edges)
+    n_modes = int(result.n_modes)
+    modes = range(n_modes) if eig_modes is None else [int(m) for m in eig_modes]
+    datasets = []
+    for i in modes:
+        if not 0 <= i < n_modes:
+            raise ValueError(f"eigenmode index {i} out of range [0, {n_modes})")
+        items = []
+        for key in eig_fields:
+            items += _eigenmode_items(result, i, key, n_edges)
+        if node_data:
+            items += _node_items(network, items)
+        info = [
+            MetaEntry("kind", "Analysis", "Eigenmode"),
+            MetaEntry("mode", "Mode index", int(i)),
+            MetaEntry("frequency", "Frequency", float(result.freqs[i]), unit="Hz"),
+            MetaEntry("growth_rate", "Growth rate", float(result.growth_rates[i]), unit="1/s"),
+            MetaEntry("damping_ratio", "Damping ratio", float(result.damping_ratios[i])),
+            MetaEntry("unstable", "Unstable", bool(result.unstable[i])),
+            MetaEntry("residual", "Residual", float(result.residuals[i])),
+        ]
+        datasets.append(
+            DataSet(
+                f"Mode {i}: {float(result.freqs[i]):g} Hz",
+                items,
+                include_in_save,
+                description="Eigenmode shape (relative amplitude; eigenvector normalization).",
+                info=info,
+            )
+        )
+    return datasets
+
+
+def _eigenmode_items(result, i, key, n_edges):
+    if key not in _FORCED_FIELDS:
+        raise ValueError(f"unknown eigenmode field {key!r}; choose from {list(_FORCED_FIELDS)}")
+    label, basis, comp, unit = _FORCED_FIELDS[key]
+    shape = result.mode_shape(i, basis)  # (n_edges, n_char)
+    cvals = [complex(shape[e, comp]) for e in range(n_edges)]
     return [
         DataItem(f"{label} amplitude", "edge", [abs(c) for c in cvals], unit),
         DataItem(f"{label} phase", "edge", [math.degrees(cmath.phase(c)) for c in cvals], "deg", phase=True),

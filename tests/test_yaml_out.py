@@ -21,7 +21,8 @@ from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
 from fns.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
 from fns.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
-from fns.perturbation import forced_response, PerturbationBC
+from fns.derive import ES_C
+from fns.perturbation import forced_response, eigenmodes, PerturbationBC
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 _HANDLE_RE = re.compile(r"^.+-port-\d+$")
@@ -257,6 +258,57 @@ def test_forced_unknown_frequency_rejected(tmp_path):
     fr = forced_response(sol.problem, sol.x, np.array([100.0, 200.0]))
     with pytest.raises(ValueError, match="not in the forced response"):
         dump_case(net, forced=fr, forced_freqs=[123.0])
+
+
+def _resonator():
+    net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=5.0)
+    net.add(cat.total_pressure_inlet(101325.0, 300.0, perturbation_bc=PerturbationBC.hard_wall()))
+    net.add(cat.duct(0.5))
+    net.add(cat.wall())
+    net.connect(0, 1, 0.05)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+    assert sol.converged
+    c = float(sol.table()[ES_C, 0])
+    res = eigenmodes(sol.problem, sol.x, (0.4 * c / (2 * 0.5), 1.6 * c / (2 * 0.5)))
+    return net, sol, res
+
+
+def test_eigenmode_snapshots(tmp_path):
+    net, sol, res = _resonator()
+    assert res.n_modes >= 1
+
+    text = dump_case(net, solution=sol, eigenmodes=res, eig_fields=("p", "u"))
+    doc = yaml.safe_load(text)
+    names = [d["name"] for d in doc["data"]["datasets"]]
+    assert names[0] == "Mean flow"
+    mode_dsets = [d for d in doc["data"]["datasets"] if d["name"].startswith("Mode ")]
+    assert len(mode_dsets) == res.n_modes
+
+    ds0 = mode_dsets[0]
+    item_names = [it["name"] for it in ds0["items"]]
+    assert item_names == ["Pressure amplitude", "Pressure phase", "Velocity amplitude", "Velocity phase"]
+    n_edges = len(net._edges)
+    assert all(len(it["values"]) == n_edges for it in ds0["items"])
+
+    info = _info_map(ds0)
+    assert info["kind"]["value"] == "Eigenmode"
+    assert info["frequency"]["value"] == pytest.approx(float(res.freqs[0]), rel=1e-6)
+    assert info["growth_rate"]["value"] == pytest.approx(float(res.growth_rates[0]), rel=1e-6, abs=1e-9)
+    assert "unstable" in info and "residual" in info
+    # the per-edge pressure magnitude matches the mode shape (network basis, component 1)
+    expected = [abs(complex(res.mode_shape(0, "network")[e, 1])) for e in range(n_edges)]
+    p_amp = next(it for it in ds0["items"] if it["name"] == "Pressure amplitude")
+    assert np.allclose(p_amp["values"], expected)
+
+
+def test_eigenmode_subset_and_bad_index(tmp_path):
+    net, sol, res = _resonator()
+    text = dump_case(net, eigenmodes=res, eig_modes=[0])
+    doc = yaml.safe_load(text)
+    assert [d["name"] for d in doc["data"]["datasets"]] == [f"Mode 0: {float(res.freqs[0]):g} Hz"]
+    with pytest.raises(ValueError, match="out of range"):
+        dump_case(net, eigenmodes=res, eig_modes=[res.n_modes])
 
 
 # --------------------------------------------------------------------------

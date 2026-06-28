@@ -419,10 +419,19 @@ class NyquistResponse:
         caveat = "" if self.closed else "   [band edge not quiet: count is the tally up to f_max]"
         srcs = ", ".join(self.source_labels) if self.source_labels else f"{self.rank} source(s)"
         flavor = "isentropic (acoustic-only)" if self.isentropic else "entropy/composition included"
+        try:
+            n_passive = self.n_unstable_passive  # rational-fit check of the passive premise
+        except Exception:
+            n_passive = 0  # AAA unavailable; fall back to the encirclement reading silently
+        passive_line = (
+            ""
+            if n_passive == 0
+            else f"\n  [A_0 not passive: {n_passive} unstable passive resonance(s); absolute count = {n + n_passive}]"
+        )
         return (
             f"NyquistResponse: {verdict}{caveat}\n"
             f"  {band}, rank {self.rank} [{srcs}], {flavor}\n"
-            f"  stability margin min|D| = {self.margin:.3g}"
+            f"  stability margin min|D| = {self.margin:.3g}{passive_line}"
         )
 
     def _repr_html_(self) -> str:
@@ -484,6 +493,131 @@ class NyquistResponse:
                 Li = self.L[i] if self.L.ndim == 1 else self.L[i]
                 out.append({"freq_hz": float(self.freqs[i]), "abs_D": float(absD[i]), "L": Li})
         return out
+
+    # ----------------------------------------------- off-axis mode-frequency estimates
+    def _aaa_fit(self):
+        """Rational (AAA) interpolant of ``D(omega)`` over the real-frequency sweep.
+
+        ``D`` is meromorphic in the frequency plane -- its **zeros** are the network modes and its
+        **poles** are the passive operator ``A_0``'s resonances (``D = det A / det A_0``).  A
+        barycentric rational fit of the real-axis samples continues analytically off the axis, so
+        its zeros/poles recover both sets without any complex-plane evaluation (which the convected
+        / tabulated regime forbids).  Cached on first use.
+        """
+        cached = getattr(self, "_aaa_cache", None)
+        if cached is not None:
+            return cached
+        try:
+            from scipy.interpolate import AAA
+        except ImportError as exc:  # scipy < 1.15
+            raise RuntimeError(
+                "off-axis mode estimation needs scipy.interpolate.AAA (scipy >= 1.15); "
+                "upgrade scipy, or use the encirclement count n_unstable / eigenmodes()"
+            ) from exc
+        f = np.asarray(self.freqs, dtype=float)
+        fit = AAA(f.astype(np.complex128), np.asarray(self.D, dtype=np.complex128))
+        try:
+            fit.clean_up()  # drop spurious Froissart doublets (near-cancelling pole/zero pairs)
+        except Exception:  # pragma: no cover - clean_up is best-effort
+            pass
+        object.__setattr__(self, "_aaa_cache", fit)
+        return fit
+
+    def _aaa_modes(self, points, *, margin_hz, max_growth):
+        """Map AAA roots/poles (``points`` in Hz) to in-band mode dicts (freq, growth, unstable)."""
+        f = np.asarray(self.freqs, dtype=float)
+        fmax = float(f.max()) if f.size else 0.0
+        out = []
+        for z in points:
+            z = complex(z)
+            if not (-margin_hz <= z.real <= fmax + margin_hz):
+                continue
+            growth = -2.0 * np.pi * z.imag  # e^{+i omega t}: growth = -Im(omega) = -2 pi Im(f)
+            if max_growth is not None and abs(growth) > max_growth:
+                continue
+            out.append({"freq_hz": float(z.real), "growth_rate": float(growth), "unstable": bool(growth > 0.0)})
+        return sorted(out, key=lambda d: d["freq_hz"])
+
+    def mode_estimates(self, *, margin_hz=None, max_growth=None, unstable_only=False):
+        """Estimate the network's **off-axis** complex mode frequencies from the real-axis sweep.
+
+        :meth:`crossings` reports where ``|D|`` dips -- the *onset* (least-stable) frequencies,
+        which coincide with a mode only at marginal stability; a strongly growing or damped mode
+        sits off the real axis and need not dip ``|D|`` at all.  This instead fits a rational
+        (AAA) interpolant to ``D(omega)`` along the real axis and reads off its complex **zeros**
+        -- the actual modes, each with its frequency *and growth rate* -- analytically continued
+        from the sweep with no complex-plane evaluation.  It recovers the same modes
+        :func:`fns.perturbation.eigenmodes` would, but works where the eigensolver cannot run (a
+        measured / tabulated FTF, a dense convected entropy/composition spectrum).
+
+        It is an estimate from a finite, band-limited fit: trust modes well inside the swept band,
+        and refine the grid or widen ``freqs`` if an estimate sits at the edge.
+
+        Parameters
+        ----------
+        margin_hz : float, optional
+            Keep zeros whose frequency lies within this margin of the swept band (default: 5% of
+            the band).
+        max_growth : float, optional
+            Drop estimates with ``|growth_rate|`` above this (1/s) as spurious far-off-axis fit
+            artifacts (default: ``2*pi * 0.15 * f_max``).
+        unstable_only : bool, optional
+            Return only the growing modes (``growth_rate > 0``).
+
+        Returns
+        -------
+        list of dict
+            ``{"freq_hz", "growth_rate", "unstable"}`` per mode, growth in 1/s (``> 0`` unstable,
+            the ``e^{+i omega t}`` convention), sorted by frequency.
+        """
+        margin_hz, max_growth = self._estimate_bounds(margin_hz, max_growth)
+        modes = self._aaa_modes(self._aaa_fit().roots(), margin_hz=margin_hz, max_growth=max_growth)
+        return [m for m in modes if m["unstable"]] if unstable_only else modes
+
+    def passive_resonances(self, *, margin_hz=None, max_growth=None):
+        """Resonances of the **passive** operator ``A_0``, recovered as the poles of the ``D`` fit.
+
+        Since ``D = det A / det A_0``, the poles of the AAA fit (:meth:`mode_estimates` uses its
+        zeros) are exactly ``A_0``'s modes.  The Nyquist count is ``N_unstable(A) - N_unstable(A_0)``
+        and equals the absolute unstable-mode number only when ``A_0`` is itself stable; this lets
+        that premise be **checked** -- any passive resonance with ``growth_rate > 0`` is an unstable
+        passive mode the encirclement count would otherwise hide.
+
+        Returns
+        -------
+        list of dict
+            ``{"freq_hz", "growth_rate", "unstable"}`` per estimated passive resonance.
+        """
+        margin_hz, max_growth = self._estimate_bounds(margin_hz, max_growth)
+        return self._aaa_modes(self._aaa_fit().poles(), margin_hz=margin_hz, max_growth=max_growth)
+
+    def _estimate_bounds(self, margin_hz, max_growth):
+        fmax = float(np.asarray(self.freqs, dtype=float).max()) if np.size(self.freqs) else 0.0
+        if margin_hz is None:
+            margin_hz = 0.05 * fmax
+        if max_growth is None:
+            max_growth = 2.0 * np.pi * 0.15 * fmax
+        return margin_hz, max_growth
+
+    @property
+    def n_unstable_passive(self) -> int:
+        """Estimated number of **unstable passive resonances** ``N_unstable(A_0)`` in the band.
+
+        Zero for the passive terminations this driver is built for; a positive value warns that the
+        encirclement reading :attr:`n_unstable` is no longer the absolute count (add this).  An
+        estimate from the rational fit -- see :meth:`passive_resonances`.
+        """
+        return sum(1 for r in self.passive_resonances() if r["unstable"])
+
+    @property
+    def n_unstable_absolute(self) -> int:
+        """Absolute unstable-mode count ``N_unstable(A) = (encirclement count) + N_unstable(A_0)``."""
+        return self.n_unstable + self.n_unstable_passive
+
+    @property
+    def passive_assumption_ok(self) -> bool:
+        """Whether ``A_0`` looks stable (``N_unstable(A_0) = 0``), so :attr:`n_unstable` is absolute."""
+        return self.n_unstable_passive == 0
 
     def summary(self):
         """One-line-per-field dict: unstable count, stability, margin, crossings."""

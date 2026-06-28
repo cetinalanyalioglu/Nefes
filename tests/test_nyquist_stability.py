@@ -288,6 +288,53 @@ def test_nyquist_stability_wrapper_returns_response():
 
 
 # --------------------------------------------------------------------------
+# Off-axis mode estimates (rational fit) and the passive-premise check
+# --------------------------------------------------------------------------
+
+
+def test_mode_estimates_recover_eigenmodes():
+    """The rational-fit mode estimates match the off-axis eigenmodes -- frequency and growth."""
+    prob, x = _acoustic_rijke(0.6, 4e-3, 180.0)
+    nyq = _nyq(prob, x, isentropic=True)
+    uns, _ = _eig_unstable(prob, x, band=(40.0, 1100.0))
+    ests = nyq.mode_estimates(unstable_only=True)
+    assert len(ests) == len(uns) == nyq.n_unstable >= 1
+    for f, g in uns:
+        m = min(ests, key=lambda e: abs(e["freq_hz"] - f))
+        assert m["freq_hz"] == pytest.approx(f, rel=0.02)  # frequency within 2 %
+        assert m["growth_rate"] == pytest.approx(g, rel=0.15, abs=3.0)  # and the growth rate
+        assert m["unstable"]
+
+
+def test_mode_estimates_include_stable_modes_too():
+    """Without the unstable filter, the fit also returns the stable (decaying) modes."""
+    prob, x = _acoustic_rijke(0.9, 3e-3, 250.0)
+    nyq = _nyq(prob, x, isentropic=True)
+    allm = nyq.mode_estimates()
+    assert any(not m["unstable"] for m in allm)  # some decaying modes
+    assert sum(m["unstable"] for m in allm) == nyq.n_unstable
+
+
+def test_passive_premise_holds_for_passive_terminations():
+    """A_0 (FTF removed) is stable for the choked rig, so the absolute count equals the count."""
+    prob, x = _choked_rig(active=True)
+    nyq = _nyq(prob, x, fmax=1600.0, isentropic=False)
+    assert nyq.passive_assumption_ok
+    assert nyq.n_unstable_passive == 0
+    assert nyq.n_unstable_absolute == nyq.n_unstable
+    # the located passive resonances are all decaying (the count premise)
+    assert all(not r["unstable"] for r in nyq.passive_resonances())
+
+
+def test_passive_premise_holds_for_lossless_resonator():
+    """Even the marginal modes of the lossless hard-wall/open-end A_0 are not flagged unstable."""
+    prob, x = _acoustic_rijke(1e-4, 3e-3, 250.0)  # negligible gain: A ~ the passive resonator
+    nyq = _nyq(prob, x, isentropic=True)
+    assert nyq.n_unstable == 0
+    assert nyq.passive_assumption_ok and nyq.n_unstable_passive == 0
+
+
+# --------------------------------------------------------------------------
 # Parameter sweep: the Nyquist stability map (bifurcation diagram)
 # --------------------------------------------------------------------------
 

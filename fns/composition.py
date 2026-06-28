@@ -124,6 +124,122 @@ def resolve_composition(library, spec, basis="mole"):
     return Y, Z
 
 
+def species_mole_fractions(library, spec, basis="mole"):
+    """Full-library species **mole** fractions ``X`` from a named mixture ``spec``.
+
+    The mole-fraction companion of :func:`species_mass_fractions` (same ``spec`` /
+    ``basis`` conventions).
+
+    Parameters
+    ----------
+    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    spec : dict or array_like
+        ``{species_name: fraction}`` (unnormalized is fine) or a full
+        ``(n_species,)`` array already in ``basis``.
+    basis : {"mole", "mass"}
+        Whether the given fractions are mole or mass fractions.
+
+    Returns
+    -------
+    X : ndarray, shape (n_species,)
+        Normalized species mole fractions in library order.
+    """
+    Y = species_mass_fractions(library, spec, basis)
+    W = np.asarray(library.molar_masses, dtype=float)
+    moles = Y / W
+    return moles / moles.sum()
+
+
+# Moles of O2 consumed per atom of each oxidizable element on complete combustion
+# (C -> CO2, H -> H2O, S -> SO2); oxygen already in the mixture *supplies* O2 at half
+# an O2 per O atom.  Inert elements (N -> N2, the noble gases) carry no demand.
+_O2_PER_ATOM = {"C": 1.0, "H": 0.25, "S": 1.0, "O": -0.5}
+
+
+def _o2_demand(library, X):
+    """Net O2 demand [mol O2 per mol mixture] of a mole-fraction vector ``X``.
+
+    Positive for a fuel (needs oxygen), negative for an oxidizer (supplies it).
+    """
+    A = np.asarray(library.element_matrix, dtype=float)  # (n_elements, n_species)
+    atoms = A @ np.asarray(X, dtype=float)  # gram-atoms of each element per mole of mixture
+    demand = 0.0
+    for el, w in _O2_PER_ATOM.items():
+        i = library.element_index.get(el)
+        if i is not None:
+            demand += w * atoms[i]
+    return float(demand)
+
+
+def equivalence_ratio_mixture(library, fuel, oxidizer, phi, *, fuel_basis="mole", oxidizer_basis="mole", basis="mole"):
+    """Blend a ``fuel`` and an ``oxidizer`` to a target equivalence ratio ``phi``.
+
+    The stoichiometric fuel/oxidizer ratio is fixed by the elemental oxygen balance
+    of complete combustion (C->CO2, H->H2O, S->SO2; N and the noble gases inert), so
+    arbitrary fuels (including oxygen-bearing ones) and oxidizers (pure O2, air, O2 +
+    diluent) are handled from their species formulae alone -- no per-reaction
+    bookkeeping.  At ``phi = 1`` the blend is exactly stoichiometric; ``phi > 1`` is
+    rich, ``phi < 1`` lean.
+
+    Parameters
+    ----------
+    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+        Supplies the species formulae (``element_matrix``) and molar masses.
+    fuel, oxidizer : dict or array_like
+        Compositions as ``{species_name: fraction}`` (e.g. ``{"CH4": 1.0}``,
+        ``{"O2": 0.21, "N2": 0.79}``) or full ``(n_species,)`` arrays, each read in
+        its own basis.
+    phi : float
+        Equivalence ratio (``>= 0``).  ``0`` returns the pure oxidizer.
+    fuel_basis, oxidizer_basis : {"mole", "mass"}
+        Basis of the given ``fuel`` / ``oxidizer`` fractions.
+    basis : {"mole", "mass"}
+        Basis of the **returned** blend fractions.
+
+    Returns
+    -------
+    dict
+        ``{species_name: fraction}`` for every species present in the blend, in
+        ``basis`` and normalized to sum to one.  Ready to pass straight to a
+        composition-bearing element (inlet / mass source) or
+        :func:`species_mass_fractions`.
+
+    Raises
+    ------
+    ValueError
+        If ``phi`` is negative, the ``fuel`` has no net oxygen demand, or the
+        ``oxidizer`` supplies no oxygen.
+    """
+    if phi < 0.0:
+        raise ValueError(f"equivalence ratio phi must be non-negative; got {phi}")
+
+    X_fuel = species_mole_fractions(library, fuel, fuel_basis)
+    X_ox = species_mole_fractions(library, oxidizer, oxidizer_basis)
+
+    d_fuel = _o2_demand(library, X_fuel)
+    d_ox = _o2_demand(library, X_ox)
+    if d_fuel <= 0.0:
+        raise ValueError("the 'fuel' has no net oxygen demand (not a fuel for these elements C/H/S/O)")
+    if d_ox >= 0.0:
+        raise ValueError("the 'oxidizer' supplies no oxygen (its net O2 demand is non-negative)")
+
+    # Stoichiometric (phi = 1) fuel-to-oxidizer mole ratio from the combined O2 balance
+    # n_fuel * d_fuel + n_ox * d_ox = 0, then scale the fuel by phi (n_ox := 1 mole).
+    n_fuel = phi * (-d_ox / d_fuel)
+    moles = n_fuel * X_fuel + X_ox
+
+    if basis == "mole":
+        frac = moles / moles.sum()
+    elif basis == "mass":
+        mass = moles * np.asarray(library.molar_masses, dtype=float)
+        frac = mass / mass.sum()
+    else:
+        raise ValueError("basis must be 'mole' or 'mass'")
+
+    names = list(library.species_index)
+    return {names[j]: float(frac[j]) for j in np.nonzero(frac > 0.0)[0]}
+
+
 # Two streams are "the same" if their mass fractions match to this tolerance; the
 # same ``species_mass_fractions`` call is deterministic, so identical compositions
 # compare exactly -- this only guards against floating-point dust.

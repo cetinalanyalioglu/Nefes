@@ -11,7 +11,6 @@
 - [x] Extend acoustic-power diagnostics (`perturbation/power.py`): full-domain energy integral E (integrate the per-duct energy density along its length) to close `2 sigma E = net boundary power` *quantitatively* (now only sign-checked), plus a `boundary_power` for `ForcedResponse` (driven-case power balance) and an intensity-along-ducts field.
 - [x] Nyquist driver: locate off-axis unstable-mode frequencies from the real-axis sweep (the `|D|` minima are onset/least-stable points, not the strongly-unstable mode frequencies); and a reliable `N(A0)` for the source-free passive operator so the encirclement count is absolute (not just `N(A)-N(A0)`) when the reacting/convective spectrum defeats the contour eigensolver.
 - [x] Visualize search contour and found eigenvalues in the complex plane, if we have a method that already does this, update it.
-- [x] Helper to easily generate mixtures, e.g. specify fuel, oxidizer and desired equivalence ratio - obtain mole/mass fractions. Update notebooks/examples that would make use of that.
 - [x] Linear acoustic resistance element to model resistance in quiescent cases. Add a TODO item in the repo of UI to add the UI counterpart of this element after implementation.
 - [x] Do we have any facility to pass the perturbation analysis related results to the UI save file? If not, we should figure out a way to do so.
 

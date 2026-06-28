@@ -21,7 +21,26 @@ _STABLE_COLOR = COLORWAY[0]  # blue
 _UNSTABLE_COLOR = COLORWAY[4]  # red
 
 
-def plot_spectrum(freqs, growth_rates, *, residuals=None, freq_unit="Hz", title="Eigenmode spectrum", **layout):
+def _contour_to_fg(c, n=181):
+    """Map a search contour to ``(frequency [Hz], growth [1/s])`` points.
+
+    A contour lives in the complex ``omega`` plane (rad/s); a node ``omega`` plots at
+    ``(Re(omega)/2*pi, -Im(omega))``.  A :class:`~fns.perturbation.contour.Contour` (with
+    ``center``/``rx``/``ry``) is redrawn as a smooth ellipse; anything else is treated as an
+    array of complex nodes and closed.
+    """
+    if hasattr(c, "center") and hasattr(c, "rx") and hasattr(c, "ry"):
+        t = np.linspace(0.0, 2.0 * np.pi, n)
+        z = complex(c.center) + c.rx * np.cos(t) + 1j * c.ry * np.sin(t)
+    else:
+        z = np.asarray(c, dtype=np.complex128)
+        z = np.append(z, z[:1]) if z.size else z  # close the loop
+    return z.real / (2.0 * np.pi), -z.imag
+
+
+def plot_spectrum(
+    freqs, growth_rates, *, residuals=None, contour=None, freq_unit="Hz", title="Eigenmode spectrum", **layout
+):
     """Plot the stability spectrum: growth rate versus modal frequency.
 
     Each mode is a marker at ``(frequency, growth rate)``; the dashed line at
@@ -36,6 +55,11 @@ def plot_spectrum(freqs, growth_rates, *, residuals=None, freq_unit="Hz", title=
         Growth rates ``-Im(omega)`` (1/s); positive is unstable.
     residuals : array_like, optional
         Per-mode validation residual, shown in the hover text.
+    contour : Contour or sequence, optional
+        The search contour(s) the modes were found in (a
+        :class:`~fns.perturbation.contour.Contour`, a list of them, or an array of complex
+        ``omega`` nodes).  Drawn as a closed outline so one can see the searched region around
+        the eigenvalues.
     freq_unit : str, optional
         Frequency-axis unit label (default ``"Hz"``).
     title : str, optional
@@ -58,6 +82,25 @@ def plot_spectrum(freqs, growth_rates, *, residuals=None, freq_unit="Hz", title=
         return [f"residual = {v:.1e}" for v in r]
 
     fig = go.Figure()
+
+    # the search contour(s), drawn behind the eigenvalue markers
+    if contour is not None:
+        contours = contour if isinstance(contour, (list, tuple)) else [contour]
+        for k, c in enumerate(contours):
+            cx, cy = _contour_to_fg(c)
+            fig.add_trace(
+                go.Scatter(
+                    x=cx,
+                    y=cy,
+                    mode="lines",
+                    line=dict(color="#9aa5b1", width=1.4, dash="dot"),
+                    name="search contour",
+                    legendgroup="search contour",
+                    showlegend=(k == 0),
+                    hoverinfo="skip",
+                )
+            )
+
     for mask, name, color, symbol in (
         (~unstable, "stable / decaying", _STABLE_COLOR, "circle"),
         (unstable, "unstable (growing)", _UNSTABLE_COLOR, "diamond"),

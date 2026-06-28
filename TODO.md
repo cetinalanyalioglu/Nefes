@@ -6,7 +6,6 @@
 - [ ] We need a robust and nice framework to create analytically continuous curves from the tabulated transfer function and reflection coefficient inputs for subsequent stability analysis.
 - [ ] We are now considering "convenience" elements, that will transform into multiple elements when added to network. We should be careful to preserve proper numbering. I am not certain yet, maybe we re-run the re-numbering algorithm, or just insert the new "serial" portion as incremental numbers to the correct position and shift the rest?
 - [ ] Dedicated sudden-contraction element resolving the vena-contracta state (composite: isentropic to vena contracta + Borda re-expansion) for exact loss and minimum static pressure at higher Mach. The current `sudden_area_change` `cc`-loss uses the incompressible 1/2 rho u^2 head, accurate only to O(M^2).
-- [x] Visualize search contour and found eigenvalues in the complex plane, if we have a method that already does this, update it.
 - [x] Linear acoustic resistance element to model resistance in quiescent cases. Add a TODO item in the repo of UI to add the UI counterpart of this element after implementation.
 - [x] Do we have any facility to pass the perturbation analysis related results to the UI save file? If not, we should figure out a way to do so.
 

@@ -16,9 +16,10 @@ All Python/SciPy, no new @njit kernel.  v1 implements the transfer / scattering
 matrix analysis (theory s12.7 (i), :func:`perturbation_response`) and the linear
 stability analysis (s12.7 (ii), :func:`eigenmodes` -- the nonlinear eigenproblem
 ``det A(omega) = 0`` by Beyn's contour-integral method).  Both operate on the
-*same* assembled operator ``A(omega)``; the storage ``M`` and source ``S`` faces
-are wired but inert (no producing element yet), and drop into both analyses with no
-change once an element produces them.
+*same* assembled operator ``A(omega) = J_alg + i*omega*M + P + S``: the storage
+``M`` (a finite-volume :func:`~fns.elements.catalog.cavity`) and the dynamic source
+``S`` (a flame / mass source) drop into both analyses unchanged when their producing
+element is present.
 """
 
 from .characteristics import (

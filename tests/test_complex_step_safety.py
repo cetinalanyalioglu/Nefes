@@ -44,6 +44,7 @@ from fns.elements.ids import (
     SPLITTER,
     DUCT,
     WALL,
+    CAVITY,
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
@@ -311,6 +312,14 @@ def _probe_wall():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
+def _probe_cavity():
+    # finite-volume cavity on a dead leg off a splitter (mdot = 0 at the cavity edge):
+    # its mean residual is the wall's, so the complex-step sweep covers the same kernel.
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.cavity(2.0e-3)]
+    edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+
+
 def _probe_heat_release_flame():
     # heat-addition flame (constant area): the smooth-abs |mdot| floor in the
     # h_t donor must stay analytic through the reverse / near-zero flow sweep.
@@ -359,6 +368,7 @@ PROBES = {
     JUNCTION: _probe_junction,
     SPLITTER: _probe_splitter,
     WALL: _probe_wall,
+    CAVITY: _probe_cavity,
     FLAME_HEAT_RELEASE: _probe_heat_release_flame,
     MASS_SOURCE: _probe_mass_source,
     MASS_FLOW_OUTLET: _probe_mass_flow_outlet,

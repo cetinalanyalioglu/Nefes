@@ -12,6 +12,12 @@
   `family`); the entropy→acoustic coupling `R_s` of the `choked_nozzle` /
   `constant_mass_flow` outlets (indirect noise, vs Marble–Candel); and the default
   `inherit`. All via `fns.perturbation.boundary_response`; Plotly, FNS theme.
+- **`helmholtz_resonator.ipynb`** — demonstrates the **storage block `M`** and its first
+  producing element, the **`cavity`**. Shows the cavity is a wall to the mean flow
+  (`mdot = 0`) and a compliance `V/c²` to acoustics (its single `M` entry), then composes
+  a **Helmholtz resonator** from primitives (tee + neck `duct` + `cavity`) and reproduces
+  the analytic side-branch transmission-loss peak at `f₀ = c√(Aₙ/(V·l))/2π`, with the
+  resonance tuned across a 16:1 cavity-volume sweep. Plotly, FNS theme.
 - **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
   **secondary-air / cooling** distribution), adapted from the preliminary-study
   prototype. Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`

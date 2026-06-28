@@ -22,13 +22,15 @@ MASS_SOURCE = 14  # 2-port mass-injection element: adds mass/momentum/energy + c
 MASS_FLOW_OUTLET = 15  # 1-port outlet: prescribed outflow mass rate (acoustic mdot' = 0 by inheritance)
 CHOKED_NOZZLE_OUTLET = 16  # 1-port outlet: compact choked nozzle of throat area A* (critical mass flux)
 LINEAR_RESISTANCE = 17  # 2-port linear flow resistance: Pt drop proportional to mass flow (Pt0 - Pt1 = R*mdot)
+CAVITY = 18  # 1-port finite-volume cavity: mean flow is a wall (mdot = 0); acoustically a compliance (storage M)
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
-# element overrides its default CSD face with.  Only DUCT is active in v1;
-# VOLUME (storage M) and FLAME (sources S) are reserved provisions.
+# element overrides its default CSD face with.  DUCT (P), VOLUME (storage M) and
+# FLAME (sources S) are active; the dynamic-source S is carried on the element's
+# DynamicSource descriptor rather than this tag.
 ACOUSTIC_DEFAULT = 0  # contributes only through J_alg (the CSD linearization)
 ACOUSTIC_DUCT = 1  # phase-propagation stamp P(omega)
-ACOUSTIC_VOLUME = 2  # finite-volume storage stamp M (reserved)
+ACOUSTIC_VOLUME = 2  # finite-volume storage stamp M (the cavity compliance)
 ACOUSTIC_FLAME = 3  # heat-release source stamp S(omega) (reserved)
 
 # Equation-kind tags (for residual-row scaling); mirror prototype KIND_*.
@@ -59,8 +61,8 @@ def row_kind_tags(rid, deg):
     list of int
         One ``KIND_*`` tag per residual row, in row order.
     """
-    if rid in (MASS_FLOW_INLET, WALL, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET):
-        return [KIND_MASS]  # single mass-flux row (WALL pins mdot = 0; outlets pin a mass-flux residual)
+    if rid in (MASS_FLOW_INLET, WALL, CAVITY, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET):
+        return [KIND_MASS]  # single mass-flux row (WALL/CAVITY pin mdot = 0; outlets pin a mass-flux residual)
     if rid in (PT_INLET, P_OUTLET):
         return [KIND_PRESSURE]  # single absolute-pressure row
     # interior element: a mass balance plus (deg - 1) pressure-coupling rows
@@ -75,6 +77,7 @@ FIXED_NPORTS = {
     MASS_FLOW_OUTLET: 1,
     CHOKED_NOZZLE_OUTLET: 1,
     WALL: 1,
+    CAVITY: 1,
     ISEN_AREA_CHANGE: 2,
     SUDDEN_AREA_CHANGE: 2,
     LOSS: 2,
@@ -104,6 +107,7 @@ ALLOWS_AREA_CHANGE = {
     MASS_FLOW_OUTLET: True,
     CHOKED_NOZZLE_OUTLET: True,
     WALL: True,
+    CAVITY: True,  # single port: nothing to compare (its volume tag carries no area constraint)
     ISEN_AREA_CHANGE: True,
     SUDDEN_AREA_CHANGE: True,
     JUNCTION: True,
@@ -130,6 +134,7 @@ RESIDUAL_NAMES = {
     SUPERSONIC_INLET: "SupersonicInlet",
     SUPERSONIC_OUTLET: "SupersonicOutlet",
     WALL: "Wall",
+    CAVITY: "Cavity",
     FLAME_HEAT_RELEASE: "HeatReleaseFlame",
     FLAME_EQUILIBRIUM: "EquilibriumFlame",
     MASS_SOURCE: "MassSource",

@@ -14,8 +14,12 @@ Three faces (implementation-plan.md s8.2-8.3):
 * ``stamp_boundaries`` -- terminal reflection coefficients (reserved; the v1
   scattering driver imposes incoming waves at terminals instead, so a no-op).
 
-``build_storage`` is the storage ``M`` hook: zero in v1 (no finite-volume
-element), but the home for the ``d/dt integral_V U`` block.
+``build_storage`` assembles the storage ``M`` block -- the ``d/dt integral_V U``
+term dropped at steady state.  It is populated per element through a small
+registry (``_STORAGE_BUILDERS``, keyed by residual id): a finite-volume
+:func:`~fns.elements.catalog.cavity` contributes its mass-row compliance today,
+and added-mass / end-correction inertance (area changes, losses, perforate
+necks) plug in the same way.  ``M`` enters the operator as ``i*omega*M``.
 
 These run **above the @njit line** -- plain Python / SciPy.
 """
@@ -31,7 +35,7 @@ from .verify import duct_nodes, verify_acoustic
 from .terminals import find_terminals
 from ..solver.control import states_table
 from ..derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
-from ..elements.ids import ACOUSTIC_VOLUME, FLAME_HEAT_RELEASE
+from ..elements.ids import CAVITY, FLAME_HEAT_RELEASE
 
 
 @dataclass
@@ -591,13 +595,135 @@ def boundary_forcing(prob, x_bar, omega, cals=None):
     return b
 
 
-def build_storage(prob, x_bar):
+@dataclass
+class StorageStamp:
+    """One element's contribution to the storage block ``M`` (frozen at the mean state).
+
+    Each ``(row, col, val)`` triplet adds ``i*omega*val`` onto ``A[row, col]`` -- the
+    linearized transient accumulation ``d/dt integral_V U`` that vanishes at steady
+    state.  ``vals`` are the frequency-independent storage coefficients (the
+    ``i*omega`` is applied at assembly).  The contribution **adds** onto the rows
+    ``J_alg`` already populates (it never overwrites them), exactly like the dynamic
+    source ``S(omega)``; so a storage element's conservation row stays the converged
+    jump plus its accumulation term.
+    """
+
+    node: int  # the storage element (for diagnostics)
+    rows: np.ndarray  # int[k]  residual rows that accumulate storage
+    cols: np.ndarray  # int[k]  columns ns*edge + v of the storage coefficients
+    vals: np.ndarray  # complex[k]  the M-entries (i*omega applied at assembly)
+
+
+def _cavity_storage(prob, est, n, K=None, cals=None):
+    """Compliance storage of a finite-volume cavity (:func:`~fns.elements.catalog.cavity`).
+
+    The cavity conserves mass: ``d/dt(rho_c V) = mass inflow``.  With the oriented port
+    mass flow defined outward (the wall residual ``s0*mdot = 0`` of ``J_alg``) and the
+    cavity gas compressing isentropically about the stagnant mean, the linearization is
+
+        ``s0*mdot' + i*omega*V*drho' = 0``,   ``drho' = p'/c^2``,
+
+    so the storage adds ``i*omega*(V/c^2)*p'`` onto the cavity's single mass row -- the
+    lumped compliance ``C = V/(rho c^2)`` (the mass row ties ``mdot'`` to ``p'`` as
+    ``mdot' = -i*omega*C*rho*p'``... i.e. volume velocity ``= i*omega*C*p'``).
+
+    The energy equation is *not* an independent store in the adiabatic compact limit
+    (theory.md s12.5): the isentropic relation ``drho' = p'/c^2`` it provides is folded
+    straight into the mass storage here, which is why a single pressure-column entry
+    suffices and the result is the same in the full 3-wave and isentropic operators.
+    ``c`` is the local sound speed (the equilibrium/frozen one for a reacting cavity),
+    so the compliance carries the actual thermodynamics; a stagnant cavity exchanges no
+    convected entropy/composition (``u ~ 0``), so those characteristics are not stored.
+    """
+    base = int(prob.row_ptr[n])
+    e0 = int(prob.col_edge[base])
+    pb = int(prob.npar_fptr[n])
+    V = float(prob.npar_f[pb])  # cavity volume (catalog.cavity fparams[0])
+    ns = int(prob.n_solve)
+    c = float(est[ES_C, e0])
+    r0 = int(prob.node_row_ptr[n])  # the cavity's single (mass) residual row
+    cols = np.array([ns * e0 + 1], dtype=np.intp)  # the pressure column of the cavity edge
+    vals = np.array([V / (c * c)], dtype=np.complex128)
+    rows = np.array([r0], dtype=np.intp)
+    return StorageStamp(node=n, rows=rows, cols=cols, vals=vals)
+
+
+# Per-element storage builders, keyed by residual id.  A builder takes
+# ``(prob, est, n, K, cals)`` and returns a :class:`StorageStamp` (or ``None``).  This
+# is the extension point for the ``M`` block: a new storage-bearing element registers
+# its ``d/dt integral_V U`` contribution here -- the cavity's compliance today, and
+# inertance / end-correction terms (area changes, losses, perforate necks) later.
+_STORAGE_BUILDERS = {CAVITY: _cavity_storage}
+
+
+def build_storage_stamps(prob, x_bar, K, cals=None):
+    """Per-element storage stamps -- the contributors to the operator's ``M`` block.
+
+    Iterates the network and asks each storage-bearing element (one registered in
+    :data:`_STORAGE_BUILDERS` by residual id) for its ``d/dt integral_V U`` triplets at
+    the frozen mean state ``x_bar``.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+    x_bar : ndarray
+        Converged mean-flow solve state, shape ``(n_solve, E)``.
+    K : float
+        The perfect-gas caloric constant ``cp/R`` (fallback when ``cals`` is ``None``).
+    cals : list, optional
+        Per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).
+
+    Returns
+    -------
+    list of StorageStamp
+        One per storage element (empty when the network carries none).
+    """
+    if not _STORAGE_BUILDERS:
+        return []
+    est = states_table(prob, x_bar)
+    stamps = []
+    for n in range(int(prob.n_nodes)):
+        builder = _STORAGE_BUILDERS.get(int(prob.node_rid[n]))
+        if builder is None:
+            continue
+        st = builder(prob, est, n, K, cals)
+        if st is not None and st.rows.size:
+            stamps.append(st)
+    return stamps
+
+
+def build_storage(prob, x_bar, K=None, cals=None):
     """Storage block ``M`` (the ``d/dt integral_V U`` term dropped at steady state).
 
-    Zero in v1 (no finite-volume element); a volumetric element would populate
-    its conservation rows here via a complex-step of a transient-flux operator.
+    Assembles the per-element storage stamps (:func:`build_storage_stamps`) into the
+    sparse operator block that enters ``A(omega)`` as ``i*omega*M``.  All-zero (an
+    empty CSC) when the network carries no storage element, so the fast assembler can
+    test ``M.nnz`` to skip the storage fill.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+    x_bar : ndarray
+        Converged mean-flow solve state, shape ``(n_solve, E)``.
+    K : float, optional
+        The perfect-gas caloric constant ``cp/R``; derived from ``prob.tf`` when omitted.
+    cals : list, optional
+        Per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).
+
+    Returns
+    -------
+    scipy.sparse.csc_matrix
+        The storage block, shape ``(n_eq, n_col)``.
     """
-    vol = [n for n in range(prob.n_nodes) if int(prob.node_acoustic_id[n]) == ACOUSTIC_VOLUME]
-    if vol:
-        raise NotImplementedError("finite-volume storage M is a reserved v1 provision")
-    return sp.csc_matrix((prob.n_eq, prob.n_col), dtype=np.complex128)
+    if K is None:
+        K = float(prob.tf[0]) / float(prob.tf[1])
+    n_eq, n_col = int(prob.n_eq), int(prob.n_col)
+    stamps = build_storage_stamps(prob, x_bar, K, cals)
+    if not stamps:
+        return sp.csc_matrix((n_eq, n_col), dtype=np.complex128)
+    rows = np.concatenate([st.rows for st in stamps])
+    cols = np.concatenate([st.cols for st in stamps])
+    vals = np.concatenate([st.vals for st in stamps]).astype(np.complex128)
+    return sp.csc_matrix((vals, (rows, cols)), shape=(n_eq, n_col), dtype=np.complex128)

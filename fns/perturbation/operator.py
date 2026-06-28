@@ -4,11 +4,13 @@
 operator (theory.md s12.1) -- reused verbatim from the @njit complex-step
 machinery (no new kernel).  ``M`` is the storage block (compliance/inertance),
 ``P`` the duct phase propagation, ``S`` the dynamic-source (flame / mass-source)
-feedback.  ``P`` and ``S`` have producing elements (a length-bearing duct, a flame
-or mass source carrying a :class:`~fns.elements.dynamic_source.DynamicSource`); ``M``
-is still inert (no finite-volume element).  When a source is present the
-frequency-dependence (the transfer functions) is re-stamped every ``omega`` via the
-reference assembly rather than the fixed-pattern fast path (see ``stamps.py``).
+feedback.  Each block has producing elements: a length-bearing duct (``P``), a flame
+or mass source carrying a :class:`~fns.elements.dynamic_source.DynamicSource` (``S``),
+and a finite-volume :func:`~fns.elements.catalog.cavity` (``M``, the compliance/
+inertance storage; see ``stamps.build_storage``).  All four blocks ride the
+fixed-pattern fast path -- the storage and source contributions are accumulated onto
+their slots per ``omega``, the duct phases overwritten -- so ``A(omega)`` is assembled
+in full without a slow-path fallback (see ``stamps.py``).
 """
 
 from dataclasses import dataclass, field
@@ -77,8 +79,9 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
 
     ``J_alg`` is assembled with the regularizations turned down (the
     un-regularized variant of theory.md s12.6) at ``kappa = 0``.  ``M`` is the
-    storage block (zero in v1).  The duct phase data is precomputed here and
-    restamped cheaply per frequency.
+    storage block (the cavity compliance; all-zero when no storage element is
+    present).  The duct phase data is precomputed here and restamped cheaply per
+    frequency.
 
     ``isentropic`` (default False) pins the entropy characteristic to zero on every
     edge (``rho' = p'/c^2``), reducing the operator to the two acoustic waves -- the
@@ -90,12 +93,14 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
     x_bar = np.ascontiguousarray(x_bar)
     J = jacobian(prob, x_bar, eps, eps_fb, 0.0).astype(np.complex128)
     n = J.shape[0]
-    M = build_storage(prob, x_bar)
     K = float(prob.tf[0]) / float(prob.tf[1])  # cp / R (perfect-gas fallback)
     # per-edge caloric: the reacting backend's h_t<->(rho,p) coupling is *not* the
     # perfect-gas K (theory.md s12.2); compute it from the converged closure so every
     # char-map stamp is consistent with J_alg.
     cals = edge_caloric(prob, x_bar)
+    # storage M: the d/dt(integral_V U) block (compliance/inertance), built from the same
+    # caloric map as J_alg so the cavity's drho' matches the mean-flow thermodynamics.
+    M = build_storage(prob, x_bar, K, cals)
     duct_stamps = build_duct_stamps(prob, x_bar, K, u_floor, cals)
     source_stamps, flame_edges = build_source_stamps(prob, x_bar, K, u_floor, cals)
     return AcousticBlocks(
@@ -113,7 +118,7 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
     )
 
 
-def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, with_sources=True):
+def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, with_sources=True, with_storage=True):
     """Reference assembly of ``A(omega)`` via LIL stamping (the trusted, slow path).
 
     The cached ``J_alg`` is never mutated: a fresh LIL copy receives the i*omega*M
@@ -121,6 +126,11 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, wit
     inherited boundaries this returns exactly ``J_alg`` (the founding consistency);
     with ducts the phase rows reduce to wave-amplitude continuity -- physically
     equivalent to the steady duct rows.
+
+    ``with_storage`` (default True) adds the storage block ``i*omega*M``;
+    :func:`_build_plan` sets it ``False`` to capture a storage-free ``base`` (the
+    storage's additive contribution is folded in per frequency by the fast fill, like
+    the dynamic source).
 
     ``with_boundaries`` controls the terminal reflection face ``R(omega)``
     (``stamps.stamp_boundaries``).  The measurement driver (``response.py``) sets it
@@ -136,7 +146,8 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, wit
     This builds the matrix from scratch every call; :func:`assemble_acoustic` is the
     fast path that reuses it once to capture the (omega-independent) sparsity pattern.
     """
-    A = (blocks.J_alg + 1j * omega * blocks.M).tolil()
+    storage = with_storage and blocks.M.nnz
+    A = (blocks.J_alg + 1j * omega * blocks.M).tolil() if storage else blocks.J_alg.tolil()
     stamp_propagation(A, omega, blocks.duct_stamps, blocks.u_floor, skip_entropy=blocks.isentropic)
     # dynamic-source feedback S(omega): *adds* onto the J_alg rows (node rows for a mass
     # source, the downstream energy row for a flame), so it runs before the isentropic pin,
@@ -208,10 +219,27 @@ class _AssemblyPlan:
         "cals",
         "bnd",
         "src_slots",
+        "m_slots",
+        "m_coeff",
     )
 
     def __init__(
-        self, indptr, indices, shape, base, phase_slots, phase_tau, phase_coeff, prob, est, K, cals, bnd, src_slots
+        self,
+        indptr,
+        indices,
+        shape,
+        base,
+        phase_slots,
+        phase_tau,
+        phase_coeff,
+        prob,
+        est,
+        K,
+        cals,
+        bnd,
+        src_slots,
+        m_slots,
+        m_coeff,
     ):
         self.indptr = indptr
         self.indices = indices
@@ -225,6 +253,11 @@ class _AssemblyPlan:
         self.K = K
         self.cals = cals
         self.bnd = bnd
+        # storage block i*omega*M: each entry ADDS i*omega*m_coeff onto its data slot (base
+        # holds only J_alg there, the storage assembled out in _build_plan), so a storage row
+        # is J_alg + i*omega*M -- never overwritten, like the dynamic source.
+        self.m_slots = m_slots
+        self.m_coeff = m_coeff
         # dynamic-source S(omega) entries: (slot, constant complex coeff, transfer fn).  Each
         # ADDS coeff*F(omega/2pi) onto its data slot (the probe-frequency contribution baked
         # into `base` by the reference assembly is removed in _build_plan), so a sourced row
@@ -234,6 +267,9 @@ class _AssemblyPlan:
     def assemble(self, omega):
         """Build ``A(omega)`` as a CSC matrix by the fast fill."""
         data = self.base.copy()
+        if self.m_slots.size:
+            # storage block: each entry adds i*omega*coeff onto J_alg (accumulate, not overwrite)
+            data[self.m_slots] += 1j * omega * self.m_coeff
         if self.phase_slots.size:
             # the only bulk omega-dependence: each duct phase entry = coeff * e^{-i w tau}
             data[self.phase_slots] = self.phase_coeff * np.exp(-1j * omega * self.phase_tau)
@@ -314,12 +350,22 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
                     src_entries.append((int(r), int(c), complex(fr) * complex(v), term.transfer))
     forced_rc.extend((r, c) for (r, c, _co, _tf) in src_entries)
 
+    # Storage block i*omega*M: each entry adds i*omega*coeff onto its (row, col) -- like the
+    # source, it is assembled OUT of `base` (with_storage=False below) and accumulated per
+    # frequency, so `base` holds only J_alg there (no large-M cancellation).  Forced into the
+    # pattern (a coeff can coincide with an existing J_alg entry or open a new slot).
+    m_entries = []
+    if blocks.M.nnz:
+        Mco = blocks.M.tocoo()
+        m_entries = [(int(r), int(c), complex(v)) for r, c, v in zip(Mco.row, Mco.col, Mco.data)]
+        forced_rc.extend((r, c) for (r, c, _v) in m_entries)
+
     # Canonical pattern: the reference assembly (correct base values) unioned with the
     # forced boundary/source slots; sum_duplicates merges the forced zeros into existing
     # entries.  The source is assembled OUT of `base` (with_sources=False) -- its slots are
     # forced into the pattern above and filled per frequency by the fast accumulate, so the
     # base holds only J_alg there (no large-S cancellation).
-    ref = _assemble_reference(_PLAN_OMEGA, blocks, with_boundaries, with_sources=False).tocoo()
+    ref = _assemble_reference(_PLAN_OMEGA, blocks, with_boundaries, with_sources=False, with_storage=False).tocoo()
     if forced_rc:
         rows_all = np.concatenate([ref.row, np.array([r for r, _ in forced_rc], dtype=ref.row.dtype)])
         cols_all = np.concatenate([ref.col, np.array([c for _, c in forced_rc], dtype=ref.col.dtype)])
@@ -360,8 +406,27 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
     # per-omega fill simply accumulates coeff*F(omega) onto it (A[r,c] = J_alg + S(omega)).
     src_slots = [(slot(r, c), coeff, transfer) for (r, c, coeff, transfer) in src_entries]
 
+    # Storage slots: `base` holds only J_alg there (storage assembled out), so the per-omega
+    # fill accumulates i*omega*coeff onto it (A[r,c] = J_alg + i*omega*M).  NOT zeroed.
+    m_slots = np.array([slot(r, c) for (r, c, _v) in m_entries], dtype=np.intp)
+    m_coeff = np.array([v for (_r, _c, v) in m_entries], dtype=np.complex128)
+
     return _AssemblyPlan(
-        indptr, indices, ref.shape, base, phase_slots, phase_tau, phase_coeff, prob, est, K, blocks.cals, bnd, src_slots
+        indptr,
+        indices,
+        ref.shape,
+        base,
+        phase_slots,
+        phase_tau,
+        phase_coeff,
+        prob,
+        est,
+        K,
+        blocks.cals,
+        bnd,
+        src_slots,
+        m_slots,
+        m_coeff,
     )
 
 
@@ -378,9 +443,10 @@ def assemble_acoustic(omega, blocks: AcousticBlocks, with_boundaries=True):
     :func:`_assemble_reference` to round-off.
 
     ``with_boundaries`` controls the terminal reflection face ``R(omega)``; the plan is
-    cached per value on ``blocks``.  A dynamic source ``S(omega)`` rides the fast path too
-    (its transfer functions are accumulated onto the source slots per frequency); only a
-    storage block ``M`` (reserved; not in v1) still forces the reference assembly.
+    cached per value on ``blocks``.  A dynamic source ``S(omega)`` and the storage block
+    ``i*omega*M`` both ride the fast path too -- their (frequency-dependent) contributions
+    are accumulated onto fixed slots per frequency, so the operator is assembled in full
+    (``A = J_alg + i*omega*M + P + S + R``) without ever falling back to the slow path.
 
     Parameters
     ----------
@@ -397,10 +463,6 @@ def assemble_acoustic(omega, blocks: AcousticBlocks, with_boundaries=True):
     scipy.sparse.csc_matrix
         ``A(omega)``.
     """
-    if blocks.M.nnz:
-        # the storage block i*omega*M is a reserved v1 provision with no fixed-pattern fill
-        # yet, so fall back to the (correct, re-stamped-every-omega) reference assembly.
-        return _assemble_reference(omega, blocks, with_boundaries)
     plan = blocks._plans.get(with_boundaries)
     if plan is None:
         plan = _build_plan(blocks, with_boundaries)

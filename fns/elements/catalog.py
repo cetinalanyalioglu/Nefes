@@ -22,11 +22,13 @@ from .ids import (
     MASS_FLOW_OUTLET,
     CHOKED_NOZZLE_OUTLET,
     WALL,
+    CAVITY,
     JUNCTION,
     SPLITTER,
     MASS_SOURCE,
     ACOUSTIC_DEFAULT,
     ACOUSTIC_DUCT,
+    ACOUSTIC_VOLUME,
     FIXED_NPORTS,
     ALLOWS_AREA_CHANGE,
     RESIDUAL_NAMES,
@@ -214,6 +216,45 @@ def wall(name="wall", perturbation_bc=None):
 
     bc = perturbation_bc if perturbation_bc is not None else PerturbationBC.hard_wall()
     return ElementSpec(WALL, [], name, perturbation_bc=bc)
+
+
+def cavity(volume, name="cavity"):
+    """A lumped finite-volume cavity: a wall to the mean flow, a compliance to acoustics.
+
+    Mean-flow-wise the cavity is impermeable -- its single port carries ``mdot = 0``,
+    exactly like a :func:`wall`, so the leg behind it is stagnant and it needs no
+    interior mean unknowns. Acoustically its enclosed gas stores energy: a finite
+    volume ``V`` compresses isentropically, giving the lumped compliance ``C = V /
+    (rho c^2)`` that populates the storage block ``M`` (the ``i*omega*M`` face of the
+    operator ``A = J_alg + i*omega*M + P + S``). Paired with a neck inertance (a short
+    :func:`duct`) off a :func:`junction`, it forms a Helmholtz resonator with
+    ``omega_0 = c * sqrt(A_neck / (V * l_eff))`` (see :func:`helmholtz_resonator`).
+
+    The cavity is *not* a boundary terminal: its acoustic response is the compliance
+    itself (a reflection set by the storage), so the perturbation layer leaves its
+    inherited ``mdot' = 0`` row in place and lets ``M`` add the storage onto it -- it is
+    never neutralized or stamped with a reflection coefficient.
+
+    The mean state of the cavity gas is slaved to its face (the local ``p``, ``T``,
+    composition), so ``c`` is the local sound speed. An independently-stated cavity
+    (a cold purge or a different gas) is a later provision.
+
+    Parameters
+    ----------
+    volume : float
+        Enclosed cavity volume ``V`` [m^3], strictly positive. Sets the compliance
+        ``C = V / (rho c^2)`` and hence the resonance frequency.
+    name : str, optional
+        Element label.
+
+    Returns
+    -------
+    ElementSpec
+    """
+    V = float(volume)
+    if not V > 0.0:
+        raise ValueError(f"cavity volume must be strictly positive; got {volume}")
+    return ElementSpec(CAVITY, [V], name, acoustic_id=ACOUSTIC_VOLUME)
 
 
 def isentropic_area_change(name="iac"):

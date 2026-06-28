@@ -19,6 +19,7 @@ from .ids import (
     MASS_FLOW_OUTLET,
     CHOKED_NOZZLE_OUTLET,
     WALL,
+    CAVITY,
     ISEN_AREA_CHANGE,
     SUDDEN_AREA_CHANGE,
     LOSS,
@@ -45,7 +46,7 @@ def node_donor(n, rid, s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
     base = row_ptr[n]
     deg = row_ptr[n + 1] - base
     pb = npar_fptr[n]
-    if rid == WALL or rid == MASS_FLOW_OUTLET or rid == CHOKED_NOZZLE_OUTLET:
+    if rid == WALL or rid == CAVITY or rid == MASS_FLOW_OUTLET or rid == CHOKED_NOZZLE_OUTLET:
         # Scalar-transparent: the element offers the edge its own scalar value, so the
         # smooth-upwind transport row (theta = 1/2 at mdot = 0) collapses to the
         # interior donor -- the stagnant/wall leg simply inherits it (theory.md s12.6).
@@ -106,10 +107,13 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         R[r0] = s0 * est[ES_MDOT, e0] - npar_f[pb + 0]
         return
 
-    if rid == WALL:
+    if rid == WALL or rid == CAVITY:
+        # WALL and CAVITY share the mean residual: impermeable, no mass crosses the face.
+        # The cavity differs only acoustically -- its finite volume populates the storage
+        # block M (a compliance), stamped above the @njit line; the steady state is a wall.
         e0 = col_edge[base]
         s0 = orient[base]
-        R[r0] = s0 * est[ES_MDOT, e0]  # impermeable: no mass crosses the wall
+        R[r0] = s0 * est[ES_MDOT, e0]
         return
 
     if rid == PT_INLET:

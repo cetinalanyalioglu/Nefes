@@ -55,6 +55,13 @@ from .matrices import (
     wave_signs,
 )
 from .duct import duct_modes, DuctAcoustics
+from .cuton import (
+    cuton_frequency,
+    duct_cuton_frequencies,
+    CutOnReport,
+    DuctCutOn,
+    ALPHA_CIRCULAR,
+)
 from .power import (
     acoustic_intensity,
     acoustic_energy_density,
@@ -133,6 +140,12 @@ __all__ = [
     # ducts / drivers
     "duct_modes",
     "DuctAcoustics",
+    # plane-wave validity (higher-order-mode cut-on)
+    "cuton_frequency",
+    "duct_cuton_frequencies",
+    "CutOnReport",
+    "DuctCutOn",
+    "ALPHA_CIRCULAR",
     "modes_from_det",
     "scattering_2port",
     # acoustic-power diagnostics

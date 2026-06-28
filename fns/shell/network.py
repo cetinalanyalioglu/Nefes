@@ -430,6 +430,28 @@ class Solution:
         """Return the per-edge state table (rows are fields, columns are edges)."""
         return states_table(self.problem, self.result.x)
 
+    def cuton_report(self, section: str = "circular"):
+        """Per-duct higher-order-mode cut-on frequencies and the plane-wave ceiling.
+
+        The FNS acoustic layer is plane-wave (1-D); it is valid only below the first
+        duct cut-on frequency.  This reports the cut-on of every edge (from its area,
+        sound speed and Mach) and the network-wide ceiling
+        (:attr:`~fns.perturbation.CutOnReport.f_cuton`) -- keep any perturbation
+        analysis below it.
+
+        Parameters
+        ----------
+        section : {"circular", "square"}, optional
+            Assumed duct cross-section shape (FNS ducts store only an area).
+
+        Returns
+        -------
+        fns.perturbation.CutOnReport
+        """
+        from ..perturbation.cuton import duct_cuton_frequencies
+
+        return duct_cuton_frequencies(self.problem, self.result.x, section=section, names=self.network._edge_names)
+
     def print_states(self, edges=None, precision: int = 5, file=None) -> None:
         """Print the per-edge mean-flow state table to the screen.
 

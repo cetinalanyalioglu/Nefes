@@ -38,7 +38,6 @@
 ## Issues
 
 - [ ] We don't have any mechanism to prevent connecting incompatible elements with each other - see the guardrails we put in the UI. Perhaps we were too strict, this is open to re-evalute.
-- [x] We may not have completely internalized "thermo.inp". This file should be embedded in the project, installed with the python package as the default species library, and unless the user manually points to a new one, there should be no need to name it.
 
 ## Deferred
 

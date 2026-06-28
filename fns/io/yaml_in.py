@@ -144,14 +144,25 @@ def _resolve_path(path: str, case_dir: str) -> str:
 def _build_library(mech_path: str, species_spec, case_dir: str):
     """Build a ``thermolib`` species library from a mechanism file + optional species list.
 
-    A native mechanism YAML (Cantera-subset, ``.yaml``/``.yml``) loads every species in the
-    file, optionally narrowed to the listed subset.  A CEA ``thermo.inp`` requires an explicit
-    species list (the file defines thousands of species).
+    With no ``mechanismFile`` set, the packaged NASA Glenn / CEA ``thermo.inp`` (shipped
+    with ``thermolib``) is used as the default species database -- the user only needs to
+    list the ``species``.  An explicit native mechanism YAML (Cantera-subset,
+    ``.yaml``/``.yml``) loads every species in the file, optionally narrowed to the listed
+    subset; an explicit CEA ``thermo.inp`` (like the default) requires a species list (the
+    file defines thousands of species).
     """
     from thermolib import SpeciesLibrary, ThermoInp
 
-    path = _resolve_path(mech_path, case_dir)
     species = _parse_species(species_spec)
+    if not mech_path:
+        # no mechanism file named -> the bundled CEA database (still needs a species list)
+        if not species:
+            raise ValueError(
+                "the reacting (equilibrium) model needs a 'species' list (with no 'mechanismFile' set, "
+                "the packaged thermo.inp is used, which defines thousands of species)"
+            )
+        return ThermoInp().library(species)
+    path = _resolve_path(mech_path, case_dir)
     if path.lower().endswith((".yaml", ".yml")):
         lib = SpeciesLibrary.from_native(path)
         return lib.subset(species) if species else lib

@@ -21,7 +21,7 @@ Public API (REQUIREMENTS A.9)::
 from .constants import P_REF, P_REF_BAR, R_UNIVERSAL
 from .species import NASA7, NASA9, Species, SpeciesLibrary, ThermoPoly
 from .mechanism import Mechanism, Reaction
-from .cea import ThermoInp, read_thermo_inp
+from .cea import ThermoInp, read_thermo_inp, default_thermo_inp
 from .properties import MixtureState, mixture_properties
 from .equilibrium import (
     EquilibriumResult,
@@ -44,6 +44,7 @@ __all__ = [
     "Reaction",
     "ThermoInp",
     "read_thermo_inp",
+    "default_thermo_inp",
     "Thermo",
     "MixtureState",
     "mixture_properties",

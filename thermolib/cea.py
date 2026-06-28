@@ -36,7 +36,37 @@ from .constants import P_REF_BAR
 from .elements import normalize_element
 from .species import NASA9, Species, SpeciesLibrary
 
-__all__ = ["ThermoInp", "read_thermo_inp"]
+__all__ = ["ThermoInp", "read_thermo_inp", "default_thermo_inp"]
+
+# The NASA Glenn / CEA database is vendored next to this module (``thermolib/data``)
+# and shipped as package data, so it is available without the user naming a path.
+_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+_DEFAULT_THERMO_INP = os.path.join(_DATA_DIR, "thermo.inp")
+
+
+def default_thermo_inp() -> str:
+    """Filesystem path to the packaged NASA Glenn / CEA ``thermo.inp`` database.
+
+    This is the default species database used whenever a ``thermo.inp`` path is not
+    given explicitly (``ThermoInp()``, ``read_thermo_inp()``, ``SpeciesLibrary.from_cea()``).
+
+    Returns
+    -------
+    str
+        Absolute path to the vendored ``thermo.inp``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the packaged database is missing (a broken install).
+    """
+    if not os.path.isfile(_DEFAULT_THERMO_INP):
+        raise FileNotFoundError(
+            f"the packaged thermo.inp is missing at {_DEFAULT_THERMO_INP!r}; "
+            "reinstall thermolib or pass an explicit path"
+        )
+    return _DEFAULT_THERMO_INP
+
 
 # Column slices for line 2 element pairs (symbol at n:n+2, count at n+2:n+8).
 _ELEMENT_COLS = (10, 18, 26, 34, 42)
@@ -81,13 +111,17 @@ def _parse_interval(lines):
     return T_lo, T_hi, np.array(vals, float)
 
 
-def read_thermo_inp(path):
+def read_thermo_inp(path=None):
     """Parse ``thermo.inp`` into an ordered ``{name: Species}`` dict.
 
     Single-point records (interval count 0) and records outside the standard
     7-term layout are skipped; everything evaluable over a range is kept,
     gaseous and condensed alike (the phase flag is preserved in the note).
+
+    ``path`` defaults to the packaged database (:func:`default_thermo_inp`).
     """
+    if path is None:
+        path = default_thermo_inp()
     with open(path, "r") as fh:
         lines = fh.readlines()
 
@@ -146,7 +180,9 @@ def read_thermo_inp(path):
 class ThermoInp:
     """An easy, searchable handle on a parsed ``thermo.inp`` database."""
 
-    def __init__(self, path="thermo.inp"):
+    def __init__(self, path=None):
+        if path is None:
+            path = default_thermo_inp()
         if not os.path.isfile(path):
             raise FileNotFoundError(f"thermo.inp not found: {path!r}")
         self.path = path

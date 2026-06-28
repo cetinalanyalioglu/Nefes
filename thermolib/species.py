@@ -321,11 +321,12 @@ class SpeciesLibrary:
         return cls(elements=list(gas.element_names), species=species)
 
     @classmethod
-    def from_cea(cls, path, species=None, P_ref=None):
+    def from_cea(cls, path=None, species=None, P_ref=None):
         """Build a library from a NASA Glenn / CEA ``thermo.inp`` file (R-A2.1).
 
-        ``species`` selects a subset by name (recommended -- ``thermo.inp`` holds
-        ~2000 species); ``None`` loads every gaseous record.  ``P_ref`` defaults
+        ``path`` defaults to the packaged ``thermo.inp`` (so the database need not be
+        named).  ``species`` selects a subset by name (recommended -- ``thermo.inp``
+        holds ~2000 species); ``None`` loads every gaseous record.  ``P_ref`` defaults
         to one bar (the database's standard state).
         """
         from .cea import ThermoInp

@@ -8,7 +8,19 @@ NASA-9 data).  A final cross-check against Cantera is skipped when Cantera or
 import numpy as np
 import pytest
 
-from thermolib import SpeciesLibrary, Thermo
+from thermolib import SpeciesLibrary, Thermo, ThermoInp, default_thermo_inp, read_thermo_inp
+
+
+def test_packaged_thermo_inp_is_the_default():
+    """With no path, the loaders resolve to the packaged database (no naming needed)."""
+    import os
+
+    path = default_thermo_inp()
+    assert os.path.isfile(path) and path.endswith("thermo.inp")
+    # Every no-path entry point reads the same packaged database.
+    assert len(read_thermo_inp()) == len(ThermoInp()) > 1000
+    lib = SpeciesLibrary.from_cea(species=["H2", "O2", "H2O", "N2"])
+    assert [s.name for s in lib.species] == ["H2", "O2", "H2O", "N2"]
 
 
 def test_parse_and_search(thermo_inp):

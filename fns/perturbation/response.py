@@ -43,7 +43,7 @@ import scipy.sparse.linalg as spla
 
 from .operator import build_acoustic_blocks, assemble_acoustic
 from .characteristics import dx_to_char, basis_block_from_state
-from .modeshape import build_geometry, reconstruct_field, VARIABLE_SPEC, NetworkGeometry
+from .modeshape import build_geometry, reconstruct_field, NetworkGeometry
 from .terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (re-exported)
 from . import matrices as mat
 from ..solver.control import states_table
@@ -1089,7 +1089,7 @@ class PerturbationResponse:
 
     # -- spatial field reconstruction (mode-shape animation) ----------------
 
-    def field_along_network(self, freq, *, incoming=None, variable="p", root=None, n_x=160):
+    def field_along_network(self, freq, *, incoming=None, variable="p", spec=None, root=None, n_x=160):
         """Reconstruct the forced spatial field at one frequency along every root->leaf path.
 
         Picks the stored frequency nearest ``freq`` and superposes the driven sources by
@@ -1105,7 +1105,11 @@ class PerturbationResponse:
             Default: unit amplitude on the first source, zero on the rest.
         variable : str, optional
             Plotted quantity (``"p"``, ``"u"``, ``"rho"``, ``"mdot"``, ``"f"``, ``"g"``,
-            ``"h"``); default ``"p"``.
+            ``"h"``); default ``"p"``.  Ignored when ``spec`` is given.
+        spec : tuple, optional
+            A ``(basis_flavor, component)`` pair (e.g. from
+            :func:`fns.perturbation.modeshape.resolve_specs`) selecting any basis
+            component directly; overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
         n_x : int, optional
@@ -1139,15 +1143,31 @@ class PerturbationResponse:
             self.K,
             omega,
             variable=variable,
+            spec=spec,
             root=root,
             n_x=n_x,
             cals=self.cals,
         )
 
     def animate_field(
-        self, freq, *, incoming=None, variable="p", root=None, n_x=160, n_frames=48, normalize=True, **layout
+        self,
+        freq,
+        *,
+        incoming=None,
+        variable="p",
+        basis=None,
+        root=None,
+        n_x=160,
+        n_frames=60,
+        normalize=True,
+        envelope=True,
+        **layout,
     ):
         """Animate the forced spatial field at one frequency over a phase cycle (slider + play).
+
+        Pass a list of ``variable`` names, or a ``basis`` flavor (which expands to its three
+        components), to overlay several quantities; all share the single forcing frequency,
+        so they are phase-locked.
 
         Parameters
         ----------
@@ -1156,14 +1176,20 @@ class PerturbationResponse:
         incoming : array_like of complex, optional
             Per-source amplitudes (see :meth:`field_along_network`); default unit on the
             first source.
-        variable : str, optional
-            Plotted quantity (see :meth:`field_along_network`); default ``"p"``.
+        variable : str or sequence of str, optional
+            Plotted quantity, or several to overlay (see :meth:`field_along_network`);
+            default ``"p"``.  Ignored when ``basis`` is given.
+        basis : str, optional
+            A flavor from :data:`fns.perturbation.characteristics.BASIS_LABELS`; overlays its
+            three components and overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
         n_x, n_frames : int, optional
-            Interior samples per duct (default 160) and phase frames per cycle (default 48).
+            Interior samples per duct (default 160) and phase frames per cycle (default 60).
         normalize : bool, optional
-            Scale the peak magnitude to 1 (default True).
+            Scale each overlaid quantity's peak magnitude to 1 (default True).
+        envelope : bool, optional
+            Shade the ``+/- |psi(x)|`` span behind each animated line (default True).
         **layout
             Forwarded to ``Figure.update_layout``.
 
@@ -1171,15 +1197,35 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import animate_mode_shape as _animate
+        from ..plotting import animate_mode_shape as _animate, AnimSeries
+        from .modeshape import resolve_specs
 
         fi = int(np.argmin(np.abs(self.freqs - float(freq))))
         used = float(self.freqs[fi])
-        fields = self.field_along_network(freq, incoming=incoming, variable=variable, root=root, n_x=n_x)
-        label = VARIABLE_SPEC[variable][2]
-        title = layout.pop("title", None) or f"Forced response: f = {used:.4g} Hz"
+        specs = resolve_specs(variable, basis)
+        multi_quantity = len(specs) > 1
+
+        series = []
+        for label, flavor, comp in specs:
+            fields = self.field_along_network(freq, incoming=incoming, spec=(flavor, comp), root=root, n_x=n_x)
+            series.append(AnimSeries(path_fields=fields, label=label if multi_quantity else ""))
+
+        norm_note = ", normalized" if normalize else ""
+        if len(specs) == 1:
+            y_title = f"${specs[0][0]}$  (Re{norm_note})"
+        elif basis is not None:
+            y_title = f"{basis} basis  (Re{norm_note})"
+        else:
+            y_title = f"amplitude  (Re{norm_note})"
+
         return _animate(
-            fields, var_label=label, title=title, n_frames=n_frames, normalize=normalize, freq_hz=used, **layout
+            series,
+            y_title=y_title,
+            title=layout.pop("title", None) or f"Forced response: f = {used:.4g} Hz",
+            n_frames=n_frames,
+            normalize=normalize,
+            envelope=envelope,
+            **layout,
         )
 
 

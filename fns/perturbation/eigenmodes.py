@@ -44,7 +44,7 @@ from .operator import build_acoustic_blocks, assemble_acoustic
 from .characteristics import edge_transforms, basis_block_from_state, edge_caloric
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
 from .terminals import find_terminals
-from .modeshape import build_geometry, reconstruct_field, VARIABLE_SPEC, NetworkGeometry
+from .modeshape import build_geometry, reconstruct_field, NetworkGeometry
 from ..solver.control import states_table
 from ..derive import ES_C
 
@@ -894,7 +894,7 @@ class EigenmodeResult:
         )
         return _plot(shape, labels=labels, title=title, **kwargs)
 
-    def field_along_network(self, i, *, variable="p", root=None, n_x=160):
+    def field_along_network(self, i, *, variable="p", spec=None, root=None, n_x=160):
         """Reconstruct mode ``i``'s spatial field along every root->leaf path.
 
         The continuous perturbation field *inside* every duct, recovered analytically
@@ -907,7 +907,11 @@ class EigenmodeResult:
             Mode index.
         variable : str, optional
             Plotted quantity (``"p"``, ``"u"``, ``"rho"``, ``"mdot"``, ``"f"``,
-            ``"g"``, ``"h"``); default ``"p"``.
+            ``"g"``, ``"h"``); default ``"p"``.  Ignored when ``spec`` is given.
+        spec : tuple, optional
+            A ``(basis_flavor, component)`` pair (e.g. from
+            :func:`fns.perturbation.modeshape.resolve_specs`) selecting any basis
+            component directly; overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
         n_x : int, optional
@@ -931,13 +935,26 @@ class EigenmodeResult:
             self.K,
             complex(self.omega[i]),
             variable=variable,
+            spec=spec,
             root=root,
             n_x=n_x,
             cals=self.cals,
         )
 
-    def animate_mode(self, i, *, variable="p", root=None, n_x=160, n_frames=48, normalize=True, **layout):
-        """Animate mode ``i``'s spatial shape over one phase cycle (slider + play).
+    def animate_mode(
+        self,
+        i,
+        *,
+        variable="p",
+        basis=None,
+        root=None,
+        n_x=160,
+        n_frames=60,
+        normalize=True,
+        envelope=True,
+        **layout,
+    ):
+        """Animate one or more modes' spatial shapes over one phase cycle (slider + play).
 
         Draws the instantaneous physical perturbation ``Re{psi(x) e^{i theta}}`` along
         the developed length, sweeping the phase ``theta`` with a play button, framed by
@@ -945,20 +962,37 @@ class EigenmodeResult:
         one shows one trace per root->leaf path, with compact elements marked where the
         field jumps.
 
+        Several quantities can share the figure.  Pass a list of ``variable`` names, or a
+        ``basis`` flavor (which expands to its three components), to overlay variables; pass
+        a list for ``i`` to overlay modes.  Overlaid modes generally have different
+        frequencies, so they animate on a common real-time axis: the **first** listed mode
+        is the reference and completes exactly one cycle per loop, while the others advance
+        at ``f_k / f_ref`` and beat against it (their relative phase drifts -- this is
+        physical, not an artefact).
+
         Parameters
         ----------
-        i : int
-            Mode index.
-        variable : str, optional
-            Plotted quantity (see :meth:`field_along_network`); default ``"p"``.
+        i : int or sequence of int
+            Mode index, or several to overlay.
+        variable : str or sequence of str, optional
+            Plotted quantity, or several to overlay (see :meth:`field_along_network`);
+            default ``"p"``.  Ignored when ``basis`` is given.
+        basis : str, optional
+            A flavor from :data:`fns.perturbation.characteristics.BASIS_LABELS` (``"char"``,
+            ``"primitive"``, ``"network"``, ``"riemann"``, ``"pu_entropy"``, ``"pu_rho"``);
+            overlays its three components and overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
         n_x : int, optional
             Interior samples per duct (default 160).
         n_frames : int, optional
-            Phase frames over one cycle (default 48).
+            Phase frames over one cycle of the reference mode (default 60).
         normalize : bool, optional
-            Scale the peak magnitude to 1 (default True; eigenvectors are arbitrary scale).
+            Scale each overlaid quantity's peak magnitude to 1 (default True; eigenvectors
+            are arbitrary scale).
+        envelope : bool, optional
+            Shade the ``+/- |psi(x)|`` span behind each animated line (default True); set
+            False to drop the background shading.
         **layout
             Forwarded to ``Figure.update_layout``.
 
@@ -966,20 +1000,51 @@ class EigenmodeResult:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import animate_mode_shape as _animate
+        from ..plotting import animate_mode_shape as _animate, AnimSeries
+        from .modeshape import resolve_specs
 
-        fields = self.field_along_network(i, variable=variable, root=root, n_x=n_x)
-        label = VARIABLE_SPEC[variable][2]
-        title = layout.pop("title", None) or (
-            f"Mode {i}: f = {self.freqs[i]:.4g} Hz, growth = {self.growth_rates[i]:.4g} 1/s"
-        )
+        modes = [int(i)] if np.isscalar(i) else [int(m) for m in i]
+        specs = resolve_specs(variable, basis)
+        multi_mode = len(modes) > 1
+        multi_quantity = len(specs) > 1
+
+        f_ref = float(self.freqs[modes[0]])
+        denom = f_ref if abs(f_ref) > 1e-30 else 1.0
+
+        series = []
+        for m in modes:
+            ratio = float(self.freqs[m]) / denom
+            for label, flavor, comp in specs:
+                fields = self.field_along_network(m, spec=(flavor, comp), root=root, n_x=n_x)
+                parts = []
+                if multi_mode:
+                    parts.append(rf"\text{{mode }}{m}")
+                if multi_quantity:
+                    parts.append(label)
+                series.append(AnimSeries(path_fields=fields, label=r" \cdot ".join(parts), phase_ratio=ratio))
+
+        norm_note = ", normalized" if normalize else ""
+        if len(specs) == 1:
+            y_title = f"${specs[0][0]}$  (Re{norm_note})"
+        elif basis is not None:
+            y_title = f"{basis} basis  (Re{norm_note})"
+        else:
+            y_title = f"amplitude  (Re{norm_note})"
+
+        if len(modes) == 1:
+            m = modes[0]
+            default_title = f"Mode {m}: f = {self.freqs[m]:.4g} Hz, growth = {self.growth_rates[m]:.4g} 1/s"
+        else:
+            flist = ", ".join(f"{self.freqs[m]:.4g}" for m in modes)
+            default_title = f"Modes {', '.join(map(str, modes))}: f = [{flist}] Hz"
+
         return _animate(
-            fields,
-            var_label=label,
-            title=title,
+            series,
+            y_title=y_title,
+            title=layout.pop("title", None) or default_title,
             n_frames=n_frames,
             normalize=normalize,
-            freq_hz=float(self.freqs[i]),
+            envelope=envelope,
             **layout,
         )
 

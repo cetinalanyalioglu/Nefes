@@ -28,7 +28,7 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
-from .characteristics import basis_block_from_state
+from .characteristics import basis_block_from_state, BASIS_LABELS
 from .verify import duct_nodes
 from ..derive import ES_C, ES_U
 from ..elements.ids import MASS_FLOW_INLET, PT_INLET
@@ -48,6 +48,51 @@ VARIABLE_SPEC = {
     "g": ("char", 1, r"g"),
     "h": ("char", 2, r"h"),
 }
+
+
+def resolve_specs(variable=None, basis=None):
+    """Resolve a variable/basis request into reconstruction specs.
+
+    Two ways to ask for one or more quantities to reconstruct:
+
+    * ``basis`` -- a flavor from :data:`fns.perturbation.characteristics.BASIS_LABELS`
+      (``"char"``, ``"primitive"``, ``"network"``, ...).  Expands to that flavor's three
+      components, labelled by ``BASIS_LABELS``.
+    * ``variable`` -- a single :data:`VARIABLE_SPEC` name or a sequence of them, resolved
+      one-to-one (a friendly mix across flavors, e.g. ``["p", "u"]``).
+
+    Parameters
+    ----------
+    variable : str or sequence of str, optional
+        Variable name(s) from :data:`VARIABLE_SPEC`.  Ignored when ``basis`` is given.
+    basis : str, optional
+        A flavor name; overrides ``variable`` and expands to its three components.
+
+    Returns
+    -------
+    list of tuple
+        ``(label, basis_flavor, component)`` triples, one per requested quantity, where
+        ``label`` is the LaTeX fragment and ``(basis_flavor, component)`` feeds
+        :func:`reconstruct_field` via its ``spec`` argument.
+
+    Raises
+    ------
+    ValueError
+        If ``basis`` or any ``variable`` name is unknown.
+    """
+    if basis is not None:
+        if basis not in BASIS_LABELS:
+            raise ValueError(f"unknown basis {basis!r}; choose from {sorted(BASIS_LABELS)}")
+        labels = BASIS_LABELS[basis]
+        return [(labels[c], basis, c) for c in range(len(labels))]
+    names = [variable] if isinstance(variable, str) else list(variable)
+    specs = []
+    for name in names:
+        if name not in VARIABLE_SPEC:
+            raise ValueError(f"unknown variable {name!r}; choose from {sorted(VARIABLE_SPEC)}")
+        flavor, component, label = VARIABLE_SPEC[name]
+        specs.append((label, flavor, component))
+    return specs
 
 
 @dataclass(frozen=True)
@@ -262,6 +307,7 @@ def reconstruct_field(
     omega: complex,
     *,
     variable: str = "p",
+    spec: Optional[Tuple[str, int]] = None,
     root: Optional[int] = None,
     n_x: int = 160,
     cals=None,
@@ -283,7 +329,11 @@ def reconstruct_field(
         amplitude growth/decay is then captured exactly), real for a forced field.
     variable : str, optional
         Plotted quantity (:data:`VARIABLE_SPEC`): ``"p"`` (default), ``"u"``,
-        ``"rho"``, ``"mdot"``, or a raw wave ``"f"``/``"g"``/``"h"``.
+        ``"rho"``, ``"mdot"``, or a raw wave ``"f"``/``"g"``/``"h"``.  Ignored when
+        ``spec`` is given.
+    spec : tuple, optional
+        A ``(basis_flavor, component)`` pair (e.g. from :func:`resolve_specs`) selecting
+        any flavor component directly; overrides ``variable``.
     root : int, optional
         Developed-length origin element (default: a mean-flow inlet, else the
         lowest-id terminal).
@@ -299,9 +349,12 @@ def reconstruct_field(
     ValueError
         If ``variable`` is unknown, or the network has no terminal to root from.
     """
-    if variable not in VARIABLE_SPEC:
-        raise ValueError(f"unknown variable {variable!r}; choose from {sorted(VARIABLE_SPEC)}")
-    basis, component, _label = VARIABLE_SPEC[variable]
+    if spec is not None:
+        basis, component = spec
+    else:
+        if variable not in VARIABLE_SPEC:
+            raise ValueError(f"unknown variable {variable!r}; choose from {sorted(VARIABLE_SPEC)}")
+        basis, component, _label = VARIABLE_SPEC[variable]
     terms = _terminals(geometry)
     if not terms:
         raise ValueError("network has no 1-port terminal to root the developed-length axis")

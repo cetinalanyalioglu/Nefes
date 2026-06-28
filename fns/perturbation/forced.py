@@ -118,6 +118,10 @@ def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, 
         A = assemble_acoustic(omega, blocks, with_boundaries=True)
         b = boundary_forcing(prob, x_bar, omega, cals)
         X[i] = spla.spsolve(A.tocsc(), b)
+    # The length-bearing ducts are carried along so the stored-energy diagnostics
+    # (ForcedResponse.stored_energy / .plot_response) need no second pass over prob.
+    from .modeshape import build_geometry
+
     return ForcedResponse(
         freqs=freqs,
         X=X,
@@ -127,6 +131,7 @@ def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, 
         n_solve=int(prob.n_solve),
         cals=cals,
         scalar_names=tuple(getattr(prob, "scalar_names", ())),
+        ducts=build_geometry(prob).ducts,
     )
 
 
@@ -142,6 +147,7 @@ class ForcedResponse:
     n_solve: int
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
     scalar_names: tuple = ()  # transported reacting scalars (feed-stream labels), in band-1 order
+    ducts: Optional[list] = None  # length-bearing DuctSegments, for the stored-energy diagnostics
 
     def __repr__(self) -> str:
         """One-line summary: sweep extent, edge count, and the transported wave labels."""
@@ -209,3 +215,76 @@ class ForcedResponse:
         """
         w = self.waves(edge)
         return w[:, 1] / w[:, 0]
+
+    def stored_energy(self, *, n_x: int = 120) -> np.ndarray:
+        """Total acoustic energy stored in the domain at each swept frequency.
+
+        The Myers acoustic energy density integrated over every length-bearing duct
+        (the field reconstructed from each duct's face waves) and summed across the
+        network.  Boundary flux is deliberately excluded: this is the energy *held*
+        in the domain, a probe-independent resonance indicator that peaks at every
+        lightly-damped mode -- unlike a single-point transfer function, it cannot be
+        blinded by a probe sitting on a pressure node.
+
+        Parameters
+        ----------
+        n_x : int, optional
+            Interior samples per duct for the spatial integral (default 120).
+
+        Returns
+        -------
+        ndarray
+            Stored acoustic energy at each frequency, shape ``(n_freq,)``
+            (arbitrary drive-scale units).
+        """
+        from .power import duct_energy_spectrum
+
+        if not self.ducts:
+            return np.zeros(np.asarray(self.freqs, dtype=float).size)
+        return duct_energy_spectrum(self, self.ducts, n_x=n_x)
+
+    def plot_response(self, *, n_x: int = 120, log: bool = True, title: Optional[str] = None, **layout):
+        """Plot the total stored acoustic energy across the domain versus frequency.
+
+        A first-look resonance map for a forced sweep: peaks mark the lightly-damped
+        modes and their height/width the damping.  It plots :meth:`stored_energy` --
+        the whole-domain energy, with no probe and no boundary flux -- so it cannot be
+        fooled by a sensor that happens to sit on a pressure node.
+
+        Parameters
+        ----------
+        n_x : int, optional
+            Interior samples per duct for the energy integral (default 120).
+        log : bool, optional
+            Logarithmic energy axis (default True), so weak and strong resonances are
+            both legible.
+        title : str, optional
+            Figure title; a sensible default is used when omitted.
+        **layout
+            Extra Plotly ``update_layout`` keyword arguments.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        import plotly.graph_objects as go
+
+        from ..plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
+
+        f = np.asarray(self.freqs, dtype=float)
+        energy = self.stored_energy(n_x=n_x)
+        fig = go.Figure(
+            go.Scatter(
+                x=f,
+                y=energy,
+                mode="lines",
+                line=dict(color=COLORWAY[0], width=2),
+                name="stored acoustic energy",
+                hovertemplate="f = %{x:.1f} Hz<br>E = %{y:.3g}<extra></extra>",
+            )
+        )
+        fig.update_xaxes(title_text="frequency [Hz]")
+        fig.update_yaxes(title_text="stored acoustic energy  [drive-scale]", type="log" if log else "linear")
+        fig.update_layout(template=FNS_TEMPLATE_NAME, title=title or "Forced response: stored acoustic energy")
+        fig.update_layout(**layout)
+        return fig

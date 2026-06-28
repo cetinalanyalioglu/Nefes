@@ -28,7 +28,8 @@ from fns.perturbation import (
     eigenmodes,
     perturbation_response,
 )
-from fns.perturbation.modeshape import VARIABLE_SPEC, build_geometry
+from fns.perturbation.modeshape import VARIABLE_SPEC, build_geometry, resolve_specs, PathField
+from fns.plotting import animate_mode_shape, AnimSeries
 
 CFG = perfect_gas(287.0, 1.4)
 LDUCT = 0.5
@@ -202,6 +203,121 @@ def test_unknown_variable_rejected():
     res = eigenmodes(sol.problem, sol.x, (0.5 * c / (2 * LDUCT), 1.5 * c / (2 * LDUCT)))
     with pytest.raises(ValueError, match="unknown variable"):
         res.field_along_network(0, variable="pressure")
+
+
+def _anim_lines(fig):
+    # the animated mode-shape lines carry a visible width; the envelope fills are width 0.
+    return [t for t in fig.data if t.type == "scatter" and (t.line.width or 0) > 0]
+
+
+def _envelope_bands(fig):
+    return [t for t in fig.data if t.type == "scatter" and (t.line.width or 0) == 0]
+
+
+def _closed_duct_modes(fmax_factor=1.5):
+    _, sol = _duct_net(PerturbationBC.hard_wall(), cat.wall())
+    c = _uc(sol)[1]
+    f1 = c / (2.0 * LDUCT)
+    res = eigenmodes(sol.problem, sol.x, (0.5 * f1, fmax_factor * f1))
+    return res, f1
+
+
+def test_resolve_specs_variable_and_basis():
+    # a friendly variable list resolves one-to-one to (label, flavor, component)
+    specs = resolve_specs(["p", "u"])
+    assert [s[0] for s in specs] == [VARIABLE_SPEC["p"][2], VARIABLE_SPEC["u"][2]]
+    # a basis expands to its three components, in order
+    specs_b = resolve_specs(basis="primitive")
+    assert len(specs_b) == 3
+    assert all(flavor == "primitive" for (_lab, flavor, _c) in specs_b)
+    assert [c for (_l, _f, c) in specs_b] == [0, 1, 2]
+    with pytest.raises(ValueError, match="unknown variable"):
+        resolve_specs("pressure")
+    with pytest.raises(ValueError, match="unknown basis"):
+        resolve_specs(basis="bogus")
+
+
+def test_animate_multiple_variables():
+    # overlay p' and u' for one mode: one animated line each, both in the legend.
+    res, _ = _closed_duct_modes()
+    fig = res.animate_mode(0, variable=["p", "u"], n_x=40, n_frames=8)
+    lines = _anim_lines(fig)
+    assert len(lines) == 2
+    assert all(ln.showlegend for ln in lines)
+    assert any("p'" in ln.name for ln in lines) and any("u'" in ln.name for ln in lines)
+    assert len(fig.frames) == 8
+    assert all(len(fr.data) == 2 for fr in fig.frames)
+    assert all(np.all(np.isreal(d.y)) for fr in fig.frames for d in fr.data)
+
+
+def test_animate_basis_expands_to_three_components():
+    res, _ = _closed_duct_modes()
+    fig = res.animate_mode(0, basis="primitive", n_x=40, n_frames=6)
+    assert len(_anim_lines(fig)) == 3  # one line per flavor component
+
+
+def test_animate_envelope_toggle():
+    # envelope=True frames each line with a +/-|psi| band (two zero-width fills); off drops them.
+    res, _ = _closed_duct_modes()
+    on = res.animate_mode(0, variable="p", n_x=40, n_frames=6, envelope=True)
+    off = res.animate_mode(0, variable="p", n_x=40, n_frames=6, envelope=False)
+    assert len(_envelope_bands(on)) == 2 and len(_anim_lines(on)) == 1
+    assert len(_envelope_bands(off)) == 0 and len(_anim_lines(off)) == 1
+
+
+def test_animate_multiple_modes():
+    # overlay the first two duct modes: one line each, titled "Modes ...".
+    res, _ = _closed_duct_modes(fmax_factor=2.5)
+    assert res.n_modes >= 2
+    order = np.argsort(res.freqs)
+    i0, i1 = int(order[0]), int(order[1])
+    fig = res.animate_mode([i0, i1], variable="p", n_x=40, n_frames=8)
+    lines = _anim_lines(fig)
+    names = [ln.name for ln in lines]
+    assert len(lines) == 2
+    assert fig.layout.title.text.startswith("Modes")
+    assert all("mode" in nm for nm in names)
+    assert any(str(i0) in nm for nm in names) and any(str(i1) in nm for nm in names)
+    assert all(np.all(np.isreal(d.y)) for fr in fig.frames for d in fr.data)
+
+
+def test_primitive_phase_ratio_drives_each_series():
+    # the phase_ratio advances each overlaid quantity at its own rate (the multi-mode core):
+    # series A (ratio 1) sweeps e^{i theta}, series B (ratio 2) sweeps e^{2 i theta}.
+    x = np.linspace(0.0, 1.0, 5)
+    v = np.array([1.0, 1j, -1.0, 0.5, 0.25 + 0.1j], dtype=np.complex128)
+    sa = AnimSeries(path_fields=[PathField("a", x, v, [])], label="a", phase_ratio=1.0)
+    sb = AnimSeries(path_fields=[PathField("b", x, v, [])], label="b", phase_ratio=2.0)
+    fig = animate_mode_shape([sa, sb], n_frames=4, normalize=False, envelope=False)
+    thetas = np.linspace(0.0, 2.0 * np.pi, 4, endpoint=False)
+    for k, th in enumerate(thetas):
+        assert np.allclose(fig.frames[k].data[0].y, np.real(v * np.exp(1j * th)))
+        assert np.allclose(fig.frames[k].data[1].y, np.real(v * np.exp(2j * th)))
+
+
+def test_forced_field_multi_variable_and_envelope_off():
+    _, sol = _duct_net(
+        PerturbationBC.reflection(0.6),
+        cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.reflection(0.6)),
+        pt_in=120000.0,
+    )
+    c = _uc(sol)[1]
+    f1 = c / (2.0 * LDUCT)
+    resp = perturbation_response(sol.problem, sol.x, np.array([f1]))
+    fig = resp.animate_field(f1, basis="primitive", n_x=40, n_frames=6, envelope=False)
+    assert len(_anim_lines(fig)) == 3
+    assert not _envelope_bands(fig)
+
+
+def test_animation_controls_and_chrome():
+    # icon-only play/pause beside the slider, no legend frame, modebar tools stripped.
+    res, _ = _closed_duct_modes()
+    fig = res.animate_mode(0, variable="p", n_x=40, n_frames=6)
+    btns = fig.layout.updatemenus[0].buttons
+    assert [b.label for b in btns] == ["▶", "❚❚"]
+    assert fig.layout.updatemenus[0].direction == "left"
+    assert fig.layout.legend.borderwidth == 0
+    assert "toImage" in fig.layout.modebar.remove and "zoom2d" in fig.layout.modebar.remove
 
 
 def test_geometry_builder_direct():

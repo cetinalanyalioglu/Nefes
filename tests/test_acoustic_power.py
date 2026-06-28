@@ -234,6 +234,25 @@ def test_forced_power_balance_matches_its_components():
     assert np.all(bal.energy >= 0.0)
 
 
+def test_stored_energy_method_matches_the_spectrum_helper():
+    """ForcedResponse.stored_energy reproduces duct_energy_spectrum; plot_response is log by default."""
+    sol = _driven_tube(0.8, 4.0e-3)
+    freqs = np.linspace(80.0, 320.0, 120)
+    fr = forced_response(sol.problem, sol.x, freqs, isentropic=True)
+    # the carried duct segments let the method run without re-touching prob
+    energy = fr.stored_energy()
+    assert np.allclose(energy, duct_energy_spectrum(fr, build_geometry(sol.problem).ducts))
+    assert energy.shape == freqs.shape
+    assert np.all(energy >= 0.0) and energy.max() > 0.0
+    # default plot is a log-y stored-energy trace over the swept frequencies
+    fig = fr.plot_response()
+    assert fig.layout.yaxis.type == "log"
+    assert np.allclose(np.asarray(fig.data[0].x), freqs)
+    assert np.allclose(np.asarray(fig.data[0].y), energy)
+    # linear axis on request
+    assert fr.plot_response(log=False).layout.yaxis.type == "linear"
+
+
 def test_generation_is_the_flame_flux_jump():
     """The flame's produced power is the jump in acoustic flux across it -- what the balance sums."""
     sol = _driven_tube(0.8, 4.0e-3)

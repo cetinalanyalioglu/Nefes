@@ -13,7 +13,8 @@
 - [ ] Find a proper name for the parameter "stab" that reads well both in mathematical documentation and as a variable in the codebase. A greek letter can be considered here.
 - [ ] Visualize search contour and found eigenvalues in the complex plane
 - [ ] Helper to easily generate mixtures, e.g. specify fuel, oxidizer and desired equivalence ratio - obtain mole/mass fractions
-- [ ] EigenmodeResult.animate_mode() shall accept plotting of multiple variables and multiple modes - but we may need to discuss about the multiple modes part, because the phase relationship may become a bit interesting. Also, the routine should provide a toggle for the user to disable background shading showing the span of the mode.
+- [ ] Linear acoustic resistance element to model resistance in quiescent cases.
+- [ ] An element to force a split fraction at a splitter/junction - might be incompatible with the equation structure, we'd discuss.
 
 ## To verify
 
@@ -32,6 +33,8 @@
 ## To test
 
 ## Issues
+
+- [ ] We may not have completely internalized "thermo.inp". This file should be embedded in the project as the default species library, and unless the user manually points to a new one, there should be no need to name it.
 
 ## Deferred
 

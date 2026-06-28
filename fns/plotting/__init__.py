@@ -25,7 +25,7 @@ from .complex_matrix import (
 )
 from .transfer_function import plot_transfer_function
 from .spectrum import plot_spectrum, plot_mode_shape
-from .modeshape import animate_mode_shape
+from .modeshape import animate_mode_shape, AnimSeries
 
 __all__ = [
     "COLORWAY",
@@ -41,4 +41,5 @@ __all__ = [
     "plot_spectrum",
     "plot_mode_shape",
     "animate_mode_shape",
+    "AnimSeries",
 ]

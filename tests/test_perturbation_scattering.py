@@ -433,18 +433,18 @@ def test_wall_terminated_branch_multiport():
     assert np.allclose(Sa, acoustic_sub, atol=1e-10)
 
     # the quiescent wall (node 6) carries no entropy port: no h wave at the wall in either set.
-    assert r"h_{6:\text{wall}}" not in finc and r"h_{6:\text{wall}}" not in fout
+    assert "h_{6}" not in finc and "h_{6}" not in fout
     assert finc == [  # entropy enters only at the flowing inlet
-        r"f_{0:\text{pt-inlet}}",
-        r"g_{4:\text{outlet}}",
-        r"g_{6:\text{wall}}",
-        r"h_{0:\text{pt-inlet}}",
+        "f_{0}",
+        "g_{4}",
+        "g_{6}",
+        "h_{0}",
     ]
     assert fout == [  # entropy leaves only at the flowing outlet
-        r"g_{0:\text{pt-inlet}}",
-        r"f_{4:\text{outlet}}",
-        r"h_{4:\text{outlet}}",
-        r"f_{6:\text{wall}}",
+        "g_{0}",
+        "f_{4}",
+        "h_{4}",
+        "f_{6}",
     ]
     assert Sfull.shape == (om.size, 4, 4) and np.isfinite(Sfull).all()
 

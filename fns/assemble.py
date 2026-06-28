@@ -40,7 +40,7 @@ def assemble_residual(
     eps,
     node_eps,
     eps_fb,
-    stab,
+    kappa,
     est,
     R,
 ):
@@ -52,7 +52,7 @@ def assemble_residual(
     for n in range(N):
         eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
         node_residual(
-            n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps_n, eps_fb, stab, est, R, node_row_ptr
+            n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps_n, eps_fb, kappa, est, R, node_row_ptr
         )
 
     # advected scalars: band-1 rows 2.. (s=0 is h_t, s>=1 are composition Z_el)
@@ -106,7 +106,7 @@ def jacobian_fill(
     eps,
     node_eps,
     eps_fb,
-    stab,
+    kappa,
     Jdata,
 ):
     """Fill the CSC ``Jdata`` array against the fixed (indptr, indices) pattern."""
@@ -142,7 +142,7 @@ def jacobian_fill(
                 tf,
                 eps_nt,
                 eps_fb,
-                stab,
+                kappa,
                 est,
                 Rc,
                 node_row_ptr,
@@ -161,7 +161,7 @@ def jacobian_fill(
                     tf,
                     eps_nh,
                     eps_fb,
-                    stab,
+                    kappa,
                     est,
                     Rc,
                     node_row_ptr,
@@ -226,7 +226,7 @@ def _resolve_node_eps(prob):
     return np.full(prob.n_nodes, -1.0, dtype=np.float64)
 
 
-def residual(prob, x2d, eps, eps_fb, stab=0.0):
+def residual(prob, x2d, eps, eps_fb, kappa=0.0):
     """Assemble the residual vector (R) for state ``x2d`` of shape (n_solve, E)."""
     R = np.zeros(prob.n_eq, dtype=x2d.dtype)
     est = np.zeros((NS_EST, prob.n_edges), dtype=x2d.dtype)
@@ -250,14 +250,14 @@ def residual(prob, x2d, eps, eps_fb, stab=0.0):
         eps,
         _resolve_node_eps(prob),
         eps_fb,
-        stab,
+        kappa,
         est,
         R,
     )
     return R
 
 
-def jacobian(prob, x2d, eps, eps_fb, stab=0.0):
+def jacobian(prob, x2d, eps, eps_fb, kappa=0.0):
     """Assemble the sparse Jacobian (scipy CSC) for state ``x2d``."""
     Jdata = np.zeros(len(prob.indices), dtype=np.float64)
     jacobian_fill(
@@ -283,13 +283,13 @@ def jacobian(prob, x2d, eps, eps_fb, stab=0.0):
         eps,
         _resolve_node_eps(prob),
         eps_fb,
-        stab,
+        kappa,
         Jdata,
     )
     return sp.csc_matrix((Jdata, prob.indices, prob.indptr), shape=(prob.n_eq, prob.n_col))
 
 
-def jacobian_dense(prob, x2d, eps, eps_fb, stab=0.0, h=CS_H):
+def jacobian_dense(prob, x2d, eps, eps_fb, kappa=0.0, h=CS_H):
     """Reference dense complex-step Jacobian (full re-eval per column)."""
     n, E = prob.n_solve, prob.n_edges
     J = np.zeros((prob.n_eq, n * E))
@@ -297,7 +297,7 @@ def jacobian_dense(prob, x2d, eps, eps_fb, stab=0.0, h=CS_H):
     for e in range(E):
         for v in range(n):
             xc[v, e] = x2d[v, e] + 1j * h
-            R = residual(prob, xc, eps, eps_fb, stab)
+            R = residual(prob, xc, eps, eps_fb, kappa)
             J[:, n * e + v] = R.imag / h
             xc[v, e] = x2d[v, e]
     return J

@@ -3,8 +3,9 @@
 Ported from the prototype ``elements.py`` into a single switch on
 ``residual_id``.  Every residual is smooth in the flow state (only
 ``fns.smooth`` primitives; the lone ``.real`` comparisons are on areas, which
-are fixed real parameters, never flow state).  ``stab`` is the vanishing-friction
-homotopy coefficient added to interior pressure rows.
+are fixed real parameters, never flow state).  ``kappa`` (kappa) is the
+vanishing-friction homotopy coefficient: it stamps an artificial pressure drop
+``kappa * mdot`` into interior pressure rows and is driven to zero by the solver.
 """
 
 from numba import njit
@@ -91,7 +92,7 @@ def node_donor(n, rid, s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
 
 
 @njit(cache=True)
-def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, eps_fb, stab, est, R, node_row_ptr):
+def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, eps_fb, kappa, est, R, node_row_ptr):
     """Write element n's ``deg`` residual rows into R starting at its row block."""
     base = row_ptr[n]
     deg = row_ptr[n + 1] - base
@@ -176,9 +177,9 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
             ei = col_edge[base + i]
             si = orient[base + i]
             if rid == JUNCTION:
-                R[r0 + i] = est[ES_P, e0] - est[ES_P, ei] - stab * (si * est[ES_MDOT, ei])
+                R[r0 + i] = est[ES_P, e0] - est[ES_P, ei] - kappa * (si * est[ES_MDOT, ei])
             else:
-                R[r0 + i] = est[ES_PT, e0] - est[ES_PT, ei] - stab * (si * est[ES_MDOT, ei])
+                R[r0 + i] = est[ES_PT, e0] - est[ES_PT, ei] - kappa * (si * est[ES_MDOT, ei])
         return
 
     # ---- two-port interior elements ----
@@ -187,7 +188,7 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
     e1 = col_edge[base + 1]
     s1 = orient[base + 1]
     R[r0] = s0 * est[ES_MDOT, e0] + s1 * est[ES_MDOT, e1]  # mass balance
-    stab_term = stab * (s1 * est[ES_MDOT, e1])  # on ports[1].mdot_out
+    kappa_term = kappa * (s1 * est[ES_MDOT, e1])  # on ports[1].mdot_out
 
     a0 = est[ES_AREA, e0].real
     a1 = est[ES_AREA, e1].real
@@ -199,7 +200,7 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         la = a0
 
     if rid == DUCT:
-        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - stab_term
+        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - kappa_term
         return
 
     if rid == FLAME_HEAT_RELEASE or rid == FLAME_EQUILIBRIUM:
@@ -219,7 +220,7 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         # No heat-release source sits on this row -> acoustically passive in J_alg.
         mom0 = est[ES_MDOT, e0] * est[ES_U, e0] / a0
         mom1 = est[ES_MDOT, e1] * est[ES_U, e1] / a0
-        R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - stab_term
+        R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - kappa_term
         return
 
     if rid == MASS_SOURCE:
@@ -236,7 +237,7 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         R[r0] = R[r0] - mdot_src  # mass balance: s0*mdot0 + s1*mdot1 = mdot_src
         mom0 = est[ES_MDOT, e0] * est[ES_U, e0] / a0
         mom1 = est[ES_MDOT, e1] * est[ES_U, e1] / a0
-        R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - mdot_src * u_inj / a0 - stab_term
+        R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - mdot_src * u_inj / a0 - kappa_term
         return
 
     if rid == ISEN_AREA_CHANGE:
@@ -245,7 +246,7 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         pt_large = est[ES_PT, e1] if se == e0 else est[ES_PT, e0]
         loss = (est[ES_PT, se] - pt_large) / est[ES_PT, se]
         row = fischer_burmeister(sub_margin, loss, eps_fb) * est[ES_PT, se]
-        R[r0 + 1] = row - stab_term
+        R[r0 + 1] = row - kappa_term
         return
 
     if rid == SUDDEN_AREA_CHANGE:
@@ -279,7 +280,7 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         # by O(eps).  When the flow is one-directional, set this element's eps small
         # (ElementSpec.eps) to recover the exact jump.
         xi = smooth_step(mdot_in_small, eps)
-        R[r0 + 1] = xi * r_mom + (1.0 - xi) * r_isen - stab_term
+        R[r0 + 1] = xi * r_mom + (1.0 - xi) * r_isen - kappa_term
         return
 
     if rid == LOSS:
@@ -296,5 +297,5 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         u_ref = mdot_through / denom
         u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
         q_signed = 0.5 * rho_avg * u_ref * u_abs
-        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - stab_term
+        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - kappa_term
         return

@@ -1,11 +1,14 @@
 """Newton control loop with nondimensionalization, globalization, and homotopy.
 
-The solve runs a short vanishing-friction homotopy: stages ``stab in
-(0.1, 0.01, 0.0)`` each warm-started from the previous, with the smoothing width
-``eps = max(0.3*stab, 1e-4) * mdot_ref``.  Each stage is a damped Newton: a
+The solve runs a short vanishing-friction homotopy in the coefficient ``kappa``
+(kappa): stages ``kappa in (0.1, 0.01, 0.0)`` each warm-started from the previous,
+with the smoothing width ``eps = max(0.3*kappa, 1e-4) * mdot_ref``.  ``kappa`` scales
+an artificial friction (a pressure drop proportional to mass flow) stamped into the
+interior pressure rows; driving it to zero recovers the exact equations.  Each stage
+is a damped Newton: a
 sparse-LU step with backtracking line search on the scaled residual norm, and a
 Levenberg-Marquardt fallback when the LU step stalls or the Jacobian is singular.
-The final stage solves the exact equations (stab = 0).
+The final stage solves the exact equations (kappa = 0).
 """
 
 from dataclasses import dataclass, field
@@ -30,9 +33,9 @@ from .linear import newton_step, lm_step, scaled_system, col_scale
 EPS_FB = 1e-5
 
 
-def _stage_eps(mdot_ref, stab):
-    """Complementarity smoothing width for a homotopy stage (vanishes with ``stab``)."""
-    return max(0.3 * stab, 1e-4) * mdot_ref
+def _stage_eps(mdot_ref, kappa):
+    """Complementarity smoothing width for a homotopy stage (vanishes with ``kappa``)."""
+    return max(0.3 * kappa, 1e-4) * mdot_ref
 
 
 def flatten(x2d):
@@ -223,9 +226,9 @@ class _Reporter:
         parts = [first.rjust(self._IT_W)] + [c.rjust(w) for c, w in zip(cells, widths)]
         return "  " + "  ".join(parts)
 
-    def stage_start(self, stab, eps):
+    def stage_start(self, kappa, eps):
         if self.level >= 2:
-            print(f"[stab={stab:<5g} eps={eps:.2e}]")
+            print(f"[kappa={kappa:<5g} eps={eps:.2e}]")
             _labels, _ids, header, widths = self._groups()
             print(self._row("it", header, widths))
 
@@ -241,19 +244,19 @@ class _Reporter:
         cells.append(f"{float(np.linalg.norm(R_hat)):.3e}")  # the gross norm (matches stage_end)
         print(self._row(str(it), cells, widths))
 
-    def stage_end(self, stab, it, norm, converged):
+    def stage_end(self, kappa, it, norm, converged):
         if self.level >= 1:
-            print(f"stab={stab:<5g} -> {it:3d} iters, ||R_hat||={norm:.3e}, converged={converged}")
+            print(f"kappa={kappa:<5g} -> {it:3d} iters, ||R_hat||={norm:.3e}, converged={converged}")
 
-    def failure(self, prob, x2d, stab, top=10):
+    def failure(self, prob, x2d, kappa, top=10):
         """Dump the worst-converged equations after a failed solve (verbose >= 1)."""
         if self.level >= 1:
             shown = min(top, prob.n_eq)
             print(f"did not converge; {shown} largest residual(s) (equation-by-equation):")
-            print(format_residuals(prob, x2d, stab=stab, top=top))
+            print(format_residuals(prob, x2d, kappa=kappa, top=top))
 
 
-def _merit(prob, x2d, eps, stab, res_scale):
+def _merit(prob, x2d, eps, kappa, res_scale):
     """Scaled residual 2-norm; +inf if the state is non-physical.
 
     Pressure must stay positive for every model.  The transported scalar in row 2
@@ -269,7 +272,7 @@ def _merit(prob, x2d, eps, stab, res_scale):
     if prob.model_id == PERFECT_GAS and np.any(x2d[2, :] <= 0.0):
         return np.inf, None
     try:
-        R = residual(prob, x2d, eps, EPS_FB, stab)
+        R = residual(prob, x2d, eps, EPS_FB, kappa)
     except Exception:
         return np.inf, None
     if not np.all(np.isfinite(R)):
@@ -278,18 +281,18 @@ def _merit(prob, x2d, eps, stab, res_scale):
     return float(np.linalg.norm(R_hat)), R
 
 
-def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter=None):
+def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, reporter=None):
     res_scale = prob.res_scale
     vcol = col_scale(prob.var_scale, prob.n_edges)
     lam = 1e-3
-    norm, R = _merit(prob, x2d, eps, stab, res_scale)
+    norm, R = _merit(prob, x2d, eps, kappa, res_scale)
     for it in range(max_iter):
         history.append(norm)
         if reporter is not None:
             reporter.iteration(it, R)
         if norm < tol:
             return x2d, True, it, norm
-        J = jacobian(prob, x2d, eps, EPS_FB, stab)
+        J = jacobian(prob, x2d, eps, EPS_FB, kappa)
         J_hat, R_hat = scaled_system(J, R, vcol, res_scale)
 
         dy = newton_step(J_hat, R_hat)
@@ -299,7 +302,7 @@ def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter=None):
             alpha = 1.0
             for _ in range(30):
                 x_try = x2d + alpha * dx
-                n_try, R_try = _merit(prob, x_try, eps, stab, res_scale)
+                n_try, R_try = _merit(prob, x_try, eps, kappa, res_scale)
                 if n_try < (1.0 - 1e-4 * alpha) * norm:
                     x2d, norm, R = x_try, n_try, R_try
                     accepted = True
@@ -312,7 +315,7 @@ def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter=None):
             for _ in range(40):
                 dy = lm_step(J_hat, R_hat, lam)
                 x_try = x2d + unflatten(vcol * dy, prob.n_edges, prob.n_solve)
-                n_try, R_try = _merit(prob, x_try, eps, stab, res_scale)
+                n_try, R_try = _merit(prob, x_try, eps, kappa, res_scale)
                 if n_try < norm:
                     x2d, norm, R = x_try, n_try, R_try
                     accepted = True
@@ -324,7 +327,7 @@ def _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter=None):
     return x2d, norm < tol, max_iter, norm
 
 
-def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), verbose=0, progress_interval=1):
+def solve(prob, x0=None, tol=1e-10, max_iter=80, kappa_stages=(0.1, 0.01, 0.0), verbose=0, progress_interval=1):
     """Solve the steady mean flow.  Returns a SolveResult (state shape (3, E)).
 
     Parameters
@@ -337,7 +340,7 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), v
         Convergence tolerance on the scaled residual 2-norm.
     max_iter : int, optional
         Maximum Newton iterations per homotopy stage.
-    stab_stages : sequence of float, optional
+    kappa_stages : sequence of float, optional
         Vanishing-friction homotopy schedule, warm-started in order.
     verbose : int or bool, optional
         Progress verbosity.  ``0``/``False`` is silent; ``1``/``True`` prints a
@@ -365,14 +368,14 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, stab_stages=(0.1, 0.01, 0.0), v
     total_it = 0
     converged = False
     norm = np.inf
-    for stab in stab_stages:
-        eps = _stage_eps(mdot_ref, stab)
-        reporter.stage_start(stab, eps)
-        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, stab, tol, max_iter, history, reporter)
+    for kappa in kappa_stages:
+        eps = _stage_eps(mdot_ref, kappa)
+        reporter.stage_start(kappa, eps)
+        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, reporter)
         total_it += it
-        reporter.stage_end(stab, it, norm, converged)
-        if not converged and stab == 0.0:
-            reporter.failure(prob, x2d, stab)
+        reporter.stage_end(kappa, it, norm, converged)
+        if not converged and kappa == 0.0:
+            reporter.failure(prob, x2d, kappa)
             break
     return SolveResult(x=x2d, converged=converged, iterations=total_it, residual_norm=norm, history=history)
 
@@ -587,7 +590,7 @@ def residual_groups(prob):
     return labels, ids
 
 
-def residual_breakdown(prob, x2d, stab=0.0, eps=None):
+def residual_breakdown(prob, x2d, kappa=0.0, eps=None):
     """Per-equation residual: ``(labels, R, R_hat)``.
 
     ``R`` is the raw residual in physical units; ``R_hat = R / res_scale`` is the
@@ -601,11 +604,11 @@ def residual_breakdown(prob, x2d, stab=0.0, eps=None):
         The compiled problem to evaluate.
     x2d : ndarray
         A converged (or trial) mean-flow state, shape ``(n_solve, n_edges)``.
-    stab : float, optional
+    kappa : float, optional
         Vanishing-friction homotopy parameter (default ``0.0``, the exact equations).
     eps : float, optional
         Complementarity smoothing width.  Defaults to the homotopy-stage width for
-        ``stab`` (``max(0.3*stab, 1e-4) * mdot_ref``), matching what the solver used.
+        ``kappa`` (``max(0.3*kappa, 1e-4) * mdot_ref``), matching what the solver used.
 
     Returns
     -------
@@ -617,13 +620,13 @@ def residual_breakdown(prob, x2d, stab=0.0, eps=None):
         Scaled residual, length ``n_eq``.
     """
     if eps is None:
-        eps = _stage_eps(prob.var_scale[0], stab)
-    R = residual(prob, x2d, eps, EPS_FB, stab)
+        eps = _stage_eps(prob.var_scale[0], kappa)
+    R = residual(prob, x2d, eps, EPS_FB, kappa)
     R_hat = R / prob.res_scale
     return residual_labels(prob), R, R_hat
 
 
-def format_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precision=4):
+def format_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precision=4):
     """Return a fixed-width table of the residual, equation-by-equation.
 
     One row per equation: its index, label, raw residual (physical units), and scaled
@@ -636,7 +639,7 @@ def format_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precisi
         The compiled problem to evaluate.
     x2d : ndarray
         A converged (or trial) mean-flow state, shape ``(n_solve, n_edges)``.
-    stab, eps : float, optional
+    kappa, eps : float, optional
         Homotopy parameter and smoothing width; see :func:`residual_breakdown`.
     sort : bool, optional
         If ``True`` (default), order rows by descending ``|scaled residual|`` so the
@@ -651,7 +654,7 @@ def format_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precisi
     str
         A newline-joined, column-aligned table ready to print.
     """
-    labels, R, R_hat = residual_breakdown(prob, x2d, stab=stab, eps=eps)
+    labels, R, R_hat = residual_breakdown(prob, x2d, kappa=kappa, eps=eps)
     order = np.argsort(-np.abs(R_hat)) if sort else np.arange(len(R_hat))
     if top is not None:
         order = order[: int(top)]
@@ -670,10 +673,10 @@ def format_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precisi
     return "\n".join(lines)
 
 
-def print_residuals(prob, x2d, stab=0.0, eps=None, sort=True, top=None, precision=4, file=None):
+def print_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precision=4, file=None):
     """Print the residual broken down equation-by-equation.
 
     Thin wrapper over :func:`format_residuals`; see it for the column layout and
     parameters.  ``file`` is forwarded to :func:`print` (default ``sys.stdout``).
     """
-    print(format_residuals(prob, x2d, stab=stab, eps=eps, sort=sort, top=top, precision=precision), file=file)
+    print(format_residuals(prob, x2d, kappa=kappa, eps=eps, sort=sort, top=top, precision=precision), file=file)

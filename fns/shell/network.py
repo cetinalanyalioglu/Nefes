@@ -179,7 +179,7 @@ class Network:
             Convergence tolerance on the scaled residual 2-norm (default ``1e-10``).
         max_iter : int, optional
             Maximum Newton iterations per homotopy stage (default ``80``).
-        stab_stages : sequence of float, optional
+        kappa_stages : sequence of float, optional
             Vanishing-friction homotopy schedule, warm-started in order (default ``(0.1, 0.01, 0.0)``).
         verbose : int or bool, optional
             Progress verbosity (default ``0``). ``0``/``False`` is silent; ``1``/``True`` prints a one-line

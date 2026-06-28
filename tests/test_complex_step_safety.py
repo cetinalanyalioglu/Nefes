@@ -66,7 +66,7 @@ EPS_FB = 1e-5
 CS_H = 1e-30
 
 
-def _fd_jacobian(prob, x2d, eps, eps_fb, stab=0.0, rel=1e-6):
+def _fd_jacobian(prob, x2d, eps, eps_fb, kappa=0.0, rel=1e-6):
     """Dense real central finite-difference Jacobian (no complex step).
 
     Column ``n_solve*e + v`` is ``dR/dx[v, e]`` from a central difference with a
@@ -85,8 +85,8 @@ def _fd_jacobian(prob, x2d, eps, eps_fb, stab=0.0, rel=1e-6):
             xm = x2d.copy()
             xp[v, e] += h
             xm[v, e] -= h
-            Rp = residual(prob, xp, eps, eps_fb, stab)
-            Rm = residual(prob, xm, eps, eps_fb, stab)
+            Rp = residual(prob, xp, eps, eps_fb, kappa)
+            Rm = residual(prob, xm, eps, eps_fb, kappa)
             J[:, n * e + v] = (Rp - Rm) / (2.0 * h)
     return J
 

@@ -290,7 +290,7 @@ def test_solve_verbose2_prints_grouped_table(capsys):
         toks = ln.split()
         if toks and toks[0].isdigit():
             last_total = float(toks[-1])  # the trailing total column
-        elif ln.startswith("stab=") and last_total is not None:
+        elif ln.startswith("kappa=") and last_total is not None:
             gross = float(ln.split("||R_hat||=")[1].split(",")[0])
             assert last_total == pytest.approx(gross, rel=1e-9, abs=1e-18)
             last_total = None

@@ -164,8 +164,8 @@ def test_verbose_level1_prints_one_line_per_stage(capsys):
     solve(prob, verbose=1)  # one summary line per homotopy stage
     out = capsys.readouterr().out
     lines = [ln for ln in out.splitlines() if ln.strip()]
-    assert len(lines) == 3  # default stab_stages = (0.1, 0.01, 0.0)
-    assert all(ln.startswith("stab=") and "converged=True" in ln for ln in lines)
+    assert len(lines) == 3  # default kappa_stages = (0.1, 0.01, 0.0)
+    assert all(ln.startswith("kappa=") and "converged=True" in ln for ln in lines)
 
 
 def _iter_rows(out):

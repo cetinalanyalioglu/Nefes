@@ -76,7 +76,7 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
     """Build the frozen blocks at the mean state ``x_bar`` (shape (n_solve, E)).
 
     ``J_alg`` is assembled with the regularizations turned down (the
-    un-regularized variant of theory.md s12.6) at ``stab = 0``.  ``M`` is the
+    un-regularized variant of theory.md s12.6) at ``kappa = 0``.  ``M`` is the
     storage block (zero in v1).  The duct phase data is precomputed here and
     restamped cheaply per frequency.
 

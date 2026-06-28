@@ -1,6 +1,6 @@
 """Stress test of the vanishing-friction homotopy on large networks.
 
-The solver warm-starts through ``stab in (0.1, 0.01, 0.0)`` with a vanishing
+The solver warm-starts through ``kappa in (0.1, 0.01, 0.0)`` with a vanishing
 smoothing width.  These tests scale the element count far past the handful in
 ``test_solver`` -- long serial chains, many parallel branches, and a long run of
 sudden area changes (whose momentum<->contraction smooth switch is the most

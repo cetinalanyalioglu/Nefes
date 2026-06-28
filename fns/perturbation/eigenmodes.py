@@ -860,12 +860,19 @@ class EigenmodeResult:
     def plot_spectrum(self, **kwargs):
         """Plot the spectrum: growth rate vs modal frequency, with the stability boundary.
 
+        The eigenvalues are markers in the ``(frequency, growth rate)`` plane (split about the
+        ``growth = 0`` stability line); the :attr:`contour` they were searched in is outlined so
+        the searched complex-plane region is visible around the found modes.  Pass
+        ``contour=None`` to suppress the outline, or your own contour(s) to override.  Forwards
+        the rest to :func:`fns.plotting.plot_spectrum`.
+
         Returns
         -------
         plotly.graph_objects.Figure
         """
         from ..plotting import plot_spectrum as _plot
 
+        kwargs.setdefault("contour", self.contour)
         return _plot(self.freqs, self.growth_rates, residuals=self.residuals, **kwargs)
 
     def plot_mode(self, i, basis="char", **kwargs):

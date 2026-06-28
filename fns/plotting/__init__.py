@@ -14,9 +14,14 @@ and 3x3 full perturbation networks)::
 
     from fns.plotting import plot_transfer_matrix
     plot_transfer_matrix(resp.transfer_matrix(0, 1), resp.freqs).show()
+
+Labels are MathJax (``$...$``) by default.  Where MathJax does not render (a plain
+kernel, a static export), call :func:`use_latex(False) <fns.plotting.use_latex>` to
+switch every FNS figure to a Unicode plain-text fallback.
 """
 
 from .theme import COLORWAY, FONT_FAMILY, FNS_TEMPLATE_NAME, fns_template, use_fns_theme
+from .labels import use_latex, latex_enabled, mathify, tex, detex
 from .complex_matrix import (
     plot_complex_matrix,
     plot_transfer_matrix,
@@ -33,6 +38,11 @@ __all__ = [
     "FNS_TEMPLATE_NAME",
     "fns_template",
     "use_fns_theme",
+    "use_latex",
+    "latex_enabled",
+    "mathify",
+    "tex",
+    "detex",
     "plot_complex_matrix",
     "plot_transfer_matrix",
     "plot_scattering_matrix",

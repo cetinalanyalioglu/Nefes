@@ -14,7 +14,6 @@
 - [x] Helper to easily generate mixtures, e.g. specify fuel, oxidizer and desired equivalence ratio - obtain mole/mass fractions. Update notebooks/examples that would make use of that.
 - [x] Linear acoustic resistance element to model resistance in quiescent cases. Add a TODO item in the repo of UI to add the UI counterpart of this element after implementation.
 - [x] Do we have any facility to pass the perturbation analysis related results to the UI save file? If not, we should figure out a way to do so.
-- [x] Some central toggle to turn on/off LaTeX labels on plots - they don't always render properly in notebooks and user gets labels filled with "$", "\" etc.
 
 ## To verify
 

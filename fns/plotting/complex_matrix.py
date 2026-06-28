@@ -22,6 +22,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .theme import FNS_TEMPLATE_NAME, COLORWAY
+from .labels import mathify, tex
 
 # default per-index symbols by matrix size (used when no explicit labels given)
 _DEFAULT_LABELS = {2: ("f", "g"), 3: ("f", "g", "h")}
@@ -41,8 +42,8 @@ def _sub(sym, idx):
 
 
 def _math(s):
-    """Wrap a LaTeX fragment as a complete MathJax string for a Plotly label."""
-    return f"${s}$"
+    """Render a LaTeX fragment as a Plotly label, honoring the global LaTeX toggle."""
+    return mathify(s)
 
 
 def _entry_title(row_labels, col_labels, i, j):
@@ -227,10 +228,10 @@ def _flat_axes(entries, row_labels, col_labels, x_title, ph_title, height, width
         vertical_spacing=0.10,
         horizontal_spacing=0.06,
     )
-    fig.update_yaxes(title_text=r"$|\cdot|$", row=1, col=1)
-    fig.update_yaxes(title_text=ph_title, row=2, col=1)
+    fig.update_yaxes(title_text=tex(r"$|\cdot|$"), row=1, col=1)
+    fig.update_yaxes(title_text=tex(ph_title), row=2, col=1)
     for c in range(1, ncol + 1):
-        fig.update_xaxes(title_text=x_title, row=2, col=c)
+        fig.update_xaxes(title_text=tex(x_title), row=2, col=c)
     fig.update_layout(height=height or 440, width=width)
     return fig
 
@@ -278,10 +279,10 @@ def _grid_axes(nrow, ncol, entries, row_labels, col_labels, x_title, ph_title, h
         horizontal_spacing=0.07,
     )
     for i in range(nrow):
-        fig.update_yaxes(title_text=r"$|\cdot|$", row=2 * i + 1, col=1)
-        fig.update_yaxes(title_text=ph_title, row=2 * i + 2, col=1)
+        fig.update_yaxes(title_text=tex(r"$|\cdot|$"), row=2 * i + 1, col=1)
+        fig.update_yaxes(title_text=tex(ph_title), row=2 * i + 2, col=1)
     for c in range(1, ncol + 1):
-        fig.update_xaxes(title_text=x_title, row=2 * nrow, col=c)
+        fig.update_xaxes(title_text=tex(x_title), row=2 * nrow, col=c)
     fig.update_layout(height=height or 230 * nrow, width=width)
     return fig
 

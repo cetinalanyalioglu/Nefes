@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .theme import FNS_TEMPLATE_NAME, COLORWAY
+from .labels import mathify
 
 _STABLE_COLOR = COLORWAY[0]  # blue
 _UNSTABLE_COLOR = COLORWAY[4]  # red
@@ -121,7 +122,7 @@ def plot_mode_shape(shape, *, labels=None, positions=None, title="Mode shape", *
     )
     for k in range(n_char):
         color = COLORWAY[k % len(COLORWAY)]
-        legend = f"${syms[k]}$" if k < len(syms) else f"w{k}"
+        legend = mathify(syms[k]) if k < len(syms) else f"w{k}"
         fig.add_trace(
             go.Scatter(
                 x=x,

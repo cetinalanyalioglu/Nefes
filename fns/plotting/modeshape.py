@@ -23,6 +23,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from .theme import FNS_TEMPLATE_NAME, COLORWAY
+from .labels import mathify
 
 # Light fill for the +/- |psi| envelope band, keyed off the path's line colour.
 _ENVELOPE_ALPHA = 0.14
@@ -117,9 +118,9 @@ def _flatten(series, normalize):
         for pf in s.path_fields:
             v = pf.values / scale
             if s.label and multi_path:
-                name = f"${s.label}$ · {pf.name}"
+                name = f"{mathify(s.label)} · {pf.name}"
             elif s.label:
-                name = f"${s.label}$"
+                name = mathify(s.label)
             else:
                 name = pf.name
             traces.append(dict(x=pf.x, v=v, name=name, ratio=float(s.phase_ratio), markers=pf.markers))

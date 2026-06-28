@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .theme import FNS_TEMPLATE_NAME, COLORWAY
+from .labels import tex
 
 
 def _as_list(x):
@@ -139,9 +140,9 @@ def _draw_magphase(curves, freqs, names, phase, unwrap, mag_range, x_title, show
             row=2,
             col=1,
         )
-    fig.update_yaxes(title_text=r"$|F|$", row=1, col=1)
-    fig.update_yaxes(title_text=ph_title, row=2, col=1)
-    fig.update_xaxes(title_text=x_title, row=2, col=1)
+    fig.update_yaxes(title_text=tex(r"$|F|$"), row=1, col=1)
+    fig.update_yaxes(title_text=tex(ph_title), row=2, col=1)
+    fig.update_xaxes(title_text=tex(x_title), row=2, col=1)
     if mag_range is not None:
         fig.update_yaxes(range=[float(mag_range[0]), float(mag_range[1])], row=1, col=1)
     else:
@@ -172,7 +173,7 @@ def _draw_nyquist(curves, freqs, names, showlegend, height, width):
                 hovertemplate="f=%{customdata:.4g} Hz<br>Re=%{x:.4g}<br>Im=%{y:.4g}<extra></extra>",
             )
         )
-    fig.update_xaxes(title_text=r"$\mathrm{Re}\,F$", zeroline=True)
-    fig.update_yaxes(title_text=r"$\mathrm{Im}\,F$", zeroline=True, scaleanchor="x", scaleratio=1.0)
+    fig.update_xaxes(title_text=tex(r"$\mathrm{Re}\,F$"), zeroline=True)
+    fig.update_yaxes(title_text=tex(r"$\mathrm{Im}\,F$"), zeroline=True, scaleanchor="x", scaleratio=1.0)
     fig.update_layout(height=height or 480, width=width or 520)
     return fig

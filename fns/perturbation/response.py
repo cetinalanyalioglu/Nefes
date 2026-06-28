@@ -1149,8 +1149,10 @@ class PerturbationResponse:
         x = self.freqs if freqs is None else freqs
         title = kwargs.pop("title", None) or f"Edge {edge}: wave contribution by source{suffix}"
         # one overlaid series per source -> a curve per source in each output-wave panel;
-        # source labels are LaTeX fragments, wrapped as math for the legend
-        legend = [f"${s}$" for s in sources]
+        # source labels are LaTeX fragments, rendered through the global LaTeX toggle
+        from ..plotting import mathify
+
+        legend = [mathify(s) for s in sources]
         mats = [C[:, :, k, None] for k in range(C.shape[2])]
         return _plot(mats, x, names=legend, row_labels=outputs, col_labels=[""], title=title, **kwargs)
 
@@ -1296,7 +1298,7 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import animate_mode_shape as _animate, AnimSeries
+        from ..plotting import animate_mode_shape as _animate, AnimSeries, mathify
         from .modeshape import resolve_specs
 
         fi = int(np.argmin(np.abs(self.freqs - float(freq))))
@@ -1311,7 +1313,7 @@ class PerturbationResponse:
 
         norm_note = ", normalized" if normalize else ""
         if len(specs) == 1:
-            y_title = f"${specs[0][0]}$  (Re{norm_note})"
+            y_title = f"{mathify(specs[0][0])}  (Re{norm_note})"
         elif basis is not None:
             y_title = f"{basis} basis  (Re{norm_note})"
         else:

@@ -254,16 +254,27 @@ def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
 # --------------------------------------------------------------------------- #
 # 4. reacting error paths
 # --------------------------------------------------------------------------- #
-def test_reacting_requires_mechanism(tmp_path):
-    g = {"thermoModel": "equilibrium", "species": "H2, O2"}
+def test_reacting_without_mechanism_or_species_is_rejected(tmp_path):
+    # No mechanismFile falls back to the packaged thermo.inp, which needs a species list to
+    # narrow its thousands of species -- so neither given is the error.
+    g = {"thermoModel": "equilibrium"}
     nodes = [_node("in", "MassFlowInlet", 0, massFlowRate=1.0, totalTemperature=300.0, composition="H2:1")]
-    edges = []
-    # an empty edge list trips the no-edges guard only after the gas is built, so the
-    # missing-mechanism error must fire first
     nodes.append(_node("out", "PressureOutlet", 1, pressure=1e5))
-    edges.append(_edge("e1", "in", "out", 0, 0, 0, 0.05))
-    with pytest.raises((ValueError, FileNotFoundError), match="mechanism"):
+    edges = [_edge("e1", "in", "out", 0, 0, 0, 0.05)]
+    with pytest.raises(ValueError, match="species"):
         load_case(_dump(tmp_path, "nomech.yaml", g, nodes, edges))
+
+
+def test_reacting_without_mechanism_uses_packaged_thermo_inp(tmp_path):
+    # With a species list but no mechanismFile, the bundled NASA Glenn / CEA thermo.inp is used.
+    g = {"thermoModel": "equilibrium", "species": "H2, O2, N2, H2O, OH, H, O"}
+    nodes = [
+        _node("in", "MassFlowInlet", 0, massFlowRate=1.0, totalTemperature=300.0, composition="H2:1"),
+        _node("out", "PressureOutlet", 1, pressure=1e5, composition="H2:1"),
+    ]
+    edges = [_edge("e1", "in", "out", 0, 0, 0, 0.05)]
+    net = load_case(_dump(tmp_path, "packaged.yaml", g, nodes, edges))
+    assert net.gas.species_names == ["H2", "O2", "N2", "H2O", "OH", "H", "O"]
 
 
 def test_reacting_inlet_requires_composition(tmp_path):

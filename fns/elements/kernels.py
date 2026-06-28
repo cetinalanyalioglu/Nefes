@@ -28,6 +28,7 @@ from .ids import (
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
+    LINEAR_RESISTANCE,
 )
 
 
@@ -298,4 +299,17 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
         q_signed = 0.5 * rho_avg * u_ref * u_abs
         R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - kappa_term
+        return
+
+    if rid == LINEAR_RESISTANCE:
+        # A linear flow resistance: total pressure drops in proportion to the through-flow,
+        # Pt_in - Pt_out = R_lin * mdot_through (R_lin >= 0, npar_f[pb+0]).  Unlike the quadratic
+        # LOSS (which vanishes with the mean dynamic head), this is linear in mdot, so it stays
+        # active in the linearized/acoustic problem even at zero mean flow -- the resistance of a
+        # screen / perforate / damper in a quiescent network.  mdot_through is signed +ve in the
+        # e0 -> e1 sense, so the drop reverses with the flow; linear in the flow state -> the
+        # complex-step Jacobian is exact (no smoothing needed).
+        r_lin = npar_f[pb + 0]
+        mdot_through = -s0 * est[ES_MDOT, e0]
+        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - r_lin * mdot_through - kappa_term
         return

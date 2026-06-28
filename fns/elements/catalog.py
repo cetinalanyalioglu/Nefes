@@ -295,6 +295,37 @@ def loss(K, name="loss", ref_port=0, eps=None):
     return ElementSpec(LOSS, [float(K), float(rp)], name, eps=eps)
 
 
+def linear_resistance(R, name="resistance"):
+    """A linear flow resistance ``Pt_in - Pt_out = R * mdot`` (a quiescent acoustic resistance).
+
+    Drops total pressure in **linear** proportion to the through-flow mass rate, with the drop
+    reversing with the flow direction.  Because it is linear in the flow (not the quadratic
+    dynamic head that :func:`loss` uses), it survives the linearization with a non-zero
+    coefficient even at **zero mean flow** -- the acoustic resistance of a screen, perforate or
+    damper in an otherwise quiescent network, where the velocity-squared loss would vanish.  In a
+    flowing network it adds an ordinary linear (Darcy-like) total-pressure drop on top of the mean
+    state.  Mass is conserved and scalars (enthalpy, composition) pass through unchanged.
+
+    Parameters
+    ----------
+    R : float
+        Resistance coefficient ``>= 0`` in Pa per (kg/s): the total-pressure drop per unit mass
+        flow.  As an acoustic resistance it sets the linear damping ``Pt' = R * mdot'``.
+    name : str, optional
+        Element label.
+
+    Returns
+    -------
+    ElementSpec
+    """
+    from .ids import LINEAR_RESISTANCE
+
+    R = float(R)
+    if R < 0.0:
+        raise ValueError(f"linear_resistance: R must be non-negative (a passive resistance); got {R}")
+    return ElementSpec(LINEAR_RESISTANCE, [R], name)
+
+
 def heat_release_flame(Qdot, name="flame", dynamic_source=None):
     """A compact constant-area flame that adds heat power ``Qdot`` [W] to the flow.
 

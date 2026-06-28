@@ -21,6 +21,7 @@ FLAME_EQUILIBRIUM = 13  # 2-port reacting flame: frozen inflow -> equilibrium pr
 MASS_SOURCE = 14  # 2-port mass-injection element: adds mass/momentum/energy + composition source
 MASS_FLOW_OUTLET = 15  # 1-port outlet: prescribed outflow mass rate (acoustic mdot' = 0 by inheritance)
 CHOKED_NOZZLE_OUTLET = 16  # 1-port outlet: compact choked nozzle of throat area A* (critical mass flux)
+LINEAR_RESISTANCE = 17  # 2-port linear flow resistance: Pt drop proportional to mass flow (Pt0 - Pt1 = R*mdot)
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
 # element overrides its default CSD face with.  Only DUCT is active in v1;
@@ -81,6 +82,7 @@ FIXED_NPORTS = {
     FLAME_HEAT_RELEASE: 2,
     FLAME_EQUILIBRIUM: 2,
     MASS_SOURCE: 2,
+    LINEAR_RESISTANCE: 2,
 }
 
 # Whether an element permits an area change across it (its incident edges may
@@ -111,6 +113,7 @@ ALLOWS_AREA_CHANGE = {
     FLAME_HEAT_RELEASE: False,  # constant-area compact flame (Pt-continuity pressure row)
     FLAME_EQUILIBRIUM: False,  # constant-area compact reacting flame (static-p continuity)
     MASS_SOURCE: False,  # constant-area inline injection (momentum balance with a source)
+    LINEAR_RESISTANCE: True,  # area-agnostic: the Pt drop is set by mass flow, not area
 }
 
 # Human-readable element-type names, for validation / reporting messages.
@@ -132,4 +135,5 @@ RESIDUAL_NAMES = {
     MASS_SOURCE: "MassSource",
     MASS_FLOW_OUTLET: "MassFlowOutlet",
     CHOKED_NOZZLE_OUTLET: "ChokedNozzleOutlet",
+    LINEAR_RESISTANCE: "LinearResistance",
 }

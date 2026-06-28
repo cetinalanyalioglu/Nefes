@@ -49,6 +49,7 @@ from fns.elements.ids import (
     MASS_SOURCE,
     MASS_FLOW_OUTLET,
     CHOKED_NOZZLE_OUTLET,
+    LINEAR_RESISTANCE,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
@@ -277,6 +278,13 @@ def _probe_duct():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
+def _probe_linear_resistance():
+    # linear total-pressure drop Pt0 - Pt1 = R * mdot; linear in the flow state, so the
+    # complex-step Jacobian is exact across forward / reverse / near-zero through-flow.
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.linear_resistance(250.0), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
 def _probe_junction():
     # two inflow legs merging (junction: shared static pressure)
     els = [
@@ -346,6 +354,7 @@ PROBES = {
     ISEN_AREA_CHANGE: _probe_isen_area_change,
     SUDDEN_AREA_CHANGE: _probe_sudden_area_change,
     LOSS: _probe_loss,
+    LINEAR_RESISTANCE: _probe_linear_resistance,
     DUCT: _probe_duct,
     JUNCTION: _probe_junction,
     SPLITTER: _probe_splitter,

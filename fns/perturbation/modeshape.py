@@ -355,15 +355,57 @@ def reconstruct_field(
         if variable not in VARIABLE_SPEC:
             raise ValueError(f"unknown variable {variable!r}; choose from {sorted(VARIABLE_SPEC)}")
         basis, component, _label = VARIABLE_SPEC[variable]
+
+    def cal_of(e):
+        return None if cals is None else cals[e]
+
+    def duct_fn(seg):
+        e_t, e_h, L = seg.e_tail, seg.e_head, seg.length
+        c = float(est[ES_C, e_t])
+        u = float(est[ES_U, e_t])
+        s, chars = _duct_chars(chars_of_edge(e_t), chars_of_edge(e_h), c, u, omega, L, n_x)
+        return s, _project(chars, est[:, e_t], K, cal_of(e_t), basis, component)
+
+    def point_fn(rep):
+        return complex(_project(chars_of_edge(rep), est[:, rep], K, cal_of(rep), basis, component))
+
+    return walk_paths(geometry, duct_fn, point_fn, root=root, n_x=n_x)
+
+
+def walk_paths(geometry, duct_fn, point_fn, *, root=None, n_x=160):
+    """Lay a per-station field out along every root->leaf developed-length path.
+
+    The shared spatial-layout engine behind :func:`reconstruct_field` and the
+    acoustic-power field diagnostics.  It walks each path from the root terminal,
+    sampling ``duct_fn`` inside every length-bearing duct and ``point_fn`` at every
+    compact (zero-length) node, and stitches the samples into a monotone
+    developed-length trace per path.
+
+    Parameters
+    ----------
+    geometry : NetworkGeometry
+        Topology and duct lengths (from :func:`build_geometry`).
+    duct_fn : callable
+        ``DuctSegment -> (s, values)`` with ``s`` shape ``(n_x,)`` running tail->head
+        and ``values`` the field at those stations.
+    point_fn : callable
+        ``edge -> value`` giving the field at a compact node's representative edge.
+    root : int, optional
+        Developed-length origin element (default: a mean-flow inlet, else the
+        lowest-id terminal).
+    n_x : int, optional
+        Interior samples per duct (forwarded by the caller into ``duct_fn``).
+
+    Returns
+    -------
+    list of PathField
+    """
     terms = _terminals(geometry)
     if not terms:
         raise ValueError("network has no 1-port terminal to root the developed-length axis")
     root = _pick_root(geometry, terms) if root is None else int(root)
     dmap = geometry.duct_map()
     names = geometry.node_names
-
-    def cal_of(e):
-        return None if cals is None else cals[e]
 
     def name_of(n):
         return names[n] if n < len(names) else ""
@@ -378,27 +420,23 @@ def reconstruct_field(
             exit_edge = trail[idx + 1][1] if idx + 1 < len(trail) else None
             if node in dmap:
                 seg = dmap[node]
-                e_t, e_h, L = seg.e_tail, seg.e_head, seg.length
-                c = float(est[ES_C, e_t])
-                u = float(est[ES_U, e_t])
-                s, chars = _duct_chars(chars_of_edge(e_t), chars_of_edge(e_h), c, u, omega, L, n_x)
-                psi = _project(chars, est[:, e_t], K, cal_of(e_t), basis, component)
-                if entry == e_h:
+                s, psi = duct_fn(seg)
+                L = seg.length
+                if entry == seg.e_head:
                     #  traversed against the duct's flow axis: enter at the head face,
                     #  so developed length runs head -> tail; flip to stay ascending.
                     seg_x = (x_cursor + (L - s))[::-1]
-                    psi = psi[::-1]
+                    psi = np.asarray(psi)[::-1]
                 else:
                     seg_x = x_cursor + s
                 xs.extend(seg_x.tolist())
-                vs.extend(psi.tolist())
+                vs.extend(np.asarray(psi).tolist())
                 x_cursor += L
             else:
                 rep = entry if entry is not None else exit_edge
                 if rep is not None:
-                    val = _project(chars_of_edge(rep), est[:, rep], K, cal_of(rep), basis, component)
                     xs.append(x_cursor)
-                    vs.append(complex(val))
+                    vs.append(complex(point_fn(rep)))
                 nm = name_of(node)
                 if nm:
                     markers.append((x_cursor, nm))

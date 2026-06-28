@@ -1250,6 +1250,58 @@ class PerturbationResponse:
             cals=self.cals,
         )
 
+    def intensity_along_network(self, freq, *, incoming=None, energy_density=False, root=None, n_x=160):
+        """Acoustic intensity (or energy density) along the developed length, at one frequency.
+
+        The spatial companion of :meth:`field_along_network`: instead of a primitive
+        variable it reconstructs the **Myers acoustic intensity** ``I(x)`` [W/m^2]
+        (downstream positive) -- or the energy density ``e(x)`` [J/m^3] when
+        ``energy_density=True`` -- along every root->leaf path, so one can read where
+        acoustic power flows and where it is produced or absorbed.
+
+        Parameters
+        ----------
+        freq : float
+            Target frequency (Hz); the nearest value in :attr:`freqs` is used.
+        incoming : array_like of complex, optional
+            One amplitude per driven source (column of :attr:`X`); default unit on the
+            first source.
+        energy_density : bool, optional
+            Return the energy density instead of the intensity (default ``False``).
+        root : int, optional
+            Developed-length origin element (default: a mean-flow inlet).
+        n_x : int, optional
+            Interior samples per duct (default 160).
+
+        Returns
+        -------
+        list of fns.perturbation.modeshape.PathField
+            ``values`` is the real intensity (or energy density).
+        """
+        from .power import intensity_along_network as _intensity
+
+        if self.geometry is None:
+            raise ValueError("no network geometry stored; rebuild via perturbation_response() for spatial fields")
+        n_force = self.X.shape[1]
+        if incoming is None:
+            w = np.zeros(n_force, dtype=np.complex128)
+            w[0] = 1.0
+        else:
+            w = np.asarray(incoming, dtype=np.complex128)
+            if w.shape != (n_force,):
+                raise ValueError(f"incoming must give one amplitude per source ({n_force}); got {w.shape}")
+        fi = int(np.argmin(np.abs(self.freqs - float(freq))))
+        omega = 2.0 * np.pi * float(self.freqs[fi])
+        return _intensity(
+            self.geometry,
+            lambda e: self._waves(e)[fi] @ w,
+            self.est,
+            omega,
+            energy_density=energy_density,
+            root=root,
+            n_x=n_x,
+        )
+
     def animate_field(
         self,
         freq,

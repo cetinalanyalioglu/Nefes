@@ -941,6 +941,43 @@ class EigenmodeResult:
             cals=self.cals,
         )
 
+    def intensity_along_network(self, i, *, energy_density=False, root=None, n_x=160):
+        """Acoustic intensity (or energy density) along the developed length, for mode ``i``.
+
+        The spatial companion of :meth:`field_along_network`: reconstructs the **Myers
+        acoustic intensity** ``I(x)`` [W/m^2] (downstream positive) -- or the energy
+        density ``e(x)`` [J/m^3] when ``energy_density=True`` -- along every root->leaf
+        path of mode ``i``.  A real diagnostic in arbitrary (mode-scale) units.
+
+        Parameters
+        ----------
+        i : int
+            Mode index.
+        energy_density : bool, optional
+            Return the energy density instead of the intensity (default ``False``).
+        root : int, optional
+            Developed-length origin element (default: a mean-flow inlet).
+        n_x : int, optional
+            Interior samples per duct (default 160).
+
+        Returns
+        -------
+        list of fns.perturbation.modeshape.PathField
+        """
+        from .power import intensity_along_network as _intensity
+
+        if self.geometry is None:
+            raise ValueError("no network geometry stored; rebuild via eigenmodes() to enable spatial reconstruction")
+        return _intensity(
+            self.geometry,
+            lambda e: self.mode_waves(i, e),
+            self.est,
+            complex(self.omega[i]),
+            energy_density=energy_density,
+            root=root,
+            n_x=n_x,
+        )
+
     def animate_mode(
         self,
         i,

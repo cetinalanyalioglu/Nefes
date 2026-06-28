@@ -662,3 +662,102 @@ def test_response_plot_basis_converts_and_relabels_consistently():
     char = resp.transfer_matrix(1, 2, basis="char")
     prim = resp.transfer_matrix(1, 2, basis="primitive")
     assert not np.allclose(char, prim)
+
+
+# -- freeze: keep a terminal's physical BC during measurement -----------------
+
+
+def _freeze_io_index(io, node):
+    """Position of ``node`` in a multiport (node, edge, char) incoming/outgoing list."""
+    return next(i for i, (nd, _e, _c) in enumerate(io) if nd == node)
+
+
+def test_freeze_wall_equivalent_to_multiport_condensation():
+    """Freezing the wall reads out the closed-stub two-port directly -- the same answer the
+    rigorous multiport-then-condense route gives by re-closing the (anechoic) wall port with
+    ``R = +1``.  This is the whole premise: an interior wall branch reduces to a true 2-port."""
+    prob, res = _wall_branch()
+    f_eq = np.array([40.0, 80.0, 120.0, 160.0])  # off the stub resonance (~215 Hz): both paths well posed
+    e_in, e_out, wall_node = 0, 3, 6  # inlet edge, outlet edge, the wall terminal
+
+    # frozen: the wall stays a hard wall, so inlet->outlet is a genuine 2-port read directly
+    resp_fr = perturbation_response(prob, res.x, f_eq, freeze=[wall_node])
+    tau_frozen = resp_fr.acoustic_scattering_matrix(e_in, e_out)[:, 1, 0]  # transmission f_out / f_in
+
+    # condensed: measure the open 3-port (wall neutralized to anechoic), re-close it with R=+1
+    resp_open = perturbation_response(prob, res.x, f_eq)
+    S = resp_open.multiport_scattering_matrix()
+    inc, out = resp_open._multiport_io()
+    i = _freeze_io_index(inc, 0)  # inlet incoming column
+    o = _freeze_io_index(out, 4)  # outlet outgoing row
+    wi = _freeze_io_index(inc, wall_node)  # wall incoming column
+    wo = _freeze_io_index(out, wall_node)  # wall outgoing row
+    a_w = S[:, wo, i] / (1.0 - S[:, wo, wi])  # close the wall port: a_w = R*(S_wi + S_ww a_w), R=+1
+    tau_cond = S[:, o, i] + S[:, o, wi] * a_w
+
+    assert np.allclose(tau_frozen, tau_cond, rtol=1e-6, atol=1e-9)
+
+
+def test_freeze_makes_branched_net_a_clean_two_port():
+    """With the wall open there are 3 terminals, so edges across the splitter straddle a branch
+    (warns); freezing the wall leaves 2 ports, so the inlet->outlet transfer matrix is exact."""
+    prob, res = _wall_branch()
+
+    resp_open = perturbation_response(prob, res.x, FR)  # 3 terminals -> straddle
+    with pytest.warns(TransferMatrixWarning):
+        resp_open.transfer_matrix(0, 3)
+
+    resp_fr = perturbation_response(prob, res.x, FR, freeze=[6])  # wall frozen -> 2 ports
+    assert len(resp_fr.terminals) == 2 and {t.node for t in resp_fr.terminals} == {0, 4}
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", TransferMatrixWarning)  # must NOT warn now
+        resp_fr.transfer_matrix(0, 3)
+    assert resp_fr.transfer_residual(0, 3) < 1e-8  # genuinely in series
+
+
+def test_freeze_changes_transmission_vs_open_dead_leg():
+    """A closed stub (frozen wall) is acoustically different from an anechoic dead leg
+    (the default neutralized wall): the transmission must change."""
+    import warnings
+
+    prob, res = _wall_branch()
+    f_eq = np.array([120.0, 160.0])
+    with warnings.catch_warnings():  # the open 3-terminal read straddles the branch (expected)
+        warnings.simplefilter("ignore", TransferMatrixWarning)
+        tau_open = perturbation_response(prob, res.x, f_eq).acoustic_scattering_matrix(0, 3)[:, 1, 0]
+    tau_frozen = perturbation_response(prob, res.x, f_eq, freeze=[6]).acoustic_scattering_matrix(0, 3)[:, 1, 0]
+    assert not np.allclose(tau_open, tau_frozen, rtol=1e-3)
+
+
+def test_freeze_accepts_node_name_and_validates():
+    """``freeze`` takes node ids or element names; bad references raise with a clear message."""
+    prob, res = _wall_branch()
+
+    by_id = perturbation_response(prob, res.x, FR, freeze=[6])
+    by_name = perturbation_response(prob, res.x, FR, freeze=["wall"])  # the wall's element name
+    assert by_id.frozen == by_name.frozen == (6,)
+
+    with pytest.raises(ValueError, match="does not exist"):
+        perturbation_response(prob, res.x, FR, freeze=[99])
+    with pytest.raises(ValueError, match="no element carries"):
+        perturbation_response(prob, res.x, FR, freeze=["nope"])
+    with pytest.raises(ValueError, match="not a 1-port terminal"):
+        perturbation_response(prob, res.x, FR, freeze=[1])  # node 1 is a duct
+    with pytest.raises(TypeError, match="int node ids or str node names"):
+        perturbation_response(prob, res.x, FR, freeze=[1.5])
+
+
+def test_repr_omits_matrix_dims_and_reports_frozen():
+    prob, res = _wall_branch()
+
+    r_open = perturbation_response(prob, res.x, FR)
+    s_open = repr(r_open)
+    assert "matrices" not in s_open and "x2" not in s_open and "2x" not in s_open
+    assert "frozen" not in s_open and "forcing(s)" in s_open and "terminal(s)" in s_open
+
+    r_fr = perturbation_response(prob, res.x, FR, freeze=["wall"])
+    s_fr = repr(r_fr)
+    assert "BC frozen at 6:wall" in s_fr
+    assert "matrices" not in s_fr

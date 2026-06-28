@@ -42,6 +42,7 @@ import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from .operator import build_acoustic_blocks, assemble_acoustic
+from .stamps import _terminal_closure, _set_row
 from .characteristics import dx_to_char, basis_block_from_state
 from .modeshape import build_geometry, reconstruct_field, NetworkGeometry
 from .terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (re-exported)
@@ -98,6 +99,53 @@ def _select_forcing(terms: List[Terminal], forcing: Optional[Sequence[int]]) -> 
     if len(sel) < 2:
         raise ValueError(f"scattering needs at least 2 driven terminals; got {len(sel)}")
     return sel
+
+
+def _frozen_bc(prob, node):
+    """The explicit (stamping) ``PerturbationBC`` at ``node``, or None if it inherits / is unset."""
+    node_bc = prob.node_bc or ()
+    bc = node_bc[node] if node < len(node_bc) else None
+    return bc if (bc is not None and getattr(bc, "stamps_terminal", False)) else None
+
+
+def _resolve_frozen(prob, freeze):
+    """Resolve the ``freeze`` node specifiers to a set of terminal node ids.
+
+    ``freeze`` is a sequence whose elements are node ids (``int``) or element names
+    (``str``).  Each must name an **existing** node that is a 1-port boundary terminal.
+
+    Raises
+    ------
+    ValueError
+        If an entry references a node that does not exist, names no element, is an
+        ambiguous name (carried by more than one node), or is not a 1-port terminal.
+    TypeError
+        If an entry is neither an int node id nor a str node name.
+    """
+    if not freeze:
+        return frozenset()
+    n_nodes = int(prob.n_nodes)
+    names = tuple(getattr(prob, "node_names", ()) or ())
+    term_nodes = {t.node for t in find_terminals(prob)}
+    frozen = set()
+    for spec in freeze:
+        if isinstance(spec, str):
+            matches = [i for i, nm in enumerate(names) if nm == spec]
+            if not matches:
+                raise ValueError(f"freeze references node name {spec!r}, which no element carries")
+            if len(matches) > 1:
+                raise ValueError(f"freeze node name {spec!r} is ambiguous: nodes {matches} all carry it; use the id")
+            node = matches[0]
+        elif isinstance(spec, (int, np.integer)) and not isinstance(spec, bool):
+            node = int(spec)
+            if not 0 <= node < n_nodes:
+                raise ValueError(f"freeze references node {node}, which does not exist (need 0 <= node < {n_nodes})")
+        else:
+            raise TypeError(f"freeze entries must be int node ids or str node names; got {spec!r}")
+        if node not in term_nodes:
+            raise ValueError(f"freeze references node {spec!r} (node {node}), which is not a 1-port terminal")
+        frozen.add(node)
+    return frozenset(frozen)
 
 
 # Wave families and the characteristic indices each spans, in canonical order.
@@ -230,40 +278,65 @@ class _ExcitationContext:
     L: List[np.ndarray]
     est: np.ndarray
     K: float
-    sel: List[Terminal]  # the terminals driven with a unit amplitude (subset of all)
-    terminals: List[Terminal]  # every terminal of the network (all neutralized)
-    prescriptions: List[_Prescription]  # every terminal's incoming wave (all neutralized)
+    sel: List[Terminal]  # the (open) terminals driven with a unit amplitude (subset of all)
+    terminals: List[Terminal]  # the open terminals (neutralized into ports); frozen ones excluded
+    prescriptions: List[_Prescription]  # every open terminal's incoming wave (all neutralized)
     lus: list  # per-omega LU factorizations of the prescribed A(omega)
     n_solve: int
     n_col: int
     u_floor: float  # speed below which a station is treated as quiescent
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
+    frozen: frozenset = frozenset()  # terminal node ids kept at their physical BC (not measured)
 
 
-def _build_excitation_context(prob, x_bar, freqs, forcing, *, eps, eps_fb, u_floor) -> _ExcitationContext:
-    """Assemble and factorize the prescribed operator over the whole frequency array."""
+def _build_excitation_context(
+    prob, x_bar, freqs, forcing, *, eps, eps_fb, u_floor, frozen=frozenset()
+) -> _ExcitationContext:
+    """Assemble and factorize the prescribed operator over the whole frequency array.
+
+    ``frozen`` (terminal node ids) are **kept at their physical boundary condition**
+    rather than neutralized into measurement ports: each is dropped from the driven /
+    prescribed set and instead keeps its closure -- an explicit ``PerturbationBC`` stamped
+    via :func:`stamps._terminal_closure`, or the inherited linearized mean BC already in
+    ``J_alg`` (a plain ``wall`` -> ``mdot' = 0`` -> ``R = +1``).  This folds an
+    interior branch terminated by a wall (a closed stub / side resonator) into the
+    operator, so the network reduces to its genuine open ports.
+    """
     freqs = np.asarray(freqs, dtype=float)
     omegas = 2.0 * np.pi * freqs  # operator assembly works in angular frequency (rad/s)
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
-    L = _edge_transforms(prob, x_bar, K, blocks.cals)
+    cals = blocks.cals
+    L = _edge_transforms(prob, x_bar, K, cals)
     all_terms = find_terminals(prob, x_bar)
-    sel = _select_forcing(all_terms, forcing)
-    pres = _prescriptions(prob, all_terms, est, u_floor)  # neutralize *every* terminal into a pure source
+    open_terms = [t for t in all_terms if t.node not in frozen]  # the ports we measure
+    sel = _select_forcing(open_terms, forcing)
+    pres = _prescriptions(prob, open_terms, est, u_floor)  # neutralize every *open* terminal into a pure source
+    # frozen terminals carrying an explicit (stamping) BC: their omega-dependent closure must
+    # be re-applied each frequency; an inherited (wall / mass-flow / pt) terminal keeps its
+    # J_alg row untouched, so it needs no stamp.
+    frozen_closured = [t for t in all_terms if t.node in frozen and _frozen_bc(prob, t.node) is not None]
     ns, n_col = int(prob.n_solve), int(prob.n_col)
     lus = []
     for omega in omegas:
-        # The measurement driver closes *every* terminal itself (one independent
-        # incoming wave per row), so the physical boundary stamp is skipped here.
+        # The measurement driver closes every *open* terminal itself (one independent
+        # incoming wave per row), so the physical boundary stamp is skipped here -- except
+        # for the frozen terminals, whose explicit closure is stamped back in below.
         A = assemble_acoustic(omega, blocks, with_boundaries=False).tolil()
-        for p in pres:  # prescribe *every* incoming wave; only the rhs distinguishes excitations
+        for t in frozen_closured:  # keep this terminal closed by its own physical BC
+            cal = None if not cals else cals[t.edge]
+            for row, cols, coeff, _rhs in _terminal_closure(prob, est, K, t, prob.node_bc[t.node], omega, cal):
+                _set_row(A, row, cols, coeff, (), ())
+        for p in pres:  # prescribe every open incoming wave; only the rhs distinguishes excitations
             A.rows[p.row] = []
             A.data[p.row] = []
             for v in range(3):
                 A[p.row, ns * p.edge + v] = L[p.edge][p.char, v]
         lus.append(spla.splu(sp.csc_matrix(A)))
-    return _ExcitationContext(freqs, L, est, K, sel, all_terms, pres, lus, ns, n_col, float(u_floor), blocks.cals)
+    return _ExcitationContext(
+        freqs, L, est, K, sel, open_terms, pres, lus, ns, n_col, float(u_floor), cals, frozenset(frozen)
+    )
 
 
 def _validate_modes(modes, scalar_names=()):
@@ -430,7 +503,7 @@ def excite_perturbation(
 
 
 def perturbation_response(
-    prob, x_bar, freqs, forcing=None, *, excite=("acoustic",), eps=None, eps_fb=1e-6, u_floor=1e-8
+    prob, x_bar, freqs, forcing=None, *, excite=("acoustic",), freeze=(), eps=None, eps_fb=1e-6, u_floor=1e-8
 ):
     """Drive every forced incoming wave and store the perturbation fields.
 
@@ -449,14 +522,27 @@ def perturbation_response(
     freqs : array_like
         Frequencies (Hz) to solve at.
     forcing : tuple of int, optional
-        The pair of terminal node ids to force (default: the network's two
-        terminals).
+        The pair of terminal node ids to force (default: every open terminal).
     excite : sequence of str, optional
         Wave families to *drive* with a unit incoming amplitude.  ``"acoustic"`` is
         mandatory; add ``"entropy"`` for the full ``3 x 3`` perturbation network.
         Families not listed stay prescribed but pinned to zero, so the boundaries
         never float.  Default ``("acoustic",)`` -- the clean, well-conditioned
-        ``2 x 2`` acoustic response with the incoming entropy pinned out.
+        acoustic response with the incoming entropy pinned out.
+    freeze : sequence of int or str, optional
+        Terminals whose **physical boundary condition is kept** during the measurement
+        instead of being neutralized into a port.  Each entry is a node id (``int``) or
+        an element name (``str``) and must name an existing 1-port terminal.  A frozen
+        terminal stays closed by its own BC -- a ``wall`` reflects (``R = +1``), an
+        explicit ``PerturbationBC`` applies its closure -- so an interior branch
+        terminated by a wall (a closed stub / side resonator) is folded into the operator
+        and the network reduces to its genuine open ports (a branched two-port then reads
+        out directly via :meth:`~PerturbationResponse.acoustic_scattering_matrix`, with no
+        multiport condensation).  Frozen terminals are not driven and are dropped from the
+        measured terminal set.  Default ``()`` neutralizes every terminal (the
+        boundary-independent multiport).  Caveat: a *lossless* frozen termination
+        reintroduces real-axis resonances, so the response is ill-conditioned at those
+        frequencies (add a small wall loss, or step off the exact pole).
     eps, eps_fb, u_floor : float, optional
         Operator-assembly regularizers forwarded to ``build_acoustic_blocks``.
 
@@ -468,12 +554,14 @@ def perturbation_response(
     Raises
     ------
     ValueError
-        If ``excite`` omits ``"acoustic"``/names an unknown family, or entropy is
-        requested with no inflow terminal to seat it.
+        If ``excite`` omits ``"acoustic"``/names an unknown family, entropy is requested
+        with no inflow terminal to seat it, or a ``freeze`` entry names a missing node or
+        a non-terminal node.
     """
     excite = tuple(excite)
     _validate_excite(excite, getattr(prob, "scalar_names", ()))
-    ctx = _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    frozen = _resolve_frozen(prob, freeze)
+    ctx = _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, frozen=frozen)
 
     # One driven excitation per (terminal, family): all acoustic first, then the incoming
     # entropy at each genuine-inflow seat -> canonical column order (f, g, h).
@@ -507,6 +595,7 @@ def perturbation_response(
         node_names=tuple(getattr(prob, "node_names", ()) or ()),
         cals=ctx.cals,
         geometry=build_geometry(prob),
+        frozen=tuple(sorted(ctx.frozen)),
     )
 
 
@@ -523,10 +612,11 @@ class PerturbationResponse:
     forcing: List[Terminal]
     forcing_kinds: list
     cidx: tuple = (0, 1, 2)  # characteristic indices spanned by the driven waves
-    terminals: Optional[List[Terminal]] = None  # all terminals (for the multiport matrix)
+    terminals: Optional[List[Terminal]] = None  # the open (measured) terminals -- frozen ones excluded
     node_names: tuple = ()  # per-node element label (for plot labels); empty -> id only
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
     geometry: Optional[NetworkGeometry] = None  # topology + duct lengths for spatial reconstruction
+    frozen: tuple = ()  # terminal node ids kept at their physical BC (not measured)
 
     @property
     def n(self) -> int:
@@ -538,15 +628,23 @@ class PerturbationResponse:
         """Characteristic count per edge (3 for inert flow)."""
         return self.L[0].shape[0]
 
+    def _term_label(self, node) -> str:
+        """A terminal's ``id:name`` label (bare id when nameless), for the repr."""
+        name = self.node_names[node] if node < len(self.node_names) else ""
+        return f"{node}:{name}" if name else f"{node}"
+
     def __repr__(self) -> str:
-        """One-line summary: matrix dimension, forcing count, terminals driven, and sweep extent."""
+        """One-line summary: forcing count, terminals driven, sweep extent, and any frozen-BC terminals."""
         f = np.asarray(self.freqs, dtype=float)
         nf = f.size
         span = "empty" if nf == 0 else (f"f = {f[0]:.1f} Hz" if nf == 1 else f"f in [{f.min():.1f}, {f.max():.1f}] Hz")
         n_term = len(self.terminals) if self.terminals else len({t.node for t in self.forcing})
+        frozen = ""
+        if self.frozen:
+            frozen = ", BC frozen at " + ", ".join(self._term_label(n) for n in self.frozen)
         return (
-            f"PerturbationResponse: {self.n}x{self.n} matrices from {len(self.forcing)} forcing(s) "
-            f"on {n_term} terminal(s), {nf} frequenc{'y' if nf == 1 else 'ies'} ({span})"
+            f"PerturbationResponse: {len(self.forcing)} forcing(s) on {n_term} terminal(s), "
+            f"{nf} frequenc{'y' if nf == 1 else 'ies'} ({span}){frozen}"
         )
 
     def _waves(self, edge):

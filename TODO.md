@@ -15,8 +15,13 @@
 - [ ] Helper to easily generate mixtures, e.g. specify fuel, oxidizer and desired equivalence ratio - obtain mole/mass fractions
 - [ ] Linear acoustic resistance element to model resistance in quiescent cases.
 - [ ] An element to force a split fraction at a splitter/junction - might be incompatible with the equation structure, we'd discuss.
+- [ ] Do we have any facility to pass the perturbation analysis related results to the UI save file? If not, we should figure out a way to do so.
+- [ ] Some central toggle to turn on/off LaTeX labels on plots - they don't always render properly in notebooks
+- [ ] `perturbation_response(freeze=...)`: a lossless frozen termination (closed stub) is ill-conditioned at its resonance (real-axis pole). Add optional auto-regularization (small wall loss / pole-skip).
 
 ## To verify
+
+- [ ] Does "perturbation_response" properly cover entropy and scalar waves? Current docstring sounds incompatible.
 
 ## To brainstorm
 
@@ -29,12 +34,15 @@
 - [ ] Why do we need a "h_ref" in addition to "T_ref"?
 - [ ] Verify residual normalization approach, it could be better if we normalize with the total stored quantities within the domain.
 - [ ] We could make homotopy parameter dependent on the largest dP in the domain - for very small dP existing values seemed a bit high.
+- [ ] How do we assign the "equilibrium" or "frozen" closure in the automatic mode currently? Still against solving a progress-variable like equation?
 
 ## To test
 
 ## Issues
 
-- [ ] We may not have completely internalized "thermo.inp". This file should be embedded in the project as the default species library, and unless the user manually points to a new one, there should be no need to name it.
+- [ ] We don't have any mechanism to prevent connecting incompatible elements with each other - see the guardrails we put in the UI. Perhaps we were too strict, this is open to re-evalute.
+- [ ] multiport_scattering_matrix has too crowded labels "f_0" is enough, no need for "f_0:inlet".
+- [ ] We may not have completely internalized "thermo.inp". This file should be embedded in the project, installed with the python package as the default species library, and unless the user manually points to a new one, there should be no need to name it.
 
 ## Deferred
 

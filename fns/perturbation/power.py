@@ -490,6 +490,65 @@ def compact_power_spectrum(fr, prob, node):
     return _node_power(fr.waves, fr.est, prob.tail_node, prob.head_node, prob.n_edges, node)
 
 
+def intensity_along_network(geometry, chars_of_edge, est, omega, *, energy_density=False, root=None, n_x=160):
+    """Acoustic **intensity** (or energy density) along the developed length of the network.
+
+    Reconstructs the interior field inside every duct (``f`` riding downstream at
+    ``u + c``, ``g`` upstream at ``c - u``; theory.md s12.3) and evaluates the Myers
+    energy flux per unit area :func:`acoustic_intensity` (downstream positive) at each
+    station, returning one developed-length :class:`~fns.perturbation.modeshape.PathField`
+    per root->leaf path.  The companion to the mode-shape field reconstruction, but the
+    value is a **real** time-averaged power density (its ``values`` carry no imaginary
+    part), so it reads where acoustic power flows and where it is produced or absorbed.
+
+    Parameters
+    ----------
+    geometry : NetworkGeometry
+        Topology and duct lengths (from :func:`fns.perturbation.build_geometry`).
+    chars_of_edge : callable
+        ``edge -> (f, g, h)`` complex wave amplitudes at that edge's face (the same
+        accessor the mode-shape reconstruction uses).
+    est : ndarray
+        Frozen mean edge-state table.
+    omega : complex
+        Angular frequency [rad/s]; complex for an eigenmode, real for a forced field.
+    energy_density : bool, optional
+        Return the Myers energy **density** [J/m^3] (:func:`acoustic_energy_density`)
+        instead of the intensity [W/m^2] (default ``False``).
+    root : int, optional
+        Developed-length origin element (default: a mean-flow inlet).
+    n_x : int, optional
+        Interior samples per duct (default 160).
+
+    Returns
+    -------
+    list of fns.perturbation.modeshape.PathField
+        One per root->leaf path; ``values`` is the real intensity (or energy density).
+    """
+    from .modeshape import walk_paths, _duct_chars, PathField
+
+    def _quantity(rho, c, mach, f, g):
+        if energy_density:
+            return acoustic_energy_density(rho, mach, f, g)
+        return acoustic_intensity(rho, c, mach, f, g)
+
+    def duct_fn(seg):
+        e_t, e_h, length = seg.e_tail, seg.e_head, seg.length
+        rho, c = float(est[ES_RHO, e_t]), float(est[ES_C, e_t])
+        u, mach = float(est[ES_U, e_t]), float(est[ES_M, e_t])
+        s, chars = _duct_chars(chars_of_edge(e_t), chars_of_edge(e_h), c, u, omega, length, n_x)
+        return s, _quantity(rho, c, mach, chars[:, 0], chars[:, 1])
+
+    def point_fn(rep):
+        rho, c, mach = float(est[ES_RHO, rep]), float(est[ES_C, rep]), float(est[ES_M, rep])
+        w = chars_of_edge(rep)
+        return _quantity(rho, c, mach, complex(w[0]), complex(w[1]))
+
+    fields = walk_paths(geometry, duct_fn, point_fn, root=root, n_x=n_x)
+    # The diagnostic is real; drop the (numerically zero) imaginary part the walker carries.
+    return [PathField(name=f.name, x=f.x, values=np.real(f.values), markers=f.markers) for f in fields]
+
+
 def duct_energy_spectrum(fr, ducts, *, n_x: int = 120):
     """Acoustic energy stored in the duct volumes at each forced frequency.
 

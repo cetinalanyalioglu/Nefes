@@ -38,7 +38,7 @@ import numpy as np
 from numba import njit
 
 from ..composition import stream_pack_arrays
-from ._chem import RU, equil_state_cs, frozen_state_from_moles_cs
+from ._chem import RU, equil_state_cs, equilibrate_hp_cs, equilibrium_sound_speed, frozen_state_from_moles_cs
 
 _OFF_BLOCKS = 3  # p_ref, T_init, T_init_frozen precede the flat data blocks
 
@@ -116,6 +116,67 @@ def eq_kernel_state_from_Z(tf, ti, Z_el, h, p):
     nj_init = np.full(Ns, guess)
     T, rho, c, ntot, flag, nit = equil_state_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_init, nj_init)
     return T, rho, c, 1.0 / ntot
+
+
+@njit(cache=True)
+def eq_kernel_state_from_Z_warm(tf, ti, Z_el, h, p, cache):
+    """HP-equilibrium state ``(T, rho, c_eq, W)``, warm-started from ``cache``.
+
+    Identical to :func:`eq_kernel_state_from_Z`, but the element-potential Newton seeds
+    from the per-edge ``cache`` -- a length ``Ns + 1`` buffer holding the last converged
+    moles (``cache[:Ns]``) and temperature (``cache[Ns]``) -- and writes the new converged
+    pair back, so a nearby re-solve (the next Newton iterate, or a complex-step Jacobian
+    column whose real part is unchanged) converges in a couple of steps.  **Both** the
+    composition and the temperature must be warm-started together; seeding the composition
+    at a stale ``T_init`` leaves the first step badly inconsistent.  ``cache`` is purely a
+    *speed* hint: the HP equilibrium is unique, so the converged state is independent of it.
+    An empty / mis-sized ``cache`` (e.g. a perfect-gas placeholder) disables the warm start
+    and falls back to the uniform composition guess at ``T_init``.
+    """
+    Ne = ti[0]
+    Ns = ti[1]
+    MI = ti[2]
+    MIm1 = ti[3]
+    p_ref = tf[0]
+    T_init = tf[1]
+    o = _OFF_BLOCKS
+    coeffs = tf[o : o + Ns * MI * 9].reshape((Ns, MI, 9))
+    o += Ns * MI * 9
+    Tint = tf[o : o + Ns * MIm1].reshape((Ns, MIm1))
+    o += Ns * MIm1
+    Af = tf[o : o + Ne * Ns].reshape((Ne, Ns))
+    o += Ne * Ns
+    ew = tf[o : o + Ne]
+    b0 = Z_el / ew
+
+    # Default: the robust uniform composition guess at the cold T_init.
+    sb = 0.0
+    for i in range(Ne):
+        sb += b0[i].real
+    nj_init = np.full(Ns, sb / (2.0 * Ns))
+    T_start = T_init
+    has_cache = cache.shape[0] == Ns + 1
+    if has_cache and cache[Ns] > 0.0:  # a populated cache: warm-start composition *and* temperature
+        T_start = cache[Ns]
+        for j in range(Ns):
+            if cache[j] > 0.0:
+                nj_init[j] = cache[j]  # exactly-zero (underflowed) species keep the uniform guess
+
+    T, nj, ntot, flag, nit = equilibrate_hp_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_start, nj_init)
+    rho = p / (RU * ntot * T)
+    c = equilibrium_sound_speed(coeffs, Tint, Af, nj, ntot, T, p)
+    if has_cache:  # store the converged (real) composition + temperature for the next solve
+        for j in range(Ns):
+            cache[j] = nj[j].real
+        cache[Ns] = T.real
+    return T, rho, c, 1.0 / ntot
+
+
+@njit(cache=True)
+def eq_kernel_state_warm(tf, ti, xi, h, p, cache):
+    """Warm-started :func:`eq_kernel_state`: maps ``xi`` to ``Z`` then seeds from ``cache``."""
+    Z = _xi_to_Z(tf, ti, xi)
+    return eq_kernel_state_from_Z_warm(tf, ti, Z, h, p, cache)
 
 
 @njit(cache=True)

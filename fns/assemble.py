@@ -15,6 +15,7 @@ from numba import njit
 from .derive import recover_all, recover_edge, NS_EST, ES_MDOT
 from .smooth import smooth_step
 from .elements.kernels import node_residual, node_donor
+from .thermo.api import PERFECT_GAS
 
 CS_H = 1e-30
 
@@ -43,11 +44,12 @@ def assemble_residual(
     kappa,
     est,
     R,
+    nj_cache,
 ):
     """Fill the full residual vector R (length n_eq) and the est table."""
     N = node_rid.shape[0]
     E = x.shape[1]
-    recover_all(edge_model, tf, ti, x, area, n_elem, est)
+    recover_all(edge_model, tf, ti, x, area, n_elem, est, nj_cache)
 
     for n in range(N):
         eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
@@ -108,6 +110,7 @@ def jacobian_fill(
     eps_fb,
     kappa,
     Jdata,
+    nj_cache,
 ):
     """Fill the CSC ``Jdata`` array against the fixed (indptr, indices) pattern."""
     n_solve = x.shape[0]
@@ -117,7 +120,7 @@ def jacobian_fill(
 
     xc = x.astype(np.complex128)
     est = np.zeros((NS_EST, E), dtype=np.complex128)
-    recover_all(edge_model, tf, ti, xc, area, n_elem, est)
+    recover_all(edge_model, tf, ti, xc, area, n_elem, est, nj_cache)
     Rc = np.zeros(n_eq, dtype=np.complex128)
 
     for e in range(E):
@@ -128,7 +131,18 @@ def jacobian_fill(
         for v in range(n_solve):
             c = n_solve * e + v
             xc[v, e] = x[v, e] + 1j * H
-            recover_edge(edge_model[e], tf, ti, xc[0, e], xc[1, e], xc[2, e], area[e], xc[3 : 3 + n_elem, e], est[:, e])
+            recover_edge(
+                edge_model[e],
+                tf,
+                ti,
+                xc[0, e],
+                xc[1, e],
+                xc[2, e],
+                area[e],
+                xc[3 : 3 + n_elem, e],
+                est[:, e],
+                nj_cache[e],
+            )
 
             # (a) the two endpoint node-equation blocks
             node_residual(
@@ -211,7 +225,18 @@ def jacobian_fill(
 
             # restore
             xc[v, e] = x[v, e]
-            recover_edge(edge_model[e], tf, ti, xc[0, e], xc[1, e], xc[2, e], area[e], xc[3 : 3 + n_elem, e], est[:, e])
+            recover_edge(
+                edge_model[e],
+                tf,
+                ti,
+                xc[0, e],
+                xc[1, e],
+                xc[2, e],
+                area[e],
+                xc[3 : 3 + n_elem, e],
+                est[:, e],
+                nj_cache[e],
+            )
 
 
 # --------------------------------------------------------------------------
@@ -224,6 +249,25 @@ def _resolve_node_eps(prob):
     if prob.node_eps is not None:
         return prob.node_eps
     return np.full(prob.n_nodes, -1.0, dtype=np.float64)
+
+
+def _nj_cache_off(prob):
+    """An ``(E, 0)`` cache: disables the equilibrium warm start (the robust uniform guess)."""
+    return np.zeros((prob.n_edges, 0), dtype=np.float64)
+
+
+def _nj_cache_jacobian(prob):
+    """Fresh per-edge equilibrium warm-start cache ``(E, Ns)`` for one Jacobian assembly.
+
+    The Jacobian re-solves each edge's equilibrium once per (variable, edge) complex-step
+    column.  Seeding those from the freshly-recovered base composition *and* temperature (the
+    perturbation is infinitesimal) cuts each to a couple of Newton steps.  Each row is
+    ``Ns + 1`` wide -- ``Ns`` moles plus the temperature.  Reacting models only; the perfect
+    gas gets the no-op ``(E, 0)``.  A fresh array per call -- no stale cross-iterate state to
+    risk diverging the cold first solve.
+    """
+    width = int(prob.ti[1]) + 1 if prob.model_id != PERFECT_GAS and np.size(prob.ti) > 1 else 0
+    return np.zeros((prob.n_edges, width), dtype=np.float64)
 
 
 def residual(prob, x2d, eps, eps_fb, kappa=0.0):
@@ -253,6 +297,7 @@ def residual(prob, x2d, eps, eps_fb, kappa=0.0):
         kappa,
         est,
         R,
+        _nj_cache_off(prob),
     )
     return R
 
@@ -285,6 +330,7 @@ def jacobian(prob, x2d, eps, eps_fb, kappa=0.0):
         eps_fb,
         kappa,
         Jdata,
+        _nj_cache_jacobian(prob),
     )
     return sp.csc_matrix((Jdata, prob.indices, prob.indptr), shape=(prob.n_eq, prob.n_col))
 

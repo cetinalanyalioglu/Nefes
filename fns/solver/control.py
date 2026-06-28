@@ -385,7 +385,8 @@ def states_table(prob, x2d):
     from ..derive import recover_all, NS_EST
 
     est = np.zeros((NS_EST, prob.n_edges))
-    recover_all(prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, est)
+    nj_cache = np.zeros((prob.n_edges, 0))  # diagnostics: no warm start (single pass, robust uniform)
+    recover_all(prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, est, nj_cache)
     return est
 
 

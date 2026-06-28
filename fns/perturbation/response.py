@@ -901,14 +901,15 @@ class PerturbationResponse:
     def multiport_scattering_labels(self):
         """Per-wave symbols for the multiport columns (incoming) and rows (outgoing).
 
-        Each wave is its characteristic symbol (``f``/``g``/``h``) subscripted by the terminal it
-        lives on -- the node id and its element name (e.g. ``f<sub>0:MassFlowInlet1</sub>``) -- so a
-        multiport entry reads ``f₀:inlet → g₀:inlet``.
+        Each wave is its characteristic symbol (``f``/``g``/``h``) subscripted by the **node id**
+        of the terminal it lives on (e.g. ``f<sub>0</sub>``).  The bare id keeps the matrix labels
+        uncrowded -- a multiport entry reads ``f₀ → g₀`` -- while still uniquely identifying the
+        terminal (cross-reference :attr:`node_names` for the element name).
         """
         incoming, outgoing = self._multiport_io()
 
         def sym(node, _edge, ch):
-            return self._wave_at_node(ch, node)
+            return f"{_CHAR_SYM[ch]}_{{{node}}}"
 
         return [sym(*w) for w in incoming], [sym(*w) for w in outgoing]
 

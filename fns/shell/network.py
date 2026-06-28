@@ -201,6 +201,20 @@ class Network:
         """Return the solver's initial state guess for the compiled problem."""
         return initial_guess(self.compile(), **kw)
 
+    def plot_topology(self, **kwargs):
+        """Draw the network topology (element indices/names and edge directions).
+
+        A structural diagnostic -- no solve needed.  Thin wrapper over
+        :func:`fns.plotting.plot_network_topology`; see it for the keyword options.
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import plot_network_topology
+
+        return plot_network_topology(self, **kwargs)
+
     def save(self, path: str, **kwargs) -> None:
         """Write this network as a UI-readable YAML case (no result data).
 

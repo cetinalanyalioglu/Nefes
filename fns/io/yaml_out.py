@@ -55,6 +55,8 @@ from ..elements.ids import (
     SPLITTER,
     DUCT,
     WALL,
+    CAVITY,
+    LINEAR_RESISTANCE,
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
@@ -661,6 +663,21 @@ def _build_ui_state(network, prov):
 # --------------------------------------------------------------------------- #
 # Element / boundary-condition reverse mapping
 # --------------------------------------------------------------------------- #
+def _length_attrs(fp, off):
+    """UI storage-length attributes (``lengthUpstream``/``lengthDownstream``/``endCorrection``).
+
+    Read from the inline element's fparams storage block beginning at ``off``; emitted only
+    when non-zero, so a lengthless element serializes without the extra keys.
+    """
+    names = ("lengthUpstream", "lengthDownstream", "endCorrection")
+    out = {}
+    for i, nm in enumerate(names):
+        v = float(fp[off + i]) if len(fp) > off + i else 0.0
+        if v != 0.0:
+            out[nm] = v
+    return out
+
+
 def _spec_to_ui(spec):
     """Map an ``ElementSpec`` to its UI ``(type, modeled-attributes)`` pair."""
     rid = spec.residual_id
@@ -676,19 +693,23 @@ def _spec_to_ui(spec):
     if rid == CHOKED_NOZZLE_OUTLET:
         return "ChokedNozzleOutlet", {"throatArea": float(fp[0])}
     if rid == ISEN_AREA_CHANGE:
-        return "IsentropicAreaChange", {}
+        return "IsentropicAreaChange", _length_attrs(fp, 0)
     if rid == SUDDEN_AREA_CHANGE:
-        return "SuddenAreaChange", {"contractionCoefficient": float(fp[0])}
+        return "SuddenAreaChange", {"contractionCoefficient": float(fp[0]), **_length_attrs(fp, 1)}
     if rid == LOSS:
-        return "LossElement", {"lossCoefficient": float(fp[0])}
+        return "LossElement", {"lossCoefficient": float(fp[0]), **_length_attrs(fp, 2)}
+    if rid == LINEAR_RESISTANCE:
+        return "LinearResistance", {"resistance": float(fp[0]), **_length_attrs(fp, 1)}
     if rid == JUNCTION:
-        return "JunctionStaticP", {}
+        return "JunctionStaticP", ({"volume": float(fp[0])} if fp and float(fp[0]) != 0.0 else {})
     if rid == SPLITTER:
-        return "LosslessSplitter", {}
+        return "LosslessSplitter", ({"volume": float(fp[0])} if fp and float(fp[0]) != 0.0 else {})
     if rid == DUCT:
         return "Duct", {"length": float(fp[0]) if fp else 0.0}
     if rid == WALL:
         return "Wall", {}
+    if rid == CAVITY:
+        return "Cavity", {"volume": float(fp[0])}
     if rid == FLAME_HEAT_RELEASE:
         return "HeatReleaseFlame", {"heatRelease": float(fp[0])}
     if rid == FLAME_EQUILIBRIUM:

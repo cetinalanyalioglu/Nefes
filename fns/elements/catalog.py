@@ -41,6 +41,23 @@ from .ids import (
 _AREA_RTOL = 1e-9
 
 
+def _storage_block(name, l_up, l_down, end_correction):
+    """Validate + pack the optional storage lengths ``[l_up, l_down, end_correction]``.
+
+    The per-port half-lengths ``l_up``/``l_down`` (port 0 / port 1) set the element's
+    compliance (each ``l_i`` times that port's edge area is a stored volume) and feed the
+    series inertance ``L_eff = l_up + l_down + end_correction``; ``end_correction`` is the
+    added-mass length the geometric extent omits (it contributes to the inertance only).
+    All are lengths in metres, default zero (no storage -> the element is the lengthless
+    jump it was before).  Read by :func:`fns.perturbation.stamps._inline_storage`.
+    """
+    lu, ld, ec = float(l_up), float(l_down), float(end_correction)
+    for label, v in (("l_up", lu), ("l_down", ld), ("end_correction", ec)):
+        if v < 0.0:
+            raise ValueError(f"{name}: {label} must be non-negative (a length in metres); got {v}")
+    return [lu, ld, ec]
+
+
 @dataclass
 class ElementSpec:
     """One network element: residual type + ordered float parameters.
@@ -257,13 +274,32 @@ def cavity(volume, name="cavity"):
     return ElementSpec(CAVITY, [V], name, acoustic_id=ACOUSTIC_VOLUME)
 
 
-def isentropic_area_change(name="iac"):
+def isentropic_area_change(name="iac", l_up=0.0, l_down=0.0, end_correction=0.0):
+    """A smooth (lossless) contraction or diffuser; optionally length-bearing.
+
+    By default a lengthless jump.  A real diffuser/nozzle has axial extent, so the
+    optional ``l_up``/``l_down`` (the passage half-lengths on the port-0 / port-1 sides)
+    give it acoustic **compliance** (each side stores ``l_i * A_i`` of gas) and
+    **inertance** (series effective length ``l_up + l_down + end_correction``,
+    referenced to the throat).  These populate the storage block ``M`` and are inert in
+    the mean flow.  See ``scratch/inertance-end-correction-theory.md``.
+
+    Parameters
+    ----------
+    name : str, optional
+        Element label.
+    l_up, l_down : float, optional
+        Passage half-length [m] on the port-0 (upstream) / port-1 (downstream) side.
+    end_correction : float, optional
+        Added-mass length [m] added to the inertance only (the entrained near-field the
+        geometric length omits).
+    """
     from .ids import ISEN_AREA_CHANGE
 
-    return ElementSpec(ISEN_AREA_CHANGE, [], name)
+    return ElementSpec(ISEN_AREA_CHANGE, _storage_block("isentropic_area_change", l_up, l_down, end_correction), name)
 
 
-def sudden_area_change(name="sac", cc=1.0, eps=None):
+def sudden_area_change(name="sac", cc=1.0, eps=None, l_up=0.0, l_down=0.0, end_correction=0.0):
     """Sudden area change: Borda-Carnot expansion, vena-contracta contraction.
 
     Forward flow (small -> large) follows the Borda-Carnot momentum balance
@@ -294,16 +330,22 @@ def sudden_area_change(name="sac", cc=1.0, eps=None):
         ``ElementSpec.eps``); use a small value (e.g. ``1e-6 * mdot_ref``) when
         the flow is firmly one-directional and an accurate perturbation jump is
         wanted.
+    l_up, l_down, end_correction : float, optional
+        Optional storage lengths [m] (default 0).  A sudden change is geometrically thin
+        (``l_up = l_down = 0``); supply ``end_correction`` for the entrained-mass inertance
+        the step still carries.  See :func:`isentropic_area_change` and
+        ``scratch/inertance-end-correction-theory.md``.
     """
     from .ids import SUDDEN_AREA_CHANGE
 
     cc = float(cc)
     if not 0.0 < cc <= 1.0:
         raise ValueError(f"sudden_area_change: contraction coefficient cc must be in (0, 1]; got {cc}")
-    return ElementSpec(SUDDEN_AREA_CHANGE, [cc], name, eps=eps)
+    block = _storage_block("sudden_area_change", l_up, l_down, end_correction)
+    return ElementSpec(SUDDEN_AREA_CHANGE, [cc] + block, name, eps=eps)
 
 
-def loss(K, name="loss", ref_port=0, eps=None):
+def loss(K, name="loss", ref_port=0, eps=None, l_up=0.0, l_down=0.0, end_correction=0.0):
     """A concentrated total-pressure loss ``Pt_in - Pt_out = K * (1/2 rho u^2)``.
 
     The element conserves mass and drops total pressure by ``K`` dynamic heads,
@@ -327,16 +369,23 @@ def loss(K, name="loss", ref_port=0, eps=None):
         section, so set this to match the source.
     eps : float, optional
         Per-element smoothing-width override (see ``ElementSpec.eps``).
+    l_up, l_down, end_correction : float, optional
+        Optional storage lengths [m] (default 0): an orifice's thickness / backing length
+        (compliance + inertance) and its end correction (inertance only).  See
+        :func:`isentropic_area_change` and ``scratch/inertance-end-correction-theory.md``.
+        With these the loss becomes an orifice impedance ``Z = R(u) + i*omega*L_eff/A``
+        (the steady resistance from ``J_alg``, the reactance from ``M``).
     """
     from .ids import LOSS
 
     rp = int(ref_port)
     if rp not in (0, 1):
         raise ValueError(f"loss: ref_port must be 0 or 1; got {ref_port}")
-    return ElementSpec(LOSS, [float(K), float(rp)], name, eps=eps)
+    block = _storage_block("loss", l_up, l_down, end_correction)
+    return ElementSpec(LOSS, [float(K), float(rp)] + block, name, eps=eps)
 
 
-def linear_resistance(R, name="resistance"):
+def linear_resistance(R, name="resistance", l_up=0.0, l_down=0.0, end_correction=0.0):
     """A linear flow resistance ``Pt_in - Pt_out = R * mdot`` (a quiescent acoustic resistance).
 
     Drops total pressure in **linear** proportion to the through-flow mass rate, with the drop
@@ -354,6 +403,11 @@ def linear_resistance(R, name="resistance"):
         flow.  As an acoustic resistance it sets the linear damping ``Pt' = R * mdot'``.
     name : str, optional
         Element label.
+    l_up, l_down, end_correction : float, optional
+        Optional storage lengths [m] (default 0): paired with ``R`` they make a screen /
+        perforate / damper carrying both resistance and reactance -- the quiescent orifice
+        impedance ``Z = R + i*omega*L_eff/A`` (the cleanest inertance test, since it is
+        linear and survives at zero mean flow).  See :func:`isentropic_area_change`.
 
     Returns
     -------
@@ -364,7 +418,8 @@ def linear_resistance(R, name="resistance"):
     R = float(R)
     if R < 0.0:
         raise ValueError(f"linear_resistance: R must be non-negative (a passive resistance); got {R}")
-    return ElementSpec(LINEAR_RESISTANCE, [R], name)
+    block = _storage_block("linear_resistance", l_up, l_down, end_correction)
+    return ElementSpec(LINEAR_RESISTANCE, [R] + block, name)
 
 
 def heat_release_flame(Qdot, name="flame", dynamic_source=None):
@@ -477,12 +532,31 @@ def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dy
     )
 
 
-def junction(name="junction"):
-    return ElementSpec(JUNCTION, [], name)
+def _manifold_volume(name, volume):
+    """Validate a manifold's optional chamber volume (a plenum compliance, default 0)."""
+    V = float(volume)
+    if V < 0.0:
+        raise ValueError(f"{name}: volume must be non-negative (a chamber volume in m^3); got {volume}")
+    return [V]
 
 
-def splitter(name="splitter"):
-    return ElementSpec(SPLITTER, [], name)
+def junction(name="junction", volume=0.0):
+    """A static-pressure manifold (header node) tying all ports to a common pressure.
+
+    Optionally a **plenum**: a non-zero chamber ``volume`` [m^3] gives it the acoustic
+    compliance ``C = V / (rho c^2)`` (populating the storage block ``M`` on the common
+    pressure), so a header with a real internal volume resonates -- a junction with a
+    volume is a cavity with through-flow.  The volume is inert in the mean flow.
+    """
+    return ElementSpec(JUNCTION, _manifold_volume("junction", volume), name)
+
+
+def splitter(name="splitter", volume=0.0):
+    """A lossless (total-pressure) manifold; optionally a finite-volume plenum.
+
+    As :func:`junction`, a non-zero ``volume`` adds the chamber compliance to ``M``.
+    """
+    return ElementSpec(SPLITTER, _manifold_volume("splitter", volume), name)
 
 
 def duct(length=0.0, name="duct"):

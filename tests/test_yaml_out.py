@@ -125,6 +125,48 @@ def test_outlet_elements_roundtrip(tmp_path, outlet, ui_type):
     assert np.allclose(sol.field("mdot"), sol2.field("mdot"), rtol=1e-9, atol=1e-9)
 
 
+def test_storage_elements_roundtrip(tmp_path):
+    """Cavity, LinearResistance, and the storage lengths / manifold volume survive the
+    UI round-trip: the elements re-build and their storage block M is reproduced."""
+    from fns.perturbation import build_acoustic_blocks
+
+    net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=1.0)
+    net.add(cat.total_pressure_inlet(101325.0, 300.0, name="src"))
+    net.add(cat.isentropic_area_change(name="diffuser", l_up=0.03, l_down=0.02, end_correction=0.005))
+    net.add(cat.linear_resistance(40.0, name="screen", l_up=0.01, end_correction=0.004))
+    net.add(cat.junction(name="plenum", volume=2.0e-3))
+    net.add(cat.duct(0.02, name="neck"))
+    net.add(cat.cavity(1.0e-3, name="cav"))
+    net.add(cat.pressure_outlet(101325.0, 300.0, name="back"))
+    net.connect(0, 1, 3.0e-3)
+    net.connect(1, 2, 2.0e-3)
+    net.connect(2, 3, 2.0e-3)
+    net.connect(3, 6, 2.0e-3)  # plenum -> outlet
+    net.connect(3, 4, 5.0e-4)  # plenum -> neck
+    net.connect(4, 5, 5.0e-4)  # neck -> cavity
+    sol = net.solve()
+    assert sol.converged
+    net2, doc = _reload(net, sol, str(tmp_path))
+
+    types = {n["type"] for n in doc["model"]["nodes"]}
+    assert {"Cavity", "LinearResistance", "JunctionStaticP", "IsentropicAreaChange"} <= types
+    by_type = {n["type"]: n["attributes"] for n in doc["model"]["nodes"]}
+    assert by_type["Cavity"]["volume"] == pytest.approx(1.0e-3)
+    assert by_type["JunctionStaticP"]["volume"] == pytest.approx(2.0e-3)
+    assert by_type["IsentropicAreaChange"]["lengthUpstream"] == pytest.approx(0.03)
+    assert by_type["IsentropicAreaChange"]["endCorrection"] == pytest.approx(0.005)
+    assert by_type["LinearResistance"]["resistance"] == pytest.approx(40.0)
+
+    sol2 = net2.solve()
+    assert sol2.converged
+    assert np.allclose(sol.field("mdot"), sol2.field("mdot"), rtol=1e-9, atol=1e-9)
+    # the storage block is identical after the round-trip (same nnz and entries)
+    M1 = build_acoustic_blocks(sol.problem, sol.x).M
+    M2 = build_acoustic_blocks(sol2.problem, sol2.x).M
+    assert M1.nnz == M2.nnz and M1.nnz > 0
+    assert np.allclose(np.sort_complex(M1.tocoo().data), np.sort_complex(M2.tocoo().data))
+
+
 @pytest.mark.parametrize("name", ["converging_nozzle.yaml", "gas_turbine_large.yaml"])
 def test_provenance_roundtrip_resolves(tmp_path, name):
     net = load_case(os.path.join(_EXAMPLES, name))

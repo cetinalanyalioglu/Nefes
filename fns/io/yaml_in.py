@@ -48,6 +48,20 @@ def _basis(a: dict) -> str:
     return str(a.get("basis") or "mole")
 
 
+def _lengths(a: dict) -> dict:
+    """Optional storage-length kwargs (``l_up``/``l_down``/``end_correction``) from a UI node.
+
+    The per-port half-lengths and the end correction populate the storage block ``M`` (the
+    element's compliance + inertance); all default to zero, so a node that omits them is the
+    lengthless jump it was before.
+    """
+    return {
+        "l_up": float(a.get("lengthUpstream", 0.0) or 0.0),
+        "l_down": float(a.get("lengthDownstream", 0.0) or 0.0),
+        "end_correction": float(a.get("endCorrection", 0.0) or 0.0),
+    }
+
+
 # UI node type -> (catalog factory, kwargs extracted from node attributes).
 # Each builder takes the node's `attributes` dict and returns an ElementSpec.  The
 # composition / basis attributes feed the reacting model; the perfect-gas model
@@ -65,17 +79,19 @@ _UI_NODE_BUILDERS = {
     "MassFlowOutlet": lambda a: cat.mass_flow_outlet(a["massFlowRate"]),
     "ChokedNozzleOutlet": lambda a: cat.choked_nozzle_outlet(a["throatArea"]),
     "Wall": lambda a: cat.wall(),
-    "IsentropicAreaChange": lambda a: cat.isentropic_area_change(),
-    "SuddenAreaChange": lambda a: cat.sudden_area_change(cc=a.get("contractionCoefficient", 1.0)),
-    "LossElement": lambda a: cat.loss(a["lossCoefficient"]),
+    "Cavity": lambda a: cat.cavity(a["volume"]),
+    "IsentropicAreaChange": lambda a: cat.isentropic_area_change(**_lengths(a)),
+    "SuddenAreaChange": lambda a: cat.sudden_area_change(cc=a.get("contractionCoefficient", 1.0), **_lengths(a)),
+    "LossElement": lambda a: cat.loss(a["lossCoefficient"], **_lengths(a)),
+    "LinearResistance": lambda a: cat.linear_resistance(a["resistance"], **_lengths(a)),
     "Duct": lambda a: cat.duct(a.get("length", 0.0)),
     "HeatReleaseFlame": lambda a: cat.heat_release_flame(a["heatRelease"]),
     "EquilibriumFlame": lambda a: cat.equilibrium_flame(),
     "MassSource": lambda a: cat.mass_source(
         a["massFlowRate"], a["injectionTemperature"], _comp(a), u_inj=a.get("injectionVelocity", 0.0), basis=_basis(a)
     ),
-    "JunctionStaticP": lambda a: cat.junction(),
-    "LosslessSplitter": lambda a: cat.splitter(),
+    "JunctionStaticP": lambda a: cat.junction(volume=a.get("volume", 0.0) or 0.0),
+    "LosslessSplitter": lambda a: cat.splitter(volume=a.get("volume", 0.0) or 0.0),
 }
 
 # Boundary types that carry a perturbation BC group in the UI schema.

@@ -35,7 +35,16 @@ from .verify import duct_nodes, verify_acoustic
 from .terminals import find_terminals
 from ..solver.control import states_table
 from ..derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
-from ..elements.ids import CAVITY, FLAME_HEAT_RELEASE
+from ..elements.ids import (
+    CAVITY,
+    FLAME_HEAT_RELEASE,
+    ISEN_AREA_CHANGE,
+    SUDDEN_AREA_CHANGE,
+    LOSS,
+    LINEAR_RESISTANCE,
+    JUNCTION,
+    SPLITTER,
+)
 
 
 @dataclass
@@ -648,12 +657,123 @@ def _cavity_storage(prob, est, n, K=None, cals=None):
     return StorageStamp(node=n, rows=rows, cols=cols, vals=vals)
 
 
+# fparams offset where each inline 2-port element's storage block
+# ``[l_up, l_down, end_correction]`` begins (after the element's own physics params).
+_INLINE_STORAGE_OFFSET = {
+    ISEN_AREA_CHANGE: 0,  # fparams = [l_up, l_down, end]
+    SUDDEN_AREA_CHANGE: 1,  # fparams = [cc, l_up, l_down, end]
+    LOSS: 2,  # fparams = [K, ref_port, l_up, l_down, end]
+    LINEAR_RESISTANCE: 1,  # fparams = [R, l_up, l_down, end]
+}
+
+
+def _inline_storage(prob, est, n, K=None, cals=None):
+    """Storage of an inline 2-port pressure element (area change / loss / resistance).
+
+    The element's optional half-lengths ``l_up``/``l_down`` (catalog ``_storage_block``)
+    give it both a **compliance** and an **inertance** (theory in
+    ``scratch/inertance-end-correction-theory.md`` and theory.md s12.5):
+
+    * **compliance** -- per-port reduced length on the mass row: each side stores
+      ``l_i * A_i`` of gas, contributing ``+ l_i * A_i / c_i^2`` onto the mass row at that
+      port's pressure column (the cavity's ``V/c^2``, distributed over the two ports that
+      sit at *different* perturbation pressures);
+    * **inertance** -- the series effective length ``L_eff = l_up + l_down + end_correction``
+      on the pressure-drop row (``r0 + 1``), referenced to the throat (smaller) area:
+      ``+ s0 * L_eff / A_ref`` onto the through-flow ``mdot`` column of port 0.  The sign
+      ``s0 = orient[base]`` carries the port-0 orientation, because the FNS pressure row is
+      written in the upstream-minus-downstream sense with the through-flow ``-s0*mdot_e0``;
+      the result is the reactive dual of the linear-resistance term ``-R*mdot_through``.
+
+    ``end_correction`` adds to the inertance only (the entrained near-field mass the
+    geometric length omits).  All lengths default to zero -> an empty stamp (the element is
+    the lengthless jump it was before).
+    """
+    rid = int(prob.node_rid[n])
+    off = _INLINE_STORAGE_OFFSET[rid]
+    base = int(prob.row_ptr[n])
+    pb = int(prob.npar_fptr[n])
+    ns = int(prob.n_solve)
+    e0 = int(prob.col_edge[base])
+    s0 = int(prob.orient[base])
+    e1 = int(prob.col_edge[base + 1])
+    r_mass = int(prob.node_row_ptr[n])  # row 0: mass balance
+    r_press = r_mass + 1  # row 1: the pressure-drop / momentum row
+    l_up = float(prob.npar_f[pb + off])
+    l_down = float(prob.npar_f[pb + off + 1])
+    end = float(prob.npar_f[pb + off + 2])
+
+    rows, cols, vals = [], [], []
+    # compliance: per-port reduced length on the mass row (each port's pressure column)
+    for e_i, l_i in ((e0, l_up), (e1, l_down)):
+        if l_i > 0.0:
+            A_i = float(est[ES_AREA, e_i])
+            c_i = float(est[ES_C, e_i])
+            rows.append(r_mass)
+            cols.append(ns * e_i + 1)  # pressure variable
+            vals.append(l_i * A_i / (c_i * c_i))
+    # inertance: series effective length on the pressure row, throat-referenced
+    L_eff = l_up + l_down + end
+    if L_eff > 0.0:
+        a0 = float(est[ES_AREA, e0])
+        a1 = float(est[ES_AREA, e1])
+        A_ref = a0 if a0 <= a1 else a1  # throat (smaller) area
+        rows.append(r_press)
+        cols.append(ns * e0 + 0)  # through-flow mass-flow variable of port 0
+        vals.append(s0 * L_eff / A_ref)
+
+    if not rows:
+        return None
+    return StorageStamp(
+        node=n,
+        rows=np.array(rows, dtype=np.intp),
+        cols=np.array(cols, dtype=np.intp),
+        vals=np.array(vals, dtype=np.complex128),
+    )
+
+
+def _manifold_storage(prob, est, n, K=None, cals=None):
+    """Compliance of a finite-volume manifold (a :func:`~fns.elements.catalog.junction`
+    or :func:`~fns.elements.catalog.splitter` plenum).
+
+    A non-zero chamber ``volume`` (``fparams[0]``) gives the manifold the lumped
+    compliance ``C = V/(rho c^2)``.  All ports share one pressure (the ``p_0 = p_i``
+    coupling rows tie them), so the stamp is a single ``+ V/c^2`` on the mass row at the
+    port-0 pressure column -- the cavity rule with through-flow.  Per-branch neck
+    inertance is deferred (see ``scratch/inertance-end-correction-theory.md`` s5/s9).
+    """
+    pb = int(prob.npar_fptr[n])
+    V = float(prob.npar_f[pb])  # junction/splitter chamber volume (catalog _manifold_volume)
+    if not V > 0.0:
+        return None
+    base = int(prob.row_ptr[n])
+    e0 = int(prob.col_edge[base])
+    ns = int(prob.n_solve)
+    c = float(est[ES_C, e0])
+    r0 = int(prob.node_row_ptr[n])  # the manifold's mass-balance row
+    return StorageStamp(
+        node=n,
+        rows=np.array([r0], dtype=np.intp),
+        cols=np.array([ns * e0 + 1], dtype=np.intp),  # common pressure column
+        vals=np.array([V / (c * c)], dtype=np.complex128),
+    )
+
+
 # Per-element storage builders, keyed by residual id.  A builder takes
 # ``(prob, est, n, K, cals)`` and returns a :class:`StorageStamp` (or ``None``).  This
-# is the extension point for the ``M`` block: a new storage-bearing element registers
-# its ``d/dt integral_V U`` contribution here -- the cavity's compliance today, and
-# inertance / end-correction terms (area changes, losses, perforate necks) later.
-_STORAGE_BUILDERS = {CAVITY: _cavity_storage}
+# is the extension point for the ``M`` block: a storage-bearing element registers its
+# ``d/dt integral_V U`` contribution here.  The cavity is the 1-port compliance; the
+# inline pressure elements carry per-port compliance + series inertance; the manifolds
+# carry a chamber compliance (theory: scratch/inertance-end-correction-theory.md).
+_STORAGE_BUILDERS = {
+    CAVITY: _cavity_storage,
+    ISEN_AREA_CHANGE: _inline_storage,
+    SUDDEN_AREA_CHANGE: _inline_storage,
+    LOSS: _inline_storage,
+    LINEAR_RESISTANCE: _inline_storage,
+    JUNCTION: _manifold_storage,
+    SPLITTER: _manifold_storage,
+}
 
 
 def build_storage_stamps(prob, x_bar, K, cals=None):

@@ -18,6 +18,13 @@
   a **Helmholtz resonator** from primitives (tee + neck `duct` + `cavity`) and reproduces
   the analytic side-branch transmission-loss peak at `f₀ = c√(Aₙ/(V·l))/2π`, with the
   resonance tuned across a 16:1 cavity-volume sweep. Plotly, FNS theme.
+- **`inertance_storage.ipynb`** — generalizes the storage block `M` to the **jump
+  elements**: the **inertance** (`l_up`/`l_down`/`end_correction` on area changes, `loss`,
+  `linear_resistance`) and the **manifold compliance** (`volume` on `junction`/`splitter`).
+  Shows a neck modeled as an inline inertance (`iωM`) resonates at the same `f₀` as a neck
+  `duct` (carried in `P(ω)`); that an `end_correction` lengthens `L_eff` and lowers `f₀`
+  (≈20 % for a flanged `δ ≈ 0.85a`); and that a `junction(volume=V)` reproduces the
+  `cavity(V)` compliance. Plotly, FNS theme.
 - **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
   **secondary-air / cooling** distribution), adapted from the preliminary-study
   prototype. Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`

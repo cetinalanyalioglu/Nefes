@@ -4,13 +4,15 @@
 - [ ] Element-dropping in the `@njit` equilibrium kernel (`fns/thermo/_chem.equilibrate_hp`) for burnt edges whose elemental abundance (`Z = xi @ Zfeed`) has a zero element (e.g. a parallel branch whose products lack carbon). Mirror thermolib's keep_el/keep_sp compaction (locate-on-real). Series injection (all elements present downstream) avoids it today.
 - [ ] We need a robust and nice framework to create analytically continuous curves from the tabulated transfer function and reflection coefficient inputs for subsequent stability analysis.
 - [ ] We are now considering "convenience" elements, that will transform into multiple elements when added to network. We should be careful to preserve proper numbering. I am not certain yet, maybe we re-run the re-numbering algorithm, or just insert the new "serial" portion as incremental numbers to the correct position and shift the rest? First user: a `helmholtz_resonator(V, neck_length, neck_area)` wrapper (tee + neck duct + cavity), now buildable by hand from the primitives.
-- [ ] Storage `M`: neck inertance / end-correction (added-mass) terms via the `_STORAGE_BUILDERS` registry (`stamps.py`) -- area changes / losses / orifice necks stamp `i*omega*L` onto a momentum row, the inertance dual of the cavity compliance. Folds the geometric neck length's end corrections (delta_end ~ 0.85a flanged) into `l_eff`.
-- [ ] Cavity energy-ledger hook (HR-plan Phase 4): generalize `_stored_energy` (currently duct-only) to add the cavity's lumped `0.5 * C * |p'_c|^2`, so `forced_power_balance` / `modal_energy_balance` close with a cavity present. Operator is already complete (`J_alg + i*omega*M + P + S`); this is the diagnostics side.
+- [ ] Storage `M` remainder (the generic per-port compliance + series inertance + manifold volume are done -- `_inline_storage`/`_manifold_storage`): (a) per-branch manifold inertance (a neck length on each junction/splitter branch's `p0-pi` row); (b) heated finite-volume element's independent energy store (couples the energy/transport row to `S(omega)`). See `scratch/inertance-end-correction-theory.md` s3.3/s5.
+- [ ] Storage energy-ledger hook (HR-plan Phase 4): generalize `_stored_energy` (currently duct-only) to add the lumped storage energy -- cavity/plenum `0.5 * C * |p'|^2` and inertance `0.5 * (L_eff/A) * |mdot'|^2` -- so `forced_power_balance` / `modal_energy_balance` close with storage present. Operator is already complete (`J_alg + i*omega*M + P + S`); this is the diagnostics side.
 - [ ] Dedicated sudden-contraction element resolving the vena-contracta state (composite: isentropic to vena contracta + Borda re-expansion) for exact loss and minimum static pressure at higher Mach. The current `sudden_area_change` `cc`-loss uses the incompressible 1/2 rho u^2 head, accurate only to O(M^2).
+- [ ] "multiple_fuel_manifold" notebook has an excellent network plot - let's develop it further.
 
 ## To verify
 
 - [ ] Does "perturbation_response" properly cover entropy and scalar waves? Current docstring sounds incompatible.
+- [ ] How can user access species information on the edges, and do we output it?
 
 ## To brainstorm
 
@@ -30,6 +32,7 @@
 
 ## Issues
 
+- [ ] Defining nodes and edges through "build_problem" routine is more convenient than using our Network class, which requires one-by-one addition. Let our Network class accept, upon creation, a list of edges and nodes. Ensure this does not break the port numbering capability.
 - [ ] We don't have any mechanism to prevent connecting incompatible elements with each other - see the guardrails we put in the UI. Perhaps we were too strict, this is open to re-evalute.
 
 ## Deferred

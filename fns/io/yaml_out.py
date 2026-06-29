@@ -586,26 +586,20 @@ def _build_model(network, prov):
 def _global_attributes(network, prov=None):
     gas = network.gas
     if gas.model_id == EQ_KERNEL:
-        # The reacting model: the species list and the T guesses are recoverable from the config,
-        # but the mechanism *file path* is not stored on the library.  Reuse the original path from
-        # the loaded provenance when available; otherwise emit an empty path with a warning (the
-        # user must re-point it on reload).
+        # The reacting model uses the built-in NASA Glenn / CEA database by default, so no file
+        # is required.  The *resolved* species slate is emitted explicitly (freezing any
+        # automatic reduction, so reload is deterministic and skips re-deriving it).  An explicit
+        # native-mechanism path, if one was used, is recovered from the loaded provenance.
         prov_global = (prov.doc.get("model") or {}).get("globalAttributes", {}) if prov else {}
         mech = str(prov_global.get("mechanismFile") or "")
-        if not mech:
-            warnings.warn(
-                "the reacting mechanism file path is not recoverable from the gas config; the "
-                "exported case carries an empty 'mechanismFile' -- set it before loading the case "
-                "again",
-                stacklevel=4,
-            )
+        # The Newton initial-temperature guesses (t_init / t_init_frozen) are solver
+        # internals with robust defaults -- not exposed in the UI, so not emitted here.
         g = {
             "thermoModel": "equilibrium",
-            "mechanismFile": mech,
             "species": ", ".join(gas.species_names),
-            "equilibriumTInit": float(gas.t_init),
-            "frozenTInit": float(gas.t_init_frozen),
         }
+        if mech:
+            g["mechanismFile"] = mech
     else:
         cp, R = float(gas.tf[0]), float(gas.tf[1])
         g = {

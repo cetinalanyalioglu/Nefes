@@ -30,6 +30,16 @@ from .equilibrium import (
     equilibrate_TP,
 )
 from .thermo import Thermo
+from .reduction import (
+    SampleState,
+    ReductionResult,
+    SpeciesReducer,
+    NullReducer,
+    EquilibriumSamplingReducer,
+    get_reducer,
+    register_reducer,
+    available_reducers,
+)
 from . import smooth
 
 __version__ = "0.2.0"
@@ -52,6 +62,14 @@ __all__ = [
     "equilibrate_HP",
     "equilibrate_TP",
     "elemental_abundance",
+    "SampleState",
+    "ReductionResult",
+    "SpeciesReducer",
+    "NullReducer",
+    "EquilibriumSamplingReducer",
+    "get_reducer",
+    "register_reducer",
+    "available_reducers",
     "R_UNIVERSAL",
     "P_REF",
     "P_REF_BAR",

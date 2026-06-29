@@ -262,11 +262,11 @@ def _nj_cache_jacobian(prob):
     The Jacobian re-solves each edge's equilibrium once per (variable, edge) complex-step
     column.  Seeding those from the freshly-recovered base composition *and* temperature (the
     perturbation is infinitesimal) cuts each to a couple of Newton steps.  Each row is
-    ``Ns + 1`` wide -- ``Ns`` moles plus the temperature.  Reacting models only; the perfect
-    gas gets the no-op ``(E, 0)``.  A fresh array per call -- no stale cross-iterate state to
-    risk diverging the cold first solve.
+    ``Np + 1`` wide -- ``Np`` product (gas-phase) moles plus the temperature.  Reacting models
+    only; the perfect gas gets the no-op ``(E, 0)``.  A fresh array per call -- no stale
+    cross-iterate state to risk diverging the cold first solve.
     """
-    width = int(prob.ti[1]) + 1 if prob.model_id != PERFECT_GAS and np.size(prob.ti) > 1 else 0
+    width = int(prob.ti[6]) + 1 if prob.model_id != PERFECT_GAS and np.size(prob.ti) > 6 else 0
     return np.zeros((prob.n_edges, width), dtype=np.float64)
 
 

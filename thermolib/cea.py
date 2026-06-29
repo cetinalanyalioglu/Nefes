@@ -86,8 +86,13 @@ def _parse_record_2(line):
             count = _f(line[n + 2 : n + 8])
             if count:
                 composition[normalize_element(sym)] = int(count) if float(count).is_integer() else count
+    # Phase flag sits just before the molar-mass field: 0 = gas, non-zero = condensed.
+    try:
+        phase = int(line[50:52].strip() or "0")
+    except ValueError:
+        phase = 0
     molar_mass_g = _f(line[52:65])  # g/mol
-    return n_intervals, composition, molar_mass_g
+    return n_intervals, composition, molar_mass_g, phase
 
 
 def _parse_interval(lines):
@@ -148,7 +153,7 @@ def read_thermo_inp(path=None):
 
         name = line.split()[0]
         comment = line[len(name) :].strip()
-        n_intervals, composition, molar_mass_g = _parse_record_2(lines[i + 1])
+        n_intervals, composition, molar_mass_g, phase = _parse_record_2(lines[i + 1])
 
         if n_intervals < 1:
             # Reference-only / single-point record: not evaluable over a range.
@@ -171,6 +176,7 @@ def read_thermo_inp(path=None):
             thermo=NASA9(Tranges, np.array(coeffs)),
             molar_mass=molar_mass_g * 1e-3,  # g/mol -> kg/mol
             note=comment,
+            phase=phase,
         )
         i += 2 + 3 * n_intervals
 
@@ -228,3 +234,40 @@ class ThermoInp:
             species=chosen,
             P_ref=P_REF_BAR if P_ref is None else P_ref,
         )
+
+    def candidate_species(self, elements, *, gas_only=True, exclude_ions=True):
+        """Database species reachable from a pool of ``elements`` (CEA-style product slate).
+
+        Returns every species whose elemental composition is a subset of ``elements`` --
+        the candidate equilibrium products that can form from the fed-in atoms.  This is the
+        un-reduced slate; a :class:`~thermolib.reduction.SpeciesReducer` trims it down.
+
+        Parameters
+        ----------
+        elements : iterable of str
+            Element symbols present in the feed (the reachable element pool).
+        gas_only : bool, optional
+            Drop condensed-phase species (``phase != 0``).  Defaults to ``True``; v1
+            equilibrium products are gaseous (condensed species are feed-only).
+        exclude_ions : bool, optional
+            Drop ionic species (a ``+``/``-`` in the name or an electron ``E`` in the
+            composition).  Defaults to ``True`` -- ionization is negligible for subsonic
+            combustion and the charge balance adds cost for no benefit.
+
+        Returns
+        -------
+        list of str
+            Candidate species names, in database order.
+        """
+        pool = set(elements)
+        out = []
+        for name, sp in self.species.items():
+            els = set(sp.composition) - {"E"}
+            if not els.issubset(pool):
+                continue
+            if exclude_ions and ("+" in name or "-" in name or "E" in sp.composition):
+                continue
+            if gas_only and getattr(sp, "phase", 0) != 0:
+                continue
+            out.append(name)
+        return out

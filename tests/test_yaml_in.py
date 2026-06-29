@@ -254,15 +254,15 @@ def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
 # --------------------------------------------------------------------------- #
 # 4. reacting error paths
 # --------------------------------------------------------------------------- #
-def test_reacting_without_mechanism_or_species_is_rejected(tmp_path):
-    # No mechanismFile falls back to the packaged thermo.inp, which needs a species list to
-    # narrow its thousands of species -- so neither given is the error.
-    g = {"thermoModel": "equilibrium"}
-    nodes = [_node("in", "MassFlowInlet", 0, massFlowRate=1.0, totalTemperature=300.0, composition="H2:1")]
+def test_reacting_auto_without_feed_composition_is_rejected(tmp_path):
+    # Default species="auto" derives the slate from the feed compositions; with no feed
+    # composition anywhere there is nothing to derive the element pool from.
+    g = {"thermoModel": "equilibrium"}  # species defaults to "auto"
+    nodes = [_node("in", "MassFlowInlet", 0, massFlowRate=1.0, totalTemperature=300.0)]  # no composition
     nodes.append(_node("out", "PressureOutlet", 1, pressure=1e5))
     edges = [_edge("e1", "in", "out", 0, 0, 0, 0.05)]
-    with pytest.raises(ValueError, match="species"):
-        load_case(_dump(tmp_path, "nomech.yaml", g, nodes, edges))
+    with pytest.raises(ValueError, match="composition"):
+        load_case(_dump(tmp_path, "nofeed.yaml", g, nodes, edges))
 
 
 def test_reacting_without_mechanism_uses_packaged_thermo_inp(tmp_path):
@@ -275,6 +275,66 @@ def test_reacting_without_mechanism_uses_packaged_thermo_inp(tmp_path):
     edges = [_edge("e1", "in", "out", 0, 0, 0, 0.05)]
     net = load_case(_dump(tmp_path, "packaged.yaml", g, nodes, edges))
     assert net.gas.species_names == ["H2", "O2", "N2", "H2O", "OH", "H", "O"]
+
+
+# --------------------------------------------------------------------------- #
+# 4b. automatic species slate (CEA-style) over the packaged thermo.inp
+# --------------------------------------------------------------------------- #
+def _auto_reacting(tmp_path, composition, name, Tinit=2500.0):
+    """inlet(composition) -> EquilibriumFlame -> outlet on the auto-species reacting model."""
+    g = {
+        "thermoModel": "equilibrium",  # species defaults to "auto"; no mechanismFile
+        "equilibriumTInit": Tinit,
+        "frozenTInit": 300.0,
+        "referencePressure": 101325.0,
+        "referenceTemperature": 300.0,
+        "referenceMassFlow": 1.0,
+    }
+    nodes = [
+        _node(
+            "in", "MassFlowInlet", 0, label="feed", massFlowRate=1.0, totalTemperature=300.0, composition=composition
+        ),
+        _node("flame", "EquilibriumFlame", 1, label="flame"),
+        _node("out", "PressureOutlet", 2, label="out", pressure=101325.0, backflowTotalTemperature=300.0),
+    ]
+    edges = [_edge("e1", "in", "flame", 0, 0, 0, 0.05), _edge("e2", "flame", "out", 1, 0, 1, 0.05)]
+    return _dump(tmp_path, name, g, nodes, edges)
+
+
+def test_auto_slate_h2_air_runs_raw(tmp_path):
+    # H/O/N admits ~30 gas species (below the reduce threshold) -> kept as-is.
+    net = load_case(_auto_reacting(tmp_path, "H2:1.0, O2:0.5, N2:1.88", "auto_h2.yaml"))
+    names = net.gas.species_names
+    for feed in ("H2", "O2", "N2"):
+        assert feed in names
+    report = net.gas.library.reduction_report
+    assert report["reducer"] == "none"
+    assert report["n_candidates"] == report["n_kept"]
+    net.solve()  # converges
+
+
+def test_auto_slate_hydrocarbon_reduces(tmp_path):
+    # CH4/air -> {C,H,O,N} admits ~115 gas species -> reduced.
+    net = load_case(_auto_reacting(tmp_path, "CH4:1.0, O2:2.0, N2:7.52", "auto_ch4.yaml"))
+    names = net.gas.species_names
+    report = net.gas.library.reduction_report
+    assert report["reducer"] == "equilibrium_sampling"
+    assert report["n_candidates"] > 100
+    assert report["n_kept"] < report["n_candidates"]  # actually trimmed
+    # the feed and the major products survive
+    for expect in ("CH4", "CO2", "H2O", "CO", "N2"):
+        assert expect in names
+    net.solve()
+
+
+def test_auto_slate_liquid_fuel_feed(tmp_path):
+    # A condensed feed (liquid Jet-A) is carried in the library but masked out of the products.
+    net = load_case(_auto_reacting(tmp_path, "Jet-A(L):1.0, O2:17.75, N2:66.7", "auto_jeta.yaml"))
+    lib = net.gas.library
+    assert "Jet-A(L)" in lib.species_names
+    assert not lib.product_mask[lib.species_index["Jet-A(L)"]]  # feed-only, never a product
+    assert lib.product_mask[lib.species_index["CO2"]]
+    net.solve()
 
 
 def test_reacting_inlet_requires_composition(tmp_path):

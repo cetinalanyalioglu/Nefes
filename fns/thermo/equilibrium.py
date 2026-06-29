@@ -68,6 +68,17 @@ def pack_equilibrium(lib, stream_Y, T_init=3000.0, T_init_frozen=300.0):
     feed_coeffs = np.ascontiguousarray(coeffs[feed_idx], dtype=np.float64)  # (Nf, MI, 9)
     feed_Tint = np.ascontiguousarray(Tint[feed_idx], dtype=np.float64)  # (Nf, MI-1)
 
+    # Product subset for the HP-equilibrium (burnt) kernel: gas-phase species only.  Condensed
+    # feed species (e.g. liquid fuel) stay in the full arrays -- so the frozen reconstruction and
+    # the feed enthalpy datum can use them -- but never appear as equilibrium products (their
+    # polynomials are invalid at flame temperature).  An all-gas library makes this the full set.
+    prod_mask = np.asarray(getattr(lib, "product_mask", np.ones(Ns, bool)), dtype=bool)
+    prod_idx = np.nonzero(prod_mask)[0].astype(np.int64)
+    Np = prod_idx.shape[0]
+    prod_A = np.ascontiguousarray(A[:, prod_idx], dtype=np.float64)  # (Ne, Np)
+    prod_coeffs = np.ascontiguousarray(coeffs[prod_idx], dtype=np.float64)  # (Np, MI, 9)
+    prod_Tint = np.ascontiguousarray(Tint[prod_idx], dtype=np.float64)  # (Np, MI-1)
+
     header = np.array([lib.P_ref, T_init, T_init_frozen], dtype=np.float64)
     tf = np.concatenate(
         [
@@ -80,10 +91,40 @@ def pack_equilibrium(lib, stream_Y, T_init=3000.0, T_init_frozen=300.0):
             np.ascontiguousarray(Nfeed, dtype=np.float64).ravel(),
             feed_coeffs.ravel(),
             feed_Tint.ravel(),
+            prod_A.ravel(),
+            prod_coeffs.ravel(),
+            prod_Tint.ravel(),
         ]
     ).astype(np.float64)
-    ti = np.array([Ne, Ns, MI, MIm1, Nf, K], dtype=np.int64)
+    ti = np.array([Ne, Ns, MI, MIm1, Nf, K, Np], dtype=np.int64)
     return np.ascontiguousarray(tf), np.ascontiguousarray(ti)
+
+
+@njit(cache=True)
+def _product_blocks(tf, ti):
+    """Slice the gas-phase product subset ``(prod_coeffs, prod_Tint, prod_A, ew)`` from a bundle.
+
+    The burnt HP-equilibrium kernel solves over these (Np) species, not the full library, so a
+    condensed feed species never enters the product set.
+    """
+    Ne = ti[0]
+    Ns = ti[1]
+    MI = ti[2]
+    MIm1 = ti[3]
+    Nf = ti[4]
+    K = ti[5]
+    Np = ti[6]
+    # element weights sit right after the full A block (used to map Z -> gram-atoms b0)
+    o_ew = _OFF_BLOCKS + Ns * MI * 9 + Ns * MIm1 + Ne * Ns
+    ew = tf[o_ew : o_ew + Ne]
+    # product blocks are appended after Zfeed, Nfeed, feed_coeffs, feed_Tint
+    o = o_ew + Ne + K * Ne + K * Nf + Nf * MI * 9 + Nf * MIm1
+    prod_A = tf[o : o + Ne * Np].reshape((Ne, Np))
+    o += Ne * Np
+    prod_coeffs = tf[o : o + Np * MI * 9].reshape((Np, MI, 9))
+    o += Np * MI * 9
+    prod_Tint = tf[o : o + Np * MIm1].reshape((Np, MIm1))
+    return prod_coeffs, prod_Tint, prod_A, ew
 
 
 @njit(cache=True)
@@ -95,25 +136,16 @@ def eq_kernel_state_from_Z(tf, ti, Z_el, h, p):
     :func:`eq_kernel_state`, which maps the transported mixture fractions to ``Z``.
     """
     Ne = ti[0]
-    Ns = ti[1]
-    MI = ti[2]
-    MIm1 = ti[3]
+    Np = ti[6]
     p_ref = tf[0]
     T_init = tf[1]
-    o = _OFF_BLOCKS
-    coeffs = tf[o : o + Ns * MI * 9].reshape((Ns, MI, 9))
-    o += Ns * MI * 9
-    Tint = tf[o : o + Ns * MIm1].reshape((Ns, MIm1))
-    o += Ns * MIm1
-    Af = tf[o : o + Ne * Ns].reshape((Ne, Ns))
-    o += Ne * Ns
-    ew = tf[o : o + Ne]
+    coeffs, Tint, Af, ew = _product_blocks(tf, ti)
     b0 = Z_el / ew
     sb = 0.0
     for i in range(Ne):
         sb += b0[i].real
-    guess = sb / (2.0 * Ns)
-    nj_init = np.full(Ns, guess)
+    guess = sb / (2.0 * Np)
+    nj_init = np.full(Np, guess)
     T, rho, c, ntot, flag, nit = equil_state_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_init, nj_init)
     return T, rho, c, 1.0 / ntot
 
@@ -134,31 +166,22 @@ def eq_kernel_state_from_Z_warm(tf, ti, Z_el, h, p, cache):
     and falls back to the uniform composition guess at ``T_init``.
     """
     Ne = ti[0]
-    Ns = ti[1]
-    MI = ti[2]
-    MIm1 = ti[3]
+    Np = ti[6]
     p_ref = tf[0]
     T_init = tf[1]
-    o = _OFF_BLOCKS
-    coeffs = tf[o : o + Ns * MI * 9].reshape((Ns, MI, 9))
-    o += Ns * MI * 9
-    Tint = tf[o : o + Ns * MIm1].reshape((Ns, MIm1))
-    o += Ns * MIm1
-    Af = tf[o : o + Ne * Ns].reshape((Ne, Ns))
-    o += Ne * Ns
-    ew = tf[o : o + Ne]
+    coeffs, Tint, Af, ew = _product_blocks(tf, ti)
     b0 = Z_el / ew
 
     # Default: the robust uniform composition guess at the cold T_init.
     sb = 0.0
     for i in range(Ne):
         sb += b0[i].real
-    nj_init = np.full(Ns, sb / (2.0 * Ns))
+    nj_init = np.full(Np, sb / (2.0 * Np))
     T_start = T_init
-    has_cache = cache.shape[0] == Ns + 1
-    if has_cache and cache[Ns] > 0.0:  # a populated cache: warm-start composition *and* temperature
-        T_start = cache[Ns]
-        for j in range(Ns):
+    has_cache = cache.shape[0] == Np + 1
+    if has_cache and cache[Np] > 0.0:  # a populated cache: warm-start composition *and* temperature
+        T_start = cache[Np]
+        for j in range(Np):
             if cache[j] > 0.0:
                 nj_init[j] = cache[j]  # exactly-zero (underflowed) species keep the uniform guess
 
@@ -166,9 +189,9 @@ def eq_kernel_state_from_Z_warm(tf, ti, Z_el, h, p, cache):
     rho = p / (RU * ntot * T)
     c = equilibrium_sound_speed(coeffs, Tint, Af, nj, ntot, T, p)
     if has_cache:  # store the converged (real) composition + temperature for the next solve
-        for j in range(Ns):
+        for j in range(Np):
             cache[j] = nj[j].real
-        cache[Ns] = T.real
+        cache[Np] = T.real
     return T, rho, c, 1.0 / ntot
 
 

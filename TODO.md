@@ -34,6 +34,7 @@
 
 ## Deferred
 
+- [ ] Condensed-phase equilibrium *products* (soot/graphite, condensed oxides). v1 products are gas-only (`SpeciesLibrary.product_mask`); condensed species are feed-only (set elements + enthalpy, masked out of the burnt slate). Related edge case: an auto-slate feed element with no gas product (a metal) leaves the burnt solve unbalanced.
 - [ ] Compositional ("indirect") noise -- only the gaps remain. It is already captured wherever the linearization is inherited: `J_alg` carries composition->acoustic at a flame, an area change, and the inherited `choked_nozzle_outlet` element (its critical-mass-flux row is complex-stepped through composition -> the `R_xi` column for free). Open: (a) the hand-written analytic compact closures (`PerturbationBC.choked_nozzle`/`constant_mass_flow`) drop `R_xi` (flagged by `CompositionalNoiseWarning`) -- complex-step the closure's composition dependence to restore it; (b) scalar *ports* in the measurement scattering matrices (`response.py`) so `R_xi` reads out as a coefficient. Theory: Magri JFM 2016.
 - [ ] Non-compact / through-throat nozzle-response solver: integrate the linearized-Euler perturbation ODEs through the `M(x)` profile with the M=1 sonic-regularity (L'Hopital) condition (Stow-Dowling / Duran-Moreau). Handles the sonic throat the transit-time network model cannot (`tau_- = L/(c-u) -> inf`), and is the proper distributed-source compositional-noise route. The deferred supersonic / M=1 scope.
 - [ ] Re-order algorithm - deferred because current solvers do not utilize this

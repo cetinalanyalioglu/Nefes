@@ -113,6 +113,37 @@ def test_kernel_complex_step_matches_fd():
         assert cs[k].imag / eps == pytest.approx(fd, rel=1e-5, abs=1e-8)
 
 
+def test_kernel_masks_condensed_feed_from_products():
+    """A condensed feed species (liquid Jet-A) sets the elements + enthalpy but is excluded
+    from the burnt products in the compiled kernel -- matching thermolib's masked solve, not
+    the spurious low temperature you get if the liquid is (wrongly) allowed as a product."""
+    from thermolib import ThermoInp, equilibrate_HP
+    from fns.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+
+    if not os.path.isfile(THERMO_INP):
+        pytest.skip("thermo.inp not present")
+    products = ["CO2", "H2O", "CO", "H2", "O2", "N2", "OH", "O", "H", "NO", "N", "NO2", "HO2", "H2O2"]
+    lib = ThermoInp(THERMO_INP).library(products + ["Jet-A(L)"])
+    assert not lib.product_mask[lib.species_index["Jet-A(L)"]]
+
+    comp = {"Jet-A(L)": 1.0, "O2": 17.75, "N2": 66.7}
+    Y = species_mass_fractions(lib, comp, "mole")
+    Z = elemental_Z(lib, Y)
+    h = enthalpy_mass(lib, Y, 300.0)  # feed enthalpy carries the liquid (latent-heat) datum
+    p = 101325.0
+
+    cfg = equilibrium(lib)
+    # the bundle's product count excludes the one condensed species
+    assert int(cfg.ti[6]) == lib.n_species - 1
+
+    ref = equilibrate_HP(lib, {lib.elements[i]: float(Z[i]) for i in range(len(Z))}, h, p, T_guess=2300.0)
+    assert ref.converged
+    assert float(np.real(ref.X[lib.species_index["Jet-A(L)"]])) == 0.0  # masked in thermolib too
+    T, rho, c, W = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h, p)
+    assert T == pytest.approx(ref.T, rel=1e-6)
+    assert float(np.real(T)) > 2200.0  # not the ~1984 K spurious-product result
+
+
 # ---------------------------------------------------------------------------
 # Frozen (unburnt) closure: forward-blend reconstruction from feed-stream xi
 # ---------------------------------------------------------------------------

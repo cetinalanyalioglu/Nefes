@@ -158,6 +158,7 @@ class Species:
     thermo: ThermoPoly
     molar_mass: float = 0.0  # kg/mol; computed from composition if zero
     note: str = ""  # provenance/comment (e.g. CEA reference code)
+    phase: int = 0  # 0 = gas, non-zero = condensed (CEA phase flag)
 
     def __post_init__(self):
         if not self.molar_mass:
@@ -208,7 +209,17 @@ class SpeciesLibrary:
         self.element_matrix = a
         self.element_weights = np.array([atomic_weight(e) for e in self.elements])
 
+        # Product mask: which species may appear as equilibrium products.  v1 keeps only
+        # gaseous species (CEA phase 0); condensed species are feed-only (they set elements
+        # and enthalpy but their polynomials are not valid at flame temperatures).
+        self.product_mask = np.array([getattr(s, "phase", 0) == 0 for s in self.species], dtype=bool)
+
         self._pack_thermo()
+
+    @property
+    def species_names(self):
+        """Species names in library order."""
+        return [s.name for s in self.species]
 
     # -- vectorized thermo packing --------------------------------------
     def _pack_thermo(self):

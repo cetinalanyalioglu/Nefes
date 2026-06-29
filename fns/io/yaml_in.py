@@ -25,8 +25,11 @@ _GLOBAL_DEFAULTS = {
     "thermoModel": "perfect_gas",
     "gasConstant": 287.0,
     "heatCapacityRatio": 1.4,
+    # ``mechanismFile`` is no longer surfaced in the UI (the packaged thermo.inp is built in);
+    # it stays here as an opt-in Python-side override for a native mechanism / explicit database.
     "mechanismFile": "",
-    "species": "",
+    "species": "auto",
+    "speciesReducer": "equilibrium_sampling",
     "equilibriumTInit": 3000.0,
     "frozenTInit": 300.0,
     "referencePressure": 101325.0,
@@ -141,37 +144,153 @@ def _resolve_path(path: str, case_dir: str) -> str:
     raise FileNotFoundError(f"mechanism file {path!r} not found (looked in {candidates})")
 
 
-def _build_library(mech_path: str, species_spec, case_dir: str):
-    """Build a ``thermolib`` species library from a mechanism file + optional species list.
+# Above ~40 candidate species the equilibrium Newton solve becomes expensive enough that
+# reducing the slate pays off (hydrocarbon/air admits ~115); below it, run them raw.
+_AUTO_REDUCE_THRESHOLD = 40
 
-    With no ``mechanismFile`` set, the packaged NASA Glenn / CEA ``thermo.inp`` (shipped
-    with ``thermolib``) is used as the default species database -- the user only needs to
-    list the ``species``.  An explicit native mechanism YAML (Cantera-subset,
-    ``.yaml``/``.yml``) loads every species in the file, optionally narrowed to the listed
-    subset; an explicit CEA ``thermo.inp`` (like the default) requires a species list (the
-    file defines thousands of species).
+
+def _is_auto(species) -> bool:
+    """True if the species spec requests the automatic (CEA-style) candidate slate."""
+    return species is None or (len(species) == 1 and species[0].strip().lower() == "auto")
+
+
+def _declared_species(specs) -> List[str]:
+    """Feed/source species named anywhere in the network (the reactants), first-seen order."""
+    out: List[str] = []
+    for sp in specs:
+        comp = getattr(sp, "composition_spec", None)
+        if not comp:
+            continue
+        for name in comp:
+            if name not in out:
+                out.append(name)
+    return out
+
+
+def _dedup(seq) -> List[str]:
+    """De-duplicate a sequence, preserving first-seen order."""
+    seen, out = set(), []
+    for x in seq:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _feed_sample_states(feed_lib, specs, g):
+    """Representative equilibrium probe states along the feed-mixing line.
+
+    Each feed stream contributes its elemental composition; convex (mass) combinations of
+    the distinct streams span the lean->rich range the network can realize, probed at a
+    couple of temperatures bracketing the burnt-gas guess.  Used to drive slate reduction.
+    """
+    import numpy as np
+
+    from thermolib import SampleState
+
+    from ..composition import elemental_Z, species_mass_fractions
+
+    p = float(g["referencePressure"])
+    T_hi = float(g["equilibriumTInit"])
+    T_samples = sorted({T_hi, max(1500.0, 0.7 * T_hi)})
+
+    feeds = []
+    for sp in specs:
+        comp = getattr(sp, "composition_spec", None)
+        if not comp:
+            continue
+        Y = species_mass_fractions(feed_lib, comp, getattr(sp, "basis", "mole"))
+        feeds.append(elemental_Z(feed_lib, Y))
+
+    uniq = []
+    for Z in feeds:
+        if not any(np.allclose(Z, U, atol=1e-9) for U in uniq):
+            uniq.append(Z)
+
+    elems = list(feed_lib.elements)
+
+    def zdict(Z):
+        return {elems[i]: float(Z[i]) for i in range(len(elems))}
+
+    states = []
+    for Z in uniq:
+        states += [SampleState(zdict(Z), T, p) for T in T_samples]
+    for ia in range(len(uniq)):
+        for ib in range(ia + 1, len(uniq)):
+            for w in (0.1, 0.3, 0.5, 0.7, 0.9):
+                Zm = w * uniq[ia] + (1.0 - w) * uniq[ib]
+                states += [SampleState(zdict(Zm), T, p) for T in T_samples]
+    return states
+
+
+def _auto_library(db, specs, g):
+    """CEA-style automatic product slate over a ``ThermoInp`` database ``db``.
+
+    Declared feed species fix the reachable element pool; the candidate gas-phase slate is
+    every species buildable from those elements, reduced (when large) to the species that
+    are non-trace at equilibrium across the feed-mixing range.  The final library also
+    carries the declared feed species (including condensed fuels) so the frozen closure and
+    the enthalpy datum can be evaluated; the equilibrium kernel masks condensed species out
+    of the products.
+    """
+    from thermolib import get_reducer
+
+    declared = _declared_species(specs)
+    if not declared:
+        raise ValueError(
+            "the reacting (equilibrium) model with automatic species needs at least one feed "
+            "or source composition (set 'species' to an explicit list to override)"
+        )
+    missing = [n for n in declared if n not in db]
+    if missing:
+        raise KeyError(f"feed species not in thermo.inp: {missing}")
+
+    pool = set()
+    for name in declared:
+        pool.update(el for el in db[name].composition if el != "E")
+    candidates = db.candidate_species(pool, gas_only=True, exclude_ions=True)
+    declared_gas = [n for n in declared if db[n].phase == 0]
+
+    if len(candidates) <= _AUTO_REDUCE_THRESHOLD:
+        report = {"reducer": "none", "n_candidates": len(candidates), "n_kept": len(candidates)}
+        final = _dedup(candidates + declared)
+    else:
+        feed_lib = db.library(_dedup(declared))
+        samples = _feed_sample_states(feed_lib, specs, g)
+        reducer = get_reducer(str(g.get("speciesReducer") or "equilibrium_sampling"))
+        result = reducer.reduce(db.library(candidates), samples, always_keep=declared_gas)
+        report = result.report
+        final = _dedup(result.species + declared)
+
+    lib = db.library(final)
+    lib.reduction_report = report  # auditable: which products were selected and why
+    return lib
+
+
+def _build_library(g, specs, case_dir: str):
+    """Build the reacting species library from the model params and the network feeds.
+
+    With no ``mechanismFile`` the packaged NASA Glenn / CEA ``thermo.inp`` is the species
+    database.  ``species`` may be an explicit list, or ``"auto"`` (the default) to derive a
+    CEA-style candidate product slate from the feed compositions and reduce it.  An explicit
+    native mechanism YAML (Cantera-subset) loads its species directly; an explicit
+    ``thermo.inp`` path behaves like the packaged default.
     """
     from thermolib import SpeciesLibrary, ThermoInp
 
-    species = _parse_species(species_spec)
-    if not mech_path:
-        # no mechanism file named -> the bundled CEA database (still needs a species list)
-        if not species:
-            raise ValueError(
-                "the reacting (equilibrium) model needs a 'species' list (with no 'mechanismFile' set, "
-                "the packaged thermo.inp is used, which defines thousands of species)"
-            )
-        return ThermoInp().library(species)
-    path = _resolve_path(mech_path, case_dir)
-    if path.lower().endswith((".yaml", ".yml")):
-        lib = SpeciesLibrary.from_native(path)
-        return lib.subset(species) if species else lib
-    if not species:
-        raise ValueError(
-            f"the reacting model with a CEA thermo.inp ({path!r}) needs an explicit 'species' list "
-            "(the file defines thousands of species)"
-        )
-    return ThermoInp(path).library(species)
+    species = _parse_species(g.get("species"))
+    auto = _is_auto(species)
+    mech_path = g.get("mechanismFile")
+
+    if mech_path:
+        path = _resolve_path(mech_path, case_dir)
+        if path.lower().endswith((".yaml", ".yml")):
+            lib = SpeciesLibrary.from_native(path)
+            return lib if auto else lib.subset(species)
+        return _auto_library(ThermoInp(path), specs, g) if auto else ThermoInp(path).library(species)
+
+    db = ThermoInp()
+    return _auto_library(db, specs, g) if auto else db.library(species)
 
 
 def _reacting_h_ref(gas, specs) -> float:
@@ -355,8 +474,6 @@ def load_case(path: str):
         gas = perfect_gas(R=float(g["gasConstant"]), gamma=float(g["heatCapacityRatio"]))
         reacting = False
     elif model_kind == "equilibrium":
-        library = _build_library(g.get("mechanismFile"), g.get("species"), case_dir)
-        gas = equilibrium(library, T_init=float(g["equilibriumTInit"]), T_init_frozen=float(g["frozenTInit"]))
         reacting = True
     else:
         raise ValueError(f"{path}: unknown thermoModel {model_kind!r} (expected 'perfect_gas' or 'equilibrium')")
@@ -365,9 +482,16 @@ def load_case(path: str):
     nodes_sorted = sorted(ui_nodes, key=lambda n: int((n.get("attributes") or {}).get("index", 0)))
     specs = [_build_ui_spec(n) for n in nodes_sorted]
 
-    # The reacting closures need an absolute-enthalpy datum derived from the feed streams; the
-    # perfect-gas Network default (cp * T_ref) is meaningless for a variable-composition gas.
-    h_ref = _reacting_h_ref(gas, specs) if reacting else None
+    # The reacting library is built from the network feeds (automatic slate), so it is
+    # resolved after the node specs are parsed.  The closures then need an absolute-enthalpy
+    # datum from the feed streams; the perfect-gas default (cp * T_ref) is meaningless for a
+    # variable-composition gas.
+    if reacting:
+        library = _build_library(g, specs, case_dir)
+        gas = equilibrium(library, T_init=float(g["equilibriumTInit"]), T_init_frozen=float(g["frozenTInit"]))
+        h_ref = _reacting_h_ref(gas, specs)
+    else:
+        h_ref = None
 
     net = Network(
         gas,

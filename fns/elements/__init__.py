@@ -18,8 +18,13 @@ from .dynamic_source import (
     n_tau_flame,
 )
 from .continuation import RationalFit, rational_fit, continuation_warning
+from .composite import CompositeElementSpec, CompositeMap, expand_composites, is_composite
 
 __all__ = [
+    "CompositeElementSpec",
+    "CompositeMap",
+    "expand_composites",
+    "is_composite",
     "DynamicSource",
     "FlameResponseTerm",
     "TransferFunction",

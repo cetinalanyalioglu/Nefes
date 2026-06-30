@@ -15,6 +15,7 @@ import numpy as np
 from ..composition import build_streams, enthalpy_mass, species_mass_fractions
 from ..connectivity import connectivity_from_directed_edges, build_jacobian_pattern, Connectivity
 from ..problem import CompiledProblem
+from .composite import CompositeElementSpec, expand_composites
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from ..thermo.configure import ThermoConfig
 from .ids import (
@@ -716,6 +717,148 @@ def duct(length=0.0, name="duct"):
     return ElementSpec(DUCT, [float(length)], name, acoustic_id=ACOUSTIC_DUCT)
 
 
+# ---------------------------------------------------------------------------
+# Composite elements (Class-1 macros): a single user element that expands to a
+# fixed recipe of atomic elements + internal edges at build time.  The expander
+# (fns.elements.composite.expand_composites) and round-trip-stability guarantees
+# are element-agnostic; these factories just name the recipe.
+# ---------------------------------------------------------------------------
+
+
+def orifice(throat_area, name="orifice", eps=None) -> CompositeElementSpec:
+    """Orifice plate: an isentropic contraction to the throat, then a Borda-Carnot loss.
+
+    The De Domenico (2019) assembly at maximum loss -- an
+    :func:`isentropic_area_change` to the throat area ``throat_area`` followed by a
+    :func:`sudden_area_change` (Borda re-expansion) back to the downstream edge area.
+    The two external edges carry the upstream (``A1``) and downstream (``A2``) areas; the
+    internal throat edge carries ``throat_area``.
+
+    Parameters
+    ----------
+    throat_area : float
+        Throat (vena-contracta plane) area [m^2]; must be smaller than both external areas
+        for a genuine orifice.
+    name : str, optional
+        Display name; sub-elements are namespaced (``orifice.iac`` / ``orifice.sac``).
+    eps : float, optional
+        Sharpens the embedded sudden-area-change switch (see :func:`sudden_area_change`);
+        use a small value when the flow is one-directional and an accurate perturbation
+        jump is wanted.
+
+    Returns
+    -------
+    CompositeElementSpec
+    """
+    AT = float(throat_area)
+    if not AT > 0.0:
+        raise ValueError(f"orifice {name!r}: throat_area must be positive; got {throat_area}")
+    return CompositeElementSpec(
+        name=name,
+        sub_elements=[
+            isentropic_area_change(name=f"{name}.iac"),
+            sudden_area_change(name=f"{name}.sac", eps=eps),
+        ],
+        internal_edges=[(0, 1, AT)],  # iac -> sac at the throat area
+        kind="orifice",
+    )
+
+
+def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) -> CompositeElementSpec:
+    """General lossy nozzle (De Domenico): ``A1 ->isen-> AT ->isen-> Aj ->Borda-> A2``.
+
+    A converging nozzle to the throat, a second isentropic change to the jet plane
+    ``Aj = beta * A2``, then a Borda re-expansion to the downstream area.  ``beta`` knobs
+    the loss between the two physical limits:
+
+    * ``beta = throat_area / downstream_area`` -> the orifice (maximum loss): the second
+      isentropic change is ``AT -> AT`` (trivial) and the Borda is the full ``AT -> A2``;
+    * ``beta = 1`` -> the lossless nozzle: the Borda is ``A2 -> A2`` (equal areas, the
+      momentum/loss terms vanish), recovering the isentropic limit.
+
+    Parameters
+    ----------
+    throat_area : float
+        Throat area ``AT`` [m^2].
+    beta : float
+        Jet-to-downstream area ratio ``Aj / A2`` in ``[AT/A2, 1]``.
+    downstream_area : float
+        Downstream edge area ``A2`` [m^2] (must match the external outflow edge).
+    name : str, optional
+        Display name.
+    eps : float, optional
+        Sharpens the embedded sudden-area-change switch (see :func:`sudden_area_change`).
+
+    Returns
+    -------
+    CompositeElementSpec
+    """
+    AT, A2, b = float(throat_area), float(downstream_area), float(beta)
+    if not AT > 0.0 or not A2 > 0.0:
+        raise ValueError(f"lossy_nozzle {name!r}: throat_area and downstream_area must be positive")
+    lo = AT / A2
+    if not lo - 1e-12 <= b <= 1.0 + 1e-12:
+        raise ValueError(
+            f"lossy_nozzle {name!r}: beta must lie in [AT/A2, 1] = [{lo:.4g}, 1] "
+            f"(AT/A2 -> orifice, 1 -> lossless); got {beta}"
+        )
+    Aj = b * A2
+    return CompositeElementSpec(
+        name=name,
+        sub_elements=[
+            isentropic_area_change(name=f"{name}.iac0"),
+            isentropic_area_change(name=f"{name}.iac1"),
+            sudden_area_change(name=f"{name}.sac", eps=eps),
+        ],
+        internal_edges=[(0, 1, AT), (1, 2, Aj)],  # iac0 -> iac1 at AT, iac1 -> sac at Aj
+        kind="lossy_nozzle",
+    )
+
+
+def helmholtz_resonator(volume, neck_length, neck_area, name="hr") -> CompositeElementSpec:
+    """Side-branch Helmholtz resonator: a tee, a neck duct, and a backing cavity.
+
+    The "first user" of the composite mechanism (TODO item 3): a single element wrapping
+    the ``junction`` + ``duct`` (neck) + ``cavity`` build that is otherwise placed by hand.
+    The main line passes straight through the tee (the two external edges both attach to
+    it); the neck duct and cavity hang off as an internal side branch.  Resonates at the
+    lumped Helmholtz frequency ``f0 = c * sqrt(neck_area / (volume * neck_length)) / 2pi``,
+    the neck's inertance (its duct phase) against the cavity's compliance (storage ``M``).
+
+    Parameters
+    ----------
+    volume : float
+        Backing cavity volume [m^3].
+    neck_length : float
+        Neck length [m] (the acoustic inertance; lengthen by an end correction to model
+        the entrained near-field mass).
+    neck_area : float
+        Neck cross-sectional area [m^2]; the two internal edges (tee->neck, neck->cavity)
+        carry it.
+    name : str, optional
+        Display name.
+
+    Returns
+    -------
+    CompositeElementSpec
+    """
+    V, ln, an = float(volume), float(neck_length), float(neck_area)
+    if not V > 0.0 or not ln > 0.0 or not an > 0.0:
+        raise ValueError(f"helmholtz_resonator {name!r}: volume, neck_length and neck_area must all be positive")
+    return CompositeElementSpec(
+        name=name,
+        sub_elements=[
+            junction(name=f"{name}.tee"),
+            duct(length=ln, name=f"{name}.neck"),
+            cavity(volume=V, name=f"{name}.cavity"),
+        ],
+        internal_edges=[(0, 1, an), (1, 2, an)],  # tee -> neck -> cavity (the side branch)
+        upstream_sub=0,  # the main line enters and leaves through the tee
+        downstream_sub=0,
+        kind="helmholtz_resonator",
+    )
+
+
 def _node_label(n: int, el: ElementSpec) -> str:
     """Human-readable identifier for an element, for validation messages."""
     typ = RESIDUAL_NAMES.get(el.residual_id, f"residual {el.residual_id}")
@@ -1077,12 +1220,15 @@ def build_problem(
     overrides the per-edge thermo model id (default: the config's model on every
     edge) -- e.g. frozen upstream, equilibrium downstream of a flame.
     """
+    # expand any composite elements (build-time graph transform) into atomic elements +
+    # internal edges; a composite-free network passes through unchanged (composite_map None).
+    elements, edges, composite_map = expand_composites(elements, edges)
     n_nodes = len(elements)
     directed = [(t, h) for (t, h, _a) in edges]
     area = np.array([a for (_t, _h, a) in edges], dtype=np.float64)
     conn = connectivity_from_directed_edges(n_nodes, directed)
     return build_problem_from_connectivity(
-        thermo, elements, conn, area, mdot_ref, p_ref, h_ref, edge_models=edge_models
+        thermo, elements, conn, area, mdot_ref, p_ref, h_ref, edge_models=edge_models, composite_map=composite_map
     )
 
 
@@ -1095,11 +1241,14 @@ def build_problem_from_connectivity(
     p_ref: float,
     h_ref: float,
     edge_models=None,
+    composite_map=None,
 ) -> CompiledProblem:
     """Assemble a CompiledProblem from elements and a prebuilt Connectivity.
 
     The connectivity carries explicit per-edge ports (``tail_port``/
     ``head_port``), so port-ordering conventions are preserved exactly.
+    ``composite_map`` (set by :func:`build_problem` when the network carried composite
+    elements) bridges the user-facing ids to the expanded ones; ``None`` otherwise.
     """
     n_nodes = len(elements)
     area = np.ascontiguousarray(area, dtype=np.float64)
@@ -1254,4 +1403,5 @@ def build_problem_from_connectivity(
         scalar_names=tuple(thermo.element_names),
         marker_row=marker_row,
         marker_seed=marker_seed,
+        composite_map=composite_map,
     )

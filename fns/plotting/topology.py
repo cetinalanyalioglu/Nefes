@@ -99,12 +99,15 @@ def _edge_field(solution, name, n_edges, kind):
     if name not in _FIELD_INFO:
         raise ValueError(f"{kind}={name!r} is not a known edge field; choose from {sorted(_FIELD_INFO)}")
     vals = np.asarray(solution.field(name), dtype=float)
-    if vals.shape[0] != n_edges:
+    # A composite network solves on an expanded graph (internal edges appended at the tail),
+    # so the solution may carry MORE edges than the drawn (user) topology -- the user edges keep
+    # ids 0..n_edges-1, so take that leading slice.  Fewer edges is a genuine mismatch.
+    if vals.shape[0] < n_edges:
         raise ValueError(
             f"the solution has {vals.shape[0]} edges but the network has {n_edges}; "
             "pass the Solution from solving *this* network"
         )
-    return vals
+    return vals[:n_edges]
 
 
 def plot_network_topology(

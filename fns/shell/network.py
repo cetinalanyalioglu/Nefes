@@ -11,6 +11,7 @@ from ..thermo.api import PERFECT_GAS, EQ_KERNEL
 from ..connectivity import build_connectivity
 from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
+from ..elements.composite import is_composite
 from ..elements.ids import RESIDUAL_NAMES
 from ..problem import CompiledProblem
 from ..solver import solve as _solve
@@ -35,6 +36,52 @@ _EDGE_FIELDS = {
 
 # Cap on per-table rows in the Network repr (elements / edges); larger networks are truncated.
 _REPR_MAX_ROWS = 20
+
+
+@dataclass
+class CompositeView:
+    """A solved composite element projected back to its user-facing identity.
+
+    Returned by :meth:`Solution.composite`.  Lets a caller read a composite's intra-element
+    state (e.g. an orifice's throat) without knowing the expanded node/edge layout.
+
+    Attributes
+    ----------
+    name, kind : str
+        The composite's display name and type label.
+    node : int
+        The composite's user node id (its first expanded sub-element).
+    nodes : tuple of int
+        All expanded node ids the composite occupies.
+    internal_edges : tuple of int
+        The composite's internal edge ids (both endpoints inside the composite).
+    throat : int or None
+        The narrowest internal edge (minimum area) -- the throat of an orifice/nozzle;
+        ``None`` if the composite has no internal edge.
+    """
+
+    name: str
+    kind: str
+    node: int
+    nodes: Tuple[int, ...]
+    internal_edges: Tuple[int, ...]
+    throat: Optional[int]
+    _solution: object = None
+
+    def state(self, e: int) -> dict:
+        """``{field: value}`` of all derived quantities on edge ``e`` (an internal or boundary edge)."""
+        return self._solution.edge(int(e))
+
+    @property
+    def throat_state(self) -> dict:
+        """``{field: value}`` at the throat (narrowest) edge; empty if the composite has none."""
+        return {} if self.throat is None else self.state(self.throat)
+
+    def profile(self, name: str):
+        """The named field along the composite's internal edges (area-ordered, narrowest first)."""
+        field = self._solution.field(name)
+        order = sorted(self.internal_edges, key=lambda e: float(self._solution.field("area")[e]))
+        return np.array([field[e] for e in order])
 
 
 class Network:
@@ -349,7 +396,9 @@ class Network:
 
     @staticmethod
     def _type_name(el: ElementSpec) -> str:
-        """Human-readable residual-type name for an element."""
+        """Human-readable residual-type name for an element (or the kind for a composite)."""
+        if is_composite(el):
+            return el.kind or "composite"
         return RESIDUAL_NAMES.get(el.residual_id, f"residual#{el.residual_id}")
 
     def __repr__(self) -> str:
@@ -516,9 +565,69 @@ class Solution:
         """Raw converged state vector."""
         return self.result.x
 
-    def table(self) -> np.ndarray:
-        """Return the per-edge state table (rows are fields, columns are edges)."""
-        return states_table(self.problem, self.result.x)
+    def table(self, show_internal: bool = True) -> np.ndarray:
+        """Return the per-edge state table (rows are fields, columns are edges).
+
+        Parameters
+        ----------
+        show_internal : bool, optional
+            When ``False`` and the network carries composite elements, drop the composite
+            *internal* edge columns, leaving only the user-facing edges (which keep their
+            ids; internals append at the tail).  Default ``True`` (every edge).
+        """
+        est = states_table(self.problem, self.result.x)
+        cm = self.problem.composite_map
+        if show_internal or cm is None or not cm.internal_edges:
+            return est
+        keep = [e for e in range(self.problem.n_edges) if e not in cm.internal_edges]
+        return est[:, keep]
+
+    def composite(self, key) -> "CompositeView":
+        """Project a solved composite element back to its user-facing identity.
+
+        Parameters
+        ----------
+        key : str or int
+            The composite's name or its user node id.
+
+        Returns
+        -------
+        CompositeView
+            A view exposing the composite's internal edges and throat state.
+        """
+        cm = self.problem.composite_map
+        if cm is None:
+            raise ValueError("this network has no composite elements")
+        if isinstance(key, str):
+            nodes = [n for n, nm in cm.composite_name.items() if nm == key]
+            if not nodes:
+                raise ValueError(f"no composite named {key!r}; have {sorted(cm.composite_name.values())}")
+            node = nodes[0]
+        else:
+            node = int(key)
+            if node not in cm.composite_name:
+                raise ValueError(f"user node {node} is not a composite element")
+        expanded = set(cm.expanded_nodes(node))
+        tail, head, area = self.problem.tail_node, self.problem.head_node, self.problem.area
+        internal = tuple(sorted(e for e in cm.internal_edges if int(tail[e]) in expanded and int(head[e]) in expanded))
+        throat = min(internal, key=lambda e: float(area[e])) if internal else None
+        return CompositeView(
+            name=cm.composite_name[node],
+            kind=cm.composite_kind.get(node, ""),
+            node=node,
+            nodes=tuple(cm.expanded_nodes(node)),
+            internal_edges=internal,
+            throat=throat,
+            _solution=self,
+        )
+
+    @property
+    def composites(self) -> List["CompositeView"]:
+        """Every composite element in the network, as :class:`CompositeView` projections."""
+        cm = self.problem.composite_map
+        if cm is None:
+            return []
+        return [self.composite(n) for n in sorted(cm.composite_name)]
 
     def cuton_report(self, section: str = "circular"):
         """Per-duct higher-order-mode cut-on frequencies and the plane-wave ceiling.

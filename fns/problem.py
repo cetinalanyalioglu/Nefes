@@ -74,6 +74,10 @@ class CompiledProblem:
     # per-edge initial marker (0 fresh / 1 burnt) from the compile-time flood-fill, demoted to
     # the marker transport's initial guess; None when the network carries no marker.
     marker_seed: np.ndarray = None  # float64[E]
+    # composite-element expansion map (fns.elements.composite.CompositeMap), or None when the
+    # network carries no composite.  Bridges the user-facing (Case) node/edge ids to the expanded
+    # ids the kernels solve on; lets diagnostics hide or project composite internals.
+    composite_map: object = None
 
     @property
     def n_col(self) -> int:

@@ -144,6 +144,53 @@ def test_kernel_masks_condensed_feed_from_products():
     assert float(np.real(T)) > 2200.0  # not the ~1984 K spurious-product result
 
 
+def test_kernel_drops_absent_element():
+    """A carbonless burnt edge in a carbon-bearing library (the parallel-branch case):
+    its elemental abundance ``Z`` has a zero carbon entry, so carbon's balance row is
+    null -> singular.  The compiled kernel drops carbon and every carbon-bearing
+    species (keep_el / keep_sp), exactly as thermolib's masked solve does -- so the
+    burnt state matches and the complex-step Jacobian stays finite."""
+    from thermolib import equilibrate_HP, ThermoInp
+    from fns.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+
+    if not os.path.isfile(THERMO_INP):
+        pytest.skip("thermo.inp not present")
+    # carbon-bearing library, but a carbonless (H2/air) feed
+    species = ["H2", "O2", "N2", "H2O", "OH", "H", "O", "NO", "CO2", "CO", "CH4"]
+    lib = ThermoInp(THERMO_INP).library(species)
+    elems = [lib.elements[i] for i in range(len(lib.elements))]
+    assert "C" in elems  # carbon is a library element...
+    ci = elems.index("C")
+
+    comp = {"H2": 1.0, "O2": 0.5, "N2": 0.5 * 3.76}
+    Y = species_mass_fractions(lib, comp, "mole")
+    Z = elemental_Z(lib, Y)
+    assert float(Z[ci]) == 0.0  # ...but none is fed
+    h = enthalpy_mass(lib, Y, 300.0)
+    p = 3.0e5
+
+    cfg = equilibrium(lib)
+    ref = equilibrate_HP(lib, {elems[i]: float(Z[i]) for i in range(len(Z))}, h, p, T_guess=2200.0)
+    assert ref.converged
+    for sp in ["CO2", "CO", "CH4"]:  # carbon products absent in thermolib's compacted solve
+        assert float(np.real(ref.X[lib.species_index[sp]])) == pytest.approx(0.0, abs=1e-12)
+
+    T, rho, c, W = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h, p)
+    assert T == pytest.approx(ref.T, rel=1e-6)
+    assert c == pytest.approx(ref.a_equilibrium, rel=1e-6)
+    assert rho == pytest.approx(ref.rho, rel=3e-5)
+
+    # complex-step through h stays finite and matches FD despite the dropped element
+    eps, dh = 1e-20, 1e-2
+    Zc = np.ascontiguousarray(Z).astype(complex)
+    cs = eq_kernel_state_from_Z(cfg.tf, cfg.ti, Zc, complex(h, eps), complex(p, 0.0))
+    fp = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h + dh, p)
+    fm = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h - dh, p)
+    for k in range(3):
+        assert np.isfinite(cs[k].imag)
+        assert cs[k].imag / eps == pytest.approx((fp[k] - fm[k]) / (2 * dh), rel=1e-5, abs=1e-10)
+
+
 # ---------------------------------------------------------------------------
 # Frozen (unburnt) closure: forward-blend reconstruction from feed-stream xi
 # ---------------------------------------------------------------------------

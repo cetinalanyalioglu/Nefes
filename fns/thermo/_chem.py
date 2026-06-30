@@ -192,19 +192,49 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
     M = np.zeros((dim, dim))
     rhs = np.zeros(dim)
 
+    # Element / species compaction (CEA / thermolib keep_el-keep_sp, located on the
+    # real abundance): an element with zero gram-atoms (e.g. carbon on a carbonless
+    # branch of a carbon-bearing library) carries no products, so its balance row is
+    # null -> singular.  Drop such elements and every species containing one; the
+    # reduced system is over the present elements only.  All elements present (the
+    # common case) leaves this a no-op.
+    bscale = 0.0
+    for i in range(Ne):
+        bi = b0[i]
+        if bi > bscale:
+            bscale = bi
+    active_el = np.empty(Ne, dtype=np.bool_)
+    for i in range(Ne):
+        active_el[i] = b0[i] > 1.0e-13 * bscale
+    active_sp = np.empty(Ns, dtype=np.bool_)
+    n_active_sp = 0
+    for j in range(Ns):
+        ok = True
+        for i in range(Ne):
+            if not active_el[i] and Af[i, j] != 0.0:
+                ok = False
+                break
+        active_sp[j] = ok
+        if ok:
+            n_active_sp += 1
+    # a dropped species holds no moles and is skipped in every sum / update below
+    for j in range(Ns):
+        if not active_sp[j]:
+            nj[j] = 0.0
+
     ntot = 0.0
     for j in range(Ns):
         ntot += nj[j]
     T = T_init
 
     # Uniform cold guess (the robust, always-conditioned start: gram-atoms spread
-    # evenly over the product species).  ``nj`` may arrive warm-started from a cache
-    # at a different operating point; if that seed drives the reduced Newton matrix
-    # singular, the solve below falls back to this guess (graceful warm -> cold).
+    # evenly over the active product species).  ``nj`` may arrive warm-started from a
+    # cache at a different operating point; if that seed drives the reduced Newton
+    # matrix singular, the solve below falls back to this guess (graceful warm -> cold).
     sb0 = 0.0
     for i in range(Ne):
         sb0 += b0[i]
-    uniform = sb0 / (2.0 * Ns)
+    uniform = sb0 / (2.0 * n_active_sp)
 
     flag = 0
     nit = 0
@@ -214,7 +244,12 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
         species_thermo9(coeffs, Tint, T, cpR, hRT, gRT)
         lnp = np.log(p / p_ref)
         for j in range(Ns):
-            fj[j] = gRT[j] + np.log(nj[j] / ntot) + lnp
+            # dropped species hold no moles; fj is left at 0 so every ``nj*fj`` sum
+            # below stays 0 (avoids log(0)) without special-casing each sum
+            if active_sp[j]:
+                fj[j] = gRT[j] + np.log(nj[j] / ntot) + lnp
+            else:
+                fj[j] = 0.0
         hhat_target = h_target / (RU * T)
 
         for a in range(dim):
@@ -271,6 +306,16 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
         M[Ne + 1, Ne + 1] = ccoef
         rhs[Ne + 1] = hhat_target - sum_nh + sum_nhf
 
+        # decouple every dropped element: its balance row is null (no products), so
+        # replace it with the identity (d(pi_i) = 0, no effect on the present block)
+        for i in range(Ne):
+            if not active_el[i]:
+                for k in range(dim):
+                    M[i, k] = 0.0
+                    M[k, i] = 0.0
+                M[i, i] = 1.0
+                rhs[i] = 0.0
+
         singular = False
         try:
             x = np.linalg.solve(M, rhs)
@@ -285,8 +330,8 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
                 break
             n_reset += 1
             for j in range(Ns):
-                nj[j] = uniform
-            ntot = Ns * uniform
+                nj[j] = uniform if active_sp[j] else 0.0
+            ntot = n_active_sp * uniform
             T = T_init
             continue
         dln_n = x[Ne]
@@ -489,6 +534,30 @@ def equilibrium_sound_speed(coeffs, Tint, Af, nj, ntot, T, p):
         sum_nh += nj[j] * hRT[j]
     rhsT[Ne] = -sum_nh
     rhsP[Ne] = ntot
+
+    # Decouple elements with no appreciable products (an inert with zero abundance,
+    # e.g. argon on a non-argon feed): their sensitivity row is null -> identity it,
+    # mirroring the HP solve's keep_el compaction so the block stays non-singular.
+    # Located on the real moles (complex-step safe).
+    maxn = 0.0
+    for j in range(Ns):
+        nr = nj[j].real
+        if nr > maxn:
+            maxn = nr
+    floor = 1.0e-30 * maxn
+    for i in range(Ne):
+        active = False
+        for j in range(Ns):
+            if Af[i, j] != 0.0 and nj[j].real > floor:
+                active = True
+                break
+        if not active:
+            for k in range(dim):
+                Msens[i, k] = nj[0] * 0.0
+                Msens[k, i] = nj[0] * 0.0
+            Msens[i, i] = nj[0] * 0.0 + 1.0
+            rhsT[i] = nj[0] * 0.0
+            rhsP[i] = nj[0] * 0.0
 
     xT = np.linalg.solve(Msens, rhsT)
     xP = np.linalg.solve(Msens, rhsP)

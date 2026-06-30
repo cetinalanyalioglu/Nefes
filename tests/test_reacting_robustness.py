@@ -15,7 +15,7 @@ import os
 import pytest
 
 from fns.composition import enthalpy_mass, resolve_composition
-from fns.derive import ES_HT, ES_MDOT, ES_T
+from fns.derive import ES_HT, ES_MDOT, ES_T, ES_U
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
@@ -172,3 +172,40 @@ def test_branched_mixing_converges_from_seed():
     # the two air streams (air is one stream) merge: mass adds through the junction
     assert est[ES_MDOT, 4] == pytest.approx(mdotA + mdotB + mdot_fuel, rel=1e-6)
     assert est[ES_T, 4] == pytest.approx(ref.T, rel=4e-3)
+
+
+def test_carbonless_burn_in_carbon_library():
+    """A hydrogen flame solved in a carbon-bearing library: the burnt edge's elemental
+    abundance has a zero carbon entry (the parallel-branch case), so the equilibrium
+    kernel must drop carbon and its species to stay non-singular.  The network solves
+    from the auto-seed and the burnt static T matches a standalone HP equilibrium."""
+    from thermolib import Thermo
+
+    lib, _heavy = _lib()  # library carries CH4 / CO2 / CO -> carbon is an element
+    gas = Thermo(lib)
+    mdot_air, mdot_h2, Tin, p = 1.0, 0.029, 300.0, 2.0e5
+    Yair, _ = resolve_composition(lib, AIR, basis="mole")
+    Yh2, _ = resolve_composition(lib, {"H2": 1.0}, basis="mole")
+    h_mix, ref = _hp_reference(gas, lib, [(mdot_air, Yair, Tin), (mdot_h2, Yh2, Tin)], p)
+    assert ref.converged
+
+    cfg = equilibrium(lib)
+    els = [
+        cat.mass_flow_inlet(mdot_air, Tin, composition=AIR, basis="mole", name="air"),
+        cat.mass_source(mdot_h2, Tin, composition={"H2": 1.0}, basis="mole", name="h2"),
+        cat.equilibrium_flame(name="flame"),
+        cat.pressure_outlet(p, Tt_backflow=Tin, composition=AIR, basis="mole", name="out"),
+    ]
+    edges = [(0, 1, A), (1, 2, A), (2, 3, A)]
+    prob = cat.build_problem(
+        cfg, els, edges, mdot_ref=mdot_air, p_ref=p, h_ref=abs(h_mix), edge_models=[EQ_FROZEN, EQ_FROZEN, EQ_KERNEL]
+    )
+    res = solve(prob)
+    assert res.converged
+    est = states_table(prob, res.x)
+    # burnt static T == HP equilibrium at the static enthalpy (carbon dropped, as in thermolib)
+    u = est[ES_U, 2]
+    h_static = est[ES_HT, 2] - 0.5 * u * u
+    Z = gas.elemental_mass_fractions((mdot_air * Yair + mdot_h2 * Yh2) / (mdot_air + mdot_h2))
+    ref_static = gas.equilibrate_HP(Z, h_static, est[1, 2], T_guess=2000.0)
+    assert est[ES_T, 2] == pytest.approx(ref_static.T, rel=3e-3)

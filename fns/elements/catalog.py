@@ -5,6 +5,7 @@ parameters (the order the @njit kernels expect).  ``build_problem`` turns a list
 of element specs plus directed edges into the immutable CompiledProblem.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -25,6 +26,7 @@ from .ids import (
     CAVITY,
     JUNCTION,
     SPLITTER,
+    FORCED_SPLITTER,
     MASS_SOURCE,
     ACOUSTIC_DEFAULT,
     ACOUSTIC_DUCT,
@@ -559,6 +561,66 @@ def splitter(name="splitter", volume=0.0):
     return ElementSpec(SPLITTER, _manifold_volume("splitter", volume), name)
 
 
+def forced_splitter(fractions, name="splitter"):
+    """A flow divider: one inflow split into N outflows at prescribed mass fractions.
+
+    This is a :func:`splitter` whose branch flows are *controlled* rather than set
+    by downstream resistance.  Exactly one edge is the inflow (port 0) and the rest
+    are outflows; ``fractions[k]`` pins outflow port ``k + 1`` to that fraction of
+    the port-0 inflow rate (``mdot_out = beta_k * mdot_in``).  With ``N`` outflows
+    you give ``N - 1`` fractions: the last (highest-port) outflow carries the
+    remainder ``1 - sum(fractions)`` and keeps total-pressure continuity with the
+    inflow (the one branch whose pressure does not float).
+
+    Reverse flow is not modelled -- the inflow direction is taken as fixed, so the
+    constraint is linear in the flow state (hence complex-step-exact and inherited
+    unchanged by the perturbation network).  Replacing the splitter's pressure
+    couplings on the controlled branches means those branch total pressures float;
+    the downstream elements must absorb the resulting pressure jump (a
+    control-valve / ideal flow-divider idealization).
+
+    Parameters
+    ----------
+    fractions : sequence of float
+        The ``N - 1`` controlled outflow fractions ``beta_k``, each in ``(0, 1)``,
+        with ``sum(fractions) < 1`` so the remainder branch carries positive flow.
+        ``fractions[k]`` applies to outflow port ``k + 1`` (attachment order).
+    name : str, optional
+        Display name.
+
+    Returns
+    -------
+    ElementSpec
+
+    Notes
+    -----
+    Port order follows attachment order, so wire the **inflow edge first** (port 0)
+    and the **remainder outflow last** (highest port).  The build-time check
+    requires the wired port count to be ``len(fractions) + 2`` (1 inflow + the
+    controlled outflows + the remainder).  Not representable in the UI export format.
+
+    Because the controlled branches float in pressure, the manifold has weaker
+    pressure coupling than a plain splitter and is harder to converge as the inflow
+    nears choke; with the default homotopy it is robust to roughly inflow ``M ~ 0.6``.
+    """
+    betas = [float(b) for b in fractions]
+    if len(betas) < 1:
+        raise ValueError(
+            "forced_splitter needs at least one split fraction (>= 2 outflow ports); got none -- "
+            "use splitter() for an uncontrolled manifold"
+        )
+    for b in betas:
+        if not (0.0 < b < 1.0):
+            raise ValueError(f"forced_splitter fractions must each lie in (0, 1); got {betas}")
+    total = math.fsum(betas)
+    if not total < 1.0:
+        raise ValueError(
+            f"forced_splitter fractions must sum to < 1 so the remainder branch carries positive "
+            f"flow (the remainder = 1 - sum is the last outflow's share); got sum = {total:g}"
+        )
+    return ElementSpec(FORCED_SPLITTER, betas, name)
+
+
 def duct(length=0.0, name="duct"):
     """A length-bearing, lossless, constant-area duct.
 
@@ -659,6 +721,19 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
         elif rid in (JUNCTION, SPLITTER):
             if deg < 2:
                 raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
+        elif rid == FORCED_SPLITTER:
+            if deg < 3:
+                raise ValueError(
+                    f"{label} is a forced splitter and needs >= 3 ports (1 inflow + >= 2 outflows) "
+                    f"but is connected to {deg} edge(s)"
+                )
+            n_frac = len(el.fparams)
+            if n_frac != deg - 2:
+                raise ValueError(
+                    f"{label}: a forced splitter with {deg} ports (1 inflow + {deg - 1} outflows) needs "
+                    f"{deg - 2} split fraction(s) -- one per controlled outflow, the last outflow being the "
+                    f"remainder -- but {n_frac} were given"
+                )
 
         if rid == CHOKED_NOZZLE_OUTLET:
             # the compact choked nozzle is a *contraction* to a sonic throat; the throat

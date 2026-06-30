@@ -23,6 +23,7 @@ MASS_FLOW_OUTLET = 15  # 1-port outlet: prescribed outflow mass rate (acoustic m
 CHOKED_NOZZLE_OUTLET = 16  # 1-port outlet: compact choked nozzle of throat area A* (critical mass flux)
 LINEAR_RESISTANCE = 17  # 2-port linear flow resistance: Pt drop proportional to mass flow (Pt0 - Pt1 = R*mdot)
 CAVITY = 18  # 1-port finite-volume cavity: mean flow is a wall (mdot = 0); acoustically a compliance (storage M)
+FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (N-1) outflow rates forced to fractions
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
 # element overrides its default CSD face with.  DUCT (P), VOLUME (storage M) and
@@ -65,6 +66,10 @@ def row_kind_tags(rid, deg):
         return [KIND_MASS]  # single mass-flux row (WALL/CAVITY pin mdot = 0; outlets pin a mass-flux residual)
     if rid in (PT_INLET, P_OUTLET):
         return [KIND_PRESSURE]  # single absolute-pressure row
+    if rid == FORCED_SPLITTER:
+        # net mass balance + (deg - 2) forced-fraction (mass-flux) rows + 1 remainder
+        # pressure-coupling row; the fraction rows are mass-flow dimensioned.
+        return [KIND_MASS] * (deg - 1) + [KIND_PRESSURE]
     # interior element: a mass balance plus (deg - 1) pressure-coupling rows
     return [KIND_MASS] + [KIND_PRESSURE] * (deg - 1)
 
@@ -112,6 +117,7 @@ ALLOWS_AREA_CHANGE = {
     SUDDEN_AREA_CHANGE: True,
     JUNCTION: True,
     SPLITTER: True,
+    FORCED_SPLITTER: True,  # manifold (flow divider); imposes no area-equality constraint
     DUCT: False,
     LOSS: True,
     FLAME_HEAT_RELEASE: False,  # constant-area compact flame (Pt-continuity pressure row)
@@ -130,6 +136,7 @@ RESIDUAL_NAMES = {
     LOSS: "LossElement",
     JUNCTION: "JunctionStaticP",
     SPLITTER: "LosslessSplitter",
+    FORCED_SPLITTER: "ForcedSplitter",
     DUCT: "Duct",
     SUPERSONIC_INLET: "SupersonicInlet",
     SUPERSONIC_OUTLET: "SupersonicOutlet",

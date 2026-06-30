@@ -25,6 +25,7 @@ from .ids import (
     LOSS,
     JUNCTION,
     SPLITTER,
+    FORCED_SPLITTER,
     DUCT,
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
@@ -185,6 +186,34 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
                 R[r0 + i] = est[ES_P, e0] - est[ES_P, ei] - kappa * (si * est[ES_MDOT, ei])
             else:
                 R[r0 + i] = est[ES_PT, e0] - est[ES_PT, ei] - kappa * (si * est[ES_MDOT, ei])
+        return
+
+    if rid == FORCED_SPLITTER:
+        # Flow divider: one inflow at port 0 and (deg - 1) outflows.  The first
+        # (deg - 2) outflow ports are flow-controlled -- each carries a fixed
+        # fraction beta_i = npar_f[pb + i - 1] of the port-0 inflow rate -- and the
+        # LAST outflow port carries the remainder, keeping total-pressure continuity
+        # with the inflow (the splitter's lossless coupling on the one free branch).
+        # Every row is linear in the flow state, so the complex-step Jacobian is
+        # exact and no smoothing is needed: "reverse flow disallowed" means the
+        # inflow direction is fixed, so no upwind switch is required (and the same
+        # linear rows are inherited unchanged by the perturbation operator).
+        e0 = col_edge[base]
+        s0 = orient[base]
+        acc = est[ES_MDOT, e0] * 0.0
+        for i in range(deg):
+            acc = acc + orient[base + i] * est[ES_MDOT, col_edge[base + i]]
+        R[r0] = acc  # net mass balance
+        mdot_in = -s0 * est[ES_MDOT, e0]  # mass entering the node at port 0
+        for i in range(1, deg - 1):
+            ei = col_edge[base + i]
+            si = orient[base + i]
+            beta = npar_f[pb + i - 1]
+            # mass leaving the node at port i (= si*mdot_i) equals beta * inflow
+            R[r0 + i] = si * est[ES_MDOT, ei] - beta * mdot_in
+        ei = col_edge[base + deg - 1]
+        si = orient[base + deg - 1]
+        R[r0 + deg - 1] = est[ES_PT, e0] - est[ES_PT, ei] - kappa * (si * est[ES_MDOT, ei])
         return
 
     # ---- two-port interior elements ----

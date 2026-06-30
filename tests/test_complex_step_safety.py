@@ -42,6 +42,7 @@ from fns.elements.ids import (
     LOSS,
     JUNCTION,
     SPLITTER,
+    FORCED_SPLITTER,
     DUCT,
     WALL,
     CAVITY,
@@ -305,6 +306,21 @@ def _probe_splitter():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
+def _probe_forced_splitter():
+    # one inflow forced-split into two legs: the first outflow carries 40% of the
+    # inflow rate, the second (remainder) keeps total-pressure continuity.  Every row
+    # is linear in the flow state, so the complex-step Jacobian is exact across the
+    # forward / reverse / near-zero / near-choke sweep (no upwind switch).
+    els = [
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.forced_splitter([0.4]),
+        cat.pressure_outlet(P_OUT),
+        cat.pressure_outlet(P_OUT),
+    ]
+    edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+
+
 def _probe_wall():
     # wall on a dead leg off a splitter (mdot = 0 at the wall edge)
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.wall()]
@@ -367,6 +383,7 @@ PROBES = {
     DUCT: _probe_duct,
     JUNCTION: _probe_junction,
     SPLITTER: _probe_splitter,
+    FORCED_SPLITTER: _probe_forced_splitter,
     WALL: _probe_wall,
     CAVITY: _probe_cavity,
     FLAME_HEAT_RELEASE: _probe_heat_release_flame,

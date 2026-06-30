@@ -20,6 +20,7 @@ from ..assemble import residual, jacobian
 from ..elements.ids import (
     MASS_FLOW_INLET,
     PT_INLET,
+    P_OUTLET,
     MASS_SOURCE,
     KIND_MASS,
     KIND_PRESSURE,
@@ -36,6 +37,34 @@ EPS_FB = 1e-5
 def _stage_eps(mdot_ref, kappa):
     """Complementarity smoothing width for a homotopy stage (vanishes with ``kappa``)."""
     return max(0.3 * kappa, 1e-4) * mdot_ref
+
+
+def domain_max_dp(prob):
+    """Largest a-priori pressure drop set by the boundary conditions.
+
+    The span between the highest and lowest absolute-pressure boundary reference
+    (``total_pressure_inlet`` / ``pressure_outlet``).  Returns ``0.0`` when fewer than
+    two such references exist -- a mass-driven network whose real pressure drop is not
+    known until the flow is solved.  Used to scale the homotopy friction (and, later,
+    the adaptive residual scales) to the real driving pressure differential.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+
+    Returns
+    -------
+    float
+        ``max(p_ref) - min(p_ref)`` over the absolute-pressure boundaries, or ``0.0``.
+    """
+    refs = []
+    for n in range(prob.n_nodes):
+        if int(prob.node_rid[n]) in (PT_INLET, P_OUTLET):
+            refs.append(float(prob.npar_f[prob.npar_fptr[n]]))
+    if len(refs) < 2:
+        return 0.0
+    return max(refs) - min(refs)
 
 
 def flatten(x2d):
@@ -327,7 +356,16 @@ def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, reporter=None):
     return x2d, norm < tol, max_iter, norm
 
 
-def solve(prob, x0=None, tol=1e-10, max_iter=80, kappa_stages=(0.1, 0.01, 0.0), verbose=0, progress_interval=1):
+def solve(
+    prob,
+    x0=None,
+    tol=1e-10,
+    max_iter=80,
+    kappa_stages=(0.1, 0.01, 0.0),
+    kappa_scale="dp",
+    verbose=0,
+    progress_interval=1,
+):
     """Solve the steady mean flow.  Returns a SolveResult (state shape (3, E)).
 
     Parameters
@@ -341,7 +379,19 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, kappa_stages=(0.1, 0.01, 0.0), 
     max_iter : int, optional
         Maximum Newton iterations per homotopy stage.
     kappa_stages : sequence of float, optional
-        Vanishing-friction homotopy schedule, warm-started in order.
+        Vanishing-friction homotopy schedule (dimensionless), warm-started in order.
+    kappa_scale : {"dp", "absolute"}, optional
+        How the schedule's artificial-friction coefficient is sized.  ``"dp"`` (default)
+        multiplies each ``kappa`` by the friction resistance ``min(domain_max_dp(prob) /
+        mdot_ref, 1)``, so the injected artificial pressure drop at the reference flow is
+        capped at a fraction (``kappa``) of the real driving drop.  The cap means the
+        scaling only *softens* the friction for low-``dP`` / high-``mdot`` networks (where
+        the historical absolute drop ``kappa * mdot`` would over-perturb), and is a no-op
+        for healthy-``dP`` networks (``r_art = 1``).  When no a-priori pressure drop is
+        available (a mass-driven network, ``domain_max_dp == 0``) it falls back to the
+        absolute coefficient.  ``"absolute"`` always uses that historical unit coefficient
+        (artificial drop ``kappa * mdot``).  Either way ``eps`` tracks the dimensionless
+        ``kappa``.
     verbose : int or bool, optional
         Progress verbosity.  ``0``/``False`` is silent; ``1``/``True`` prints a
         one-line gross-residual summary per homotopy stage; ``2`` additionally prints
@@ -356,6 +406,21 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, kappa_stages=(0.1, 0.01, 0.0), 
         The converged state and solve diagnostics.
     """
     mdot_ref = prob.var_scale[0]
+    # artificial-friction resistance: scale the dimensionless kappa schedule so the
+    # injected artificial dP is a fixed fraction of the real driving dP (kappa_scale
+    # == "dp"); fall back to the historical unit coefficient when there is no a-priori
+    # pressure drop or the caller asks for it explicitly.
+    if kappa_scale == "dp":
+        dp = domain_max_dp(prob)
+        # cap at the absolute coefficient: dP-scaling only *softens* the friction for
+        # low-dP / high-mdot networks (where dp/mdot_ref < 1, the artificial drop would
+        # otherwise over-perturb), and leaves healthy-dP networks unchanged (r_art = 1),
+        # so it never strengthens the friction enough to stiffen a near-choke stage.
+        r_art = min(dp / mdot_ref, 1.0) if dp > 0.0 else 1.0
+    elif kappa_scale == "absolute":
+        r_art = 1.0
+    else:
+        raise ValueError(f"kappa_scale must be 'dp' or 'absolute'; got {kappa_scale!r}")
     if x0 is not None:
         x2d = np.array(x0, dtype=np.float64)
     elif prob.model_id == EQ_KERNEL:
@@ -371,7 +436,8 @@ def solve(prob, x0=None, tol=1e-10, max_iter=80, kappa_stages=(0.1, 0.01, 0.0), 
     for kappa in kappa_stages:
         eps = _stage_eps(mdot_ref, kappa)
         reporter.stage_start(kappa, eps)
-        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, reporter)
+        # eps tracks the dimensionless kappa; the kernel friction uses the scaled coefficient.
+        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, kappa * r_art, tol, max_iter, history, reporter)
         total_it += it
         reporter.stage_end(kappa, it, norm, converged)
         if not converged and kappa == 0.0:

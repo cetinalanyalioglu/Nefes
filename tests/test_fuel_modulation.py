@@ -301,30 +301,58 @@ def test_inherited_nozzle_carries_compositional_noise_analytic_closure_drops_it(
     assert abs(R_an - R) < 0.01 * abs(R)
 
 
-def test_scalar_scattering_matrix_port_is_deferred():
-    """A scalar *port* in the scattering measurement is deferred and must fail loudly.
+def test_scalar_scattering_matrix_port():
+    """Scalar (composition) waves are measured at parity with entropy in the scattering matrices.
 
-    Driving a scalar wave at an inflow (via a PerturbationBC ``driven=``) is supported and read
-    from the forced response; what is deferred is a scalar *column* in the measurement scattering
-    matrix (which needs the compositional-scattering closure).  So requesting a scalar family in
-    ``excite``/``modes`` raises ``NotImplementedError`` -- distinct from a genuine typo, which
-    keeps the ordinary ``ValueError``.
+    A transported scalar is a passively-convected mode (it rides the mean speed ``u`` and is its
+    own characteristic), so it now drives and reads back through ``perturbation_response`` exactly
+    like the entropy wave: the response is the full ``n_solve x n_solve`` block, the scalar
+    convects with phase ``exp(-i w L / u)`` on a pure duct and stays decoupled from the acoustics,
+    and the multiport matrix carries a scalar port per inflow seat, labelled by the stream name.
+    A genuine typo still raises ``ValueError``.
     """
     prob = _rig()
     x = _converged(prob)
-    assert prob.scalar_names  # reacting: there is a scalar family a user might name
-    fuel = prob.scalar_names[-1]
-    freqs = np.array([200.0])
+    names = tuple(prob.scalar_names)
+    assert names and prob.n_solve == 3 + len(names)  # reacting: scalar families exist
+    freqs = np.array([200.0, 400.0])
+    om = 2.0 * np.pi * freqs
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(NotImplementedError, match="reacting-scalar"):
-            perturbation_response(prob, x, freqs, excite=("acoustic", fuel))
-        with pytest.raises(NotImplementedError, match="reacting-scalar"):
-            excite_perturbation(prob, x, freqs, node=0, modes=("acoustic", fuel))
+        r = perturbation_response(prob, x, freqs, excite=("acoustic", "entropy") + names)
+        # full block: 2 acoustic + 1 entropy + one wave per transported scalar
+        assert r.n_char == prob.n_solve and r.n == prob.n_solve
+        assert tuple(r.cidx) == tuple(range(prob.n_solve))
+
+        # the inlet duct (edges 0->1, length La=0.4) is a pure duct: each scalar convects at u
+        # with phase exp(-i w L / u) and is decoupled from f / g / h.
+        u = float(states_table(prob, x)[ES_U, 0])
+        T = r.transfer_matrix(0, 1)
+        for j in range(len(names)):
+            c = 3 + j
+            assert np.allclose(T[:, c, c], np.exp(-1j * om * 0.4 / u), atol=1e-7)
+            for ac in (0, 1, 2):  # scalar <-> (f, g, h) decoupled on a pure duct
+                assert np.allclose(T[:, ac, c], 0.0, atol=1e-7)
+                assert np.allclose(T[:, c, ac], 0.0, atol=1e-7)
+
+        # multiport: a scalar port per inflow seat, finite and stream-labelled
+        S = r.multiport_scattering_matrix()
+        inc, out = r.multiport_scattering_labels()
+        assert S.shape == (freqs.size, len(out), len(inc))
+        assert np.all(np.isfinite(S))
+        assert any(name in lab for name in names for lab in inc)
+
+        # excite_perturbation drives a single scalar family too
+        f1 = excite_perturbation(prob, x, freqs, node=0, modes=("acoustic", names[-1]))
+        assert np.all(np.isfinite(f1.waves(0)))
+
+        # a genuine typo is still a plain ValueError
         with pytest.raises(ValueError, match="unknown wave family"):
             perturbation_response(prob, x, freqs, excite=("acoustic", "bogus"))
-    # the BC driven= path, by contrast, accepts a scalar family (resolved at stamp time)
-    PerturbationBC.anechoic(driven=(fuel,))
+
+    # the BC driven= path continues to accept a scalar family (resolved at stamp time)
+    PerturbationBC.anechoic(driven=(names[-1],))
 
 
 # --------------------------------------------------------------------------

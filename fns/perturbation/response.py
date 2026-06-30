@@ -23,9 +23,14 @@ The ``excite`` argument selects which wave families are *driven* with a unit
 incoming amplitude; the rest stay prescribed, but to **zero**.  The default
 ``excite=("acoustic",)`` drives only the acoustic waves and pins the incoming
 entropy to zero -- a clean, well-conditioned ``2 x 2`` acoustic response.  Adding
-``"entropy"`` drives the entropy wave too for the full ``3 x 3`` perturbation
-network (reacting scalars later extend the set the same way).  The system matrix
-is identical across all columns, so one factorization serves every excitation.
+``"entropy"`` drives the entropy wave too for the ``3 x 3`` acoustic+entropy
+response.  A reacting network's transported scalars extend the set the *same* way:
+each scalar is a passively-convected mode (it rides the mean speed ``u`` and is its
+own characteristic), seated on its transport row at every inflow exactly like
+entropy, so naming it in ``excite`` (its label from ``prob.scalar_names``) drives
+it and the matrices grow to the full ``n_solve x n_solve`` block.  The system
+matrix is identical across all columns, so one factorization serves every
+excitation.
 
 Each individual excitation -- "drive these wave families at this boundary node" --
 is handled by ``excite_perturbation``, exposed standalone so the raw perturbation
@@ -149,12 +154,44 @@ def _resolve_frozen(prob, freeze):
 
 
 # Wave families and the characteristic indices each spans, in canonical order.
-# Extends with reacting scalars (e.g. {"scalar:Z": (3,)}) without touching the
-# driver: a family contributes one prescribed incoming wave per inlet it lives on.
+# A reacting scalar is its own family (its name in ``prob.scalar_names``), spanning
+# the single convected characteristic ``3 + j`` of the j-th transported scalar; the
+# helpers below fold those in so the driver, seating and readout are family-uniform.
 _CHAR_OF_FAMILY = {"acoustic": (0, 1), "entropy": (2,)}
 
-# Wave symbol per characteristic index, for multiport scattering labels.
+# Wave symbol per *fixed* characteristic index (acoustic + entropy); a scalar wave's
+# symbol is its scalar name (see :func:`_char_sym`).
 _CHAR_SYM = ("f", "g", "h")
+
+# The first scalar characteristic index (chars 0/1 acoustic, 2 entropy, 3.. scalars).
+_N_FIXED_CHAR = 3
+
+
+def _scalar_families(scalar_names):
+    """Map each transported scalar name to its characteristic index ``(3 + j,)``."""
+    return {name: (_N_FIXED_CHAR + j,) for j, name in enumerate(scalar_names or ())}
+
+
+def _all_families(scalar_names=()):
+    """Canonical family order: acoustic, entropy, then each transported scalar."""
+    return ("acoustic", "entropy") + tuple(scalar_names or ())
+
+
+def _char_of_family(family, scalar_names=()):
+    """Characteristic indices a family spans, or ``None`` if the family is unknown."""
+    if family in _CHAR_OF_FAMILY:
+        return _CHAR_OF_FAMILY[family]
+    return _scalar_families(scalar_names).get(family)
+
+
+def _char_sym(char, scalar_names=()):
+    """Wave symbol for characteristic ``char``: ``f``/``g``/``h``, else the scalar name."""
+    if char < _N_FIXED_CHAR:
+        return _CHAR_SYM[char]
+    names = tuple(scalar_names or ())
+    j = char - _N_FIXED_CHAR
+    return names[j] if j < len(names) else f"s{j}"
+
 
 # LaTeX special characters to escape when an element name is dropped into a
 # ``\text{}`` subscript (so an arbitrary label cannot break the MathJax string).
@@ -178,26 +215,16 @@ def _tex_text(s) -> str:
 
 
 def _reject_unsupported_families(families, scalar_names=()):
-    """Reject any requested wave family the v1 driver cannot honor.
+    """Reject any requested wave family that is neither acoustic/entropy nor a scalar.
 
-    A name that is a transported reacting scalar (in ``scalar_names``) is a *deferred*
-    capability, so it raises :class:`NotImplementedError` -- driving a scalar wave needs the
-    compositional (scalar -> acoustic) scattering closure, which is not wired yet; read the
-    convected scalar response from :meth:`fns.perturbation.ForcedResponse.waves` instead.  Any
-    other unrecognized name is a typo and raises :class:`ValueError`.
+    Acoustic, entropy and every transported reacting scalar (a name in ``scalar_names``)
+    are all measurable wave families.  Any other name is a typo and raises
+    :class:`ValueError`.
     """
-    scalars = tuple(scalar_names or ())
-    deferred = sorted({f for f in families if f in scalars})
-    if deferred:
-        raise NotImplementedError(
-            f"reacting-scalar wave families {deferred} have no port in the scattering measurement yet "
-            "(scalar scattering matrices are deferred); only 'acoustic' and 'entropy' are measured here. "
-            "To *drive* a scalar, seat it at an inflow with PerturbationBC.<inlet>(driven=(...)) and read "
-            "the field from ForcedResponse.waves()."
-        )
-    unknown = sorted({f for f in families if f not in _CHAR_OF_FAMILY})
+    valid = set(_all_families(scalar_names))
+    unknown = sorted({f for f in families if f not in valid})
     if unknown:
-        raise ValueError(f"unknown wave family/families {unknown}; choose from {sorted(_CHAR_OF_FAMILY)}")
+        raise ValueError(f"unknown wave family/families {unknown}; choose from {sorted(valid)}")
 
 
 def _validate_excite(excite, scalar_names=()):
@@ -206,9 +233,11 @@ def _validate_excite(excite, scalar_names=()):
     _reject_unsupported_families(excite, scalar_names)
 
 
-def _excited_char_indices(families):
+def _excited_char_indices(families, scalar_names=()):
     """Characteristic indices spanned by the driven families, in canonical order."""
-    return tuple(c for fam in ("acoustic", "entropy") if fam in families for c in _CHAR_OF_FAMILY[fam])
+    return tuple(
+        c for fam in _all_families(scalar_names) if fam in families for c in _char_of_family(fam, scalar_names)
+    )
 
 
 @dataclass(frozen=True)
@@ -220,10 +249,10 @@ class _Prescription:
     """
 
     node: int  # boundary element the wave enters at
-    kind: str  # wave family ("acoustic" or "entropy")
+    kind: str  # wave family ("acoustic", "entropy", or a transported scalar's name)
     row: int  # matrix row to overwrite
     edge: int  # edge whose characteristic is prescribed
-    char: int  # characteristic index (0/1 acoustic, 2 entropy)
+    char: int  # characteristic index (0/1 acoustic, 2 entropy, 3.. scalars)
 
 
 def _seats_entropy(t, est, u_floor):
@@ -256,11 +285,20 @@ def _prescriptions(prob, terms, est, u_floor) -> List[_Prescription]:
     not just the driven ones -- is what makes the measured matrices boundary-independent: a
     terminal left at its (reflecting) inherited mean BC would close a spurious cavity and
     inject resonances.
+
+    Every transported reacting scalar convects with the flow exactly like entropy, so each
+    one is seated alongside it on its own transport row (the j-th scalar on ``s = 1 + j``,
+    characteristic ``3 + j``) at the same genuine-inflow terminals, pinned to zero unless
+    driven -- nothing floats at an inflow boundary.
     """
     pres = [_Prescription(t.node, "acoustic", t.row, t.edge, t.incoming) for t in terms]
+    scalar_names = tuple(getattr(prob, "scalar_names", ()) or ())
+    tr0, E = int(prob.transport_row0), int(prob.n_edges)
     for t in terms:
-        if _seats_entropy(t, est, u_floor):  # the genuine-inflow terminal carries incoming entropy
-            pres.append(_Prescription(t.node, "entropy", int(prob.transport_row0) + t.edge, t.edge, 2))
+        if _seats_entropy(t, est, u_floor):  # the genuine-inflow terminal carries incoming convected waves
+            pres.append(_Prescription(t.node, "entropy", tr0 + t.edge, t.edge, 2))
+            for j, name in enumerate(scalar_names):
+                pres.append(_Prescription(t.node, name, tr0 + (1 + j) * E + t.edge, t.edge, _N_FIXED_CHAR + j))
     return pres
 
 
@@ -287,6 +325,7 @@ class _ExcitationContext:
     u_floor: float  # speed below which a station is treated as quiescent
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
     frozen: frozenset = frozenset()  # terminal node ids kept at their physical BC (not measured)
+    scalar_names: tuple = ()  # transported reacting scalars (feed-stream labels), in band-1 order
 
 
 def _build_excitation_context(
@@ -331,11 +370,27 @@ def _build_excitation_context(
         for p in pres:  # prescribe every open incoming wave; only the rhs distinguishes excitations
             A.rows[p.row] = []
             A.data[p.row] = []
-            for v in range(3):
-                A[p.row, ns * p.edge + v] = L[p.edge][p.char, v]
+            if p.char < _N_FIXED_CHAR:  # acoustic / entropy: a row of the 3x3 dx_to_char map
+                for v in range(_N_FIXED_CHAR):
+                    A[p.row, ns * p.edge + v] = L[p.edge][p.char, v]
+            else:  # a transported scalar is already its own convected wave -> identity readout
+                A[p.row, ns * p.edge + p.char] = 1.0
         lus.append(spla.splu(sp.csc_matrix(A)))
     return _ExcitationContext(
-        freqs, L, est, K, sel, open_terms, pres, lus, ns, n_col, float(u_floor), cals, frozenset(frozen)
+        freqs,
+        L,
+        est,
+        K,
+        sel,
+        open_terms,
+        pres,
+        lus,
+        ns,
+        n_col,
+        float(u_floor),
+        cals,
+        frozenset(frozen),
+        tuple(getattr(prob, "scalar_names", ()) or ()),
     )
 
 
@@ -350,18 +405,18 @@ def _driven_prescriptions(ctx: _ExcitationContext, node, modes) -> List[_Prescri
     if not any(t.node == node for t in ctx.sel):
         raise ValueError(f"node {node} is not a forced terminal; pass it in `forcing`")
     driven = []
-    for fam in ("acoustic", "entropy"):  # canonical order, independent of how `modes` is ordered
+    for fam in _all_families(ctx.scalar_names):  # canonical order, independent of how `modes` is ordered
         if fam not in modes:
             continue
         matches = [p for p in ctx.prescriptions if p.node == node and p.kind == fam]
         if not matches:
             raise ValueError(f"terminal {node} carries no incoming {fam} wave to drive")
-        if fam == "entropy":  # entropy does not convect at a quiescent station (tau_0 -> inf)
+        if fam != "acoustic":  # entropy and scalars convect with the flow -> undefined at a quiescent station
             for p in matches:
                 if abs(float(ctx.est[ES_U, p.edge])) < ctx.u_floor:
                     raise ValueError(
-                        f"entropy excitation is undefined at quiescent terminal {node} (mean u ~ 0): "
-                        "the entropy wave does not convect, so it has no response; use excite=('acoustic',)"
+                        f"{fam!r} excitation is undefined at quiescent terminal {node} (mean u ~ 0): "
+                        "the convected wave does not propagate, so it has no response; use excite=('acoustic',)"
                     )
         driven.extend(matches)
     return driven
@@ -373,7 +428,8 @@ class PerturbationField:
 
     Returned by :func:`excite_perturbation`.  Each column of :attr:`X` is the full
     nodal perturbation vector for one driven incoming wave; :meth:`waves` projects
-    any edge onto its characteristic amplitudes ``(f, g, h)``.
+    any edge onto its characteristic amplitudes ``(f, g, h)`` plus one convected
+    amplitude per transported scalar.
 
     Attributes
     ----------
@@ -414,7 +470,11 @@ class PerturbationField:
         return f"PerturbationField: node {self.node} driving [{waves}], {n} frequenc{'y' if n == 1 else 'ies'} ({span})"
 
     def waves(self, edge):
-        """Characteristic amplitudes ``(f, g, h)`` at ``edge`` for every driven wave.
+        """Characteristic amplitudes ``(f, g, h, scalars...)`` at ``edge`` for every driven wave.
+
+        The acoustic+entropy block is the 3x3 transform ``L_e`` of the network unknowns; each
+        transported scalar's perturbation is already its own convected wave, so it passes through
+        as-is (identity).  Inert flow (no scalars) returns just ``(f, g, h)`` as before.
 
         Parameters
         ----------
@@ -427,9 +487,12 @@ class PerturbationField:
             Shape ``(n_omega, n_char, n_driven)``: column ``k`` is the full wave
             vector (all characteristics) of driven field ``k`` along ``edge``.
         """
-        ns, nc = self.n_solve, self.L[edge].shape[0]
-        Xe = self.X[:, :, ns * edge : ns * edge + nc]  # (n_omega, n_driven, n_char)
-        return np.einsum("ij,okj->oik", self.L[edge], Xe)  # (n_omega, n_char, n_driven)
+        ns, na = self.n_solve, self.L[edge].shape[0]
+        Xe = self.X[:, :, ns * edge : ns * edge + ns]  # (n_omega, n_driven, ns)
+        w = np.empty((Xe.shape[0], ns, Xe.shape[1]), dtype=Xe.dtype)  # (n_omega, n_char, n_driven)
+        w[:, :na, :] = np.einsum("ij,okj->oik", self.L[edge], Xe[:, :, :na])  # (f, g, h)
+        w[:, na:, :] = np.moveaxis(Xe[:, :, na:], 1, 2)  # convected scalar waves (identity)
+        return w
 
 
 def excite_perturbation(
@@ -456,9 +519,10 @@ def excite_perturbation(
         Boundary element id to drive.  Must be one of the forced 1-port terminals
         (see ``forcing``).
     modes : sequence of str, optional
-        Wave families to drive at ``node`` (``"acoustic"`` and/or ``"entropy"``).
-        Each family contributes one driven incoming wave per characteristic it spans
-        at this terminal.  Default ``("acoustic",)``.
+        Wave families to drive at ``node`` -- ``"acoustic"``, ``"entropy"``, and/or any
+        transported scalar by its label (from ``prob.scalar_names``).  Each family
+        contributes one driven incoming wave per characteristic it spans at this terminal.
+        Default ``("acoustic",)``.
     forcing : tuple of int, optional
         The pair of terminal node ids whose incoming waves are prescribed (default:
         the network's two terminals).  All of their incoming waves except the driven
@@ -525,10 +589,13 @@ def perturbation_response(
         The pair of terminal node ids to force (default: every open terminal).
     excite : sequence of str, optional
         Wave families to *drive* with a unit incoming amplitude.  ``"acoustic"`` is
-        mandatory; add ``"entropy"`` for the full ``3 x 3`` perturbation network.
-        Families not listed stay prescribed but pinned to zero, so the boundaries
-        never float.  Default ``("acoustic",)`` -- the clean, well-conditioned
-        acoustic response with the incoming entropy pinned out.
+        mandatory; add ``"entropy"`` for the ``3 x 3`` acoustic+entropy response, and
+        on a reacting network add any transported scalar by its label (from
+        ``prob.scalar_names``) to drive its convected composition wave -- the matrices
+        then grow to the full ``n_solve x n_solve`` block.  Families not listed stay
+        prescribed but pinned to zero, so the boundaries never float.  Default
+        ``("acoustic",)`` -- the clean, well-conditioned acoustic response with the
+        incoming entropy (and any scalars) pinned out.
     freeze : sequence of int or str, optional
         Terminals whose **physical boundary condition is kept** during the measurement
         instead of being neutralized into a port.  Each entry is a node id (``int``) or
@@ -563,14 +630,17 @@ def perturbation_response(
     frozen = _resolve_frozen(prob, freeze)
     ctx = _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, frozen=frozen)
 
-    # One driven excitation per (terminal, family): all acoustic first, then the incoming
-    # entropy at each genuine-inflow seat -> canonical column order (f, g, h).
+    # One driven excitation per (terminal, family) in canonical family order: all acoustic
+    # first, then each convected family (entropy, then every scalar) at its genuine-inflow
+    # seats -> canonical column order (f, g, h, scalars...).
+    scalar_names = tuple(getattr(prob, "scalar_names", ()) or ())
     excitations = [(t.node, "acoustic") for t in ctx.sel]
-    if "entropy" in excite:
-        entropy_nodes = [t.node for t in ctx.sel if _seats_entropy(t, ctx.est, ctx.u_floor)]
-        if not entropy_nodes:
-            raise ValueError("entropy excitation requested but no inflow terminal found to seat it")
-        excitations += [(nd, "entropy") for nd in entropy_nodes]
+    inflow_seats = [t.node for t in ctx.sel if _seats_entropy(t, ctx.est, ctx.u_floor)]
+    for fam in ("entropy",) + scalar_names:
+        if fam in excite:
+            if not inflow_seats:
+                raise ValueError(f"{fam!r} excitation requested but no inflow terminal found to seat it")
+            excitations += [(nd, fam) for nd in inflow_seats]
 
     by_node = {t.node: t for t in ctx.sel}
     cols, forcing_kinds = [], []
@@ -580,7 +650,7 @@ def perturbation_response(
         forcing_kinds.append((fam, by_node[nd]))
 
     X = np.stack(cols, axis=1)  # (n_omega, n_force, n_col)
-    cidx = _excited_char_indices({fam for _nd, fam in excitations})
+    cidx = _excited_char_indices({fam for _nd, fam in excitations}, scalar_names)
     return PerturbationResponse(
         freqs=ctx.freqs,
         X=X,
@@ -596,6 +666,7 @@ def perturbation_response(
         cals=ctx.cals,
         geometry=build_geometry(prob),
         frozen=tuple(sorted(ctx.frozen)),
+        scalar_names=scalar_names,
     )
 
 
@@ -617,16 +688,22 @@ class PerturbationResponse:
     cals: Optional[list] = None  # per-edge caloric rows (reacting "network" flavor)
     geometry: Optional[NetworkGeometry] = None  # topology + duct lengths for spatial reconstruction
     frozen: tuple = ()  # terminal node ids kept at their physical BC (not measured)
+    scalar_names: tuple = ()  # transported reacting scalars (feed-stream labels), in band-1 order
 
     @property
     def n(self) -> int:
-        """Matrix dimension: the number of driven perturbation waves (2 or 3)."""
+        """Matrix dimension: the number of driven perturbation waves (2, 3, or more with scalars)."""
         return len(self.cidx)
 
     @property
-    def n_char(self) -> int:
-        """Characteristic count per edge (3 for inert flow)."""
+    def _n_acoustic(self) -> int:
+        """The acoustic+entropy characteristic count handled by the ``L`` transform (3)."""
         return self.L[0].shape[0]
+
+    @property
+    def n_char(self) -> int:
+        """Characteristic count per edge: 3 (f, g, h) for inert flow, plus one per transported scalar."""
+        return self.n_solve
 
     def _term_label(self, node) -> str:
         """A terminal's ``id:name`` label (bare id when nameless), for the repr."""
@@ -648,14 +725,21 @@ class PerturbationResponse:
         )
 
     def _waves(self, edge):
-        """Characteristic amplitudes (f, g, h) at ``edge`` for every (omega, case).
+        """Characteristic amplitudes ``(f, g, h, scalars...)`` at ``edge`` for every (omega, case).
 
-        Returns an array of shape (n_omega, n_char, n_force): column k is the full
-        wave vector of forced field k (all characteristics, driven or not).
+        Returns an array of shape (n_omega, n_char, n_force): column k is the full wave
+        vector of forced field k (all characteristics, driven or not).  The acoustic+entropy
+        block is the 3x3 characteristic transform ``L_e`` of the network unknowns; each
+        transported scalar's perturbation is already its own convected wave (propagated at the
+        mean speed ``u``), so it is surfaced as-is (identity).  Inert flow (no scalars) returns
+        just ``(f, g, h)`` exactly as before.
         """
-        ns = self.n_solve
-        Xe = self.X[:, :, ns * edge : ns * edge + self.n_char]  # (n_omega, n_force, n_char)
-        return np.einsum("ij,okj->oik", self.L[edge], Xe)  # (n_omega, n_char, n_force)
+        ns, na = self.n_solve, self._n_acoustic
+        Xe = self.X[:, :, ns * edge : ns * edge + ns]  # (n_omega, n_force, ns)
+        w = np.empty((Xe.shape[0], ns, Xe.shape[1]), dtype=Xe.dtype)  # (n_omega, n_char, n_force)
+        w[:, :na, :] = np.einsum("ij,okj->oik", self.L[edge], Xe[:, :, :na])  # (f, g, h)
+        w[:, na:, :] = np.moveaxis(Xe[:, :, na:], 1, 2)  # convected scalar waves (identity)
+        return w
 
     _DIAGONAL_BASES = ("char", "riemann")  # flavors that do not mix characteristics
 
@@ -770,7 +854,7 @@ class PerturbationResponse:
         self._warn_seriality(a, b, self.n, Wa.shape[2], self._seriality_residual(T, Wa, Wb))
         if basis == "char":
             return T
-        if self.n < self.n_char and basis not in self._DIAGONAL_BASES:
+        if self.n < self._n_acoustic and basis not in self._DIAGONAL_BASES:
             raise ValueError(
                 f"flavor {basis!r} mixes characteristics, so it needs the full response; "
                 f"re-run with excite=('acoustic', 'entropy', ...) or use 'char'/'riemann'"
@@ -843,7 +927,7 @@ class PerturbationResponse:
                 "perturbation_response with forcing=None (the default) to drive them all."
             )
         ci = set(self.cidx)
-        incoming = [(t.node, t.edge, (t.incoming if fam == "acoustic" else 2)) for fam, t in self.forcing_kinds]
+        incoming = [(t.node, t.edge, self._source_char(fam, t)) for fam, t in self.forcing_kinds]
         stations = [
             (float(self.est[ES_U, t.edge]), float(self.est[ES_C, t.edge]), "a" if t.at_tail else "b")
             for t in self.terminals
@@ -896,7 +980,7 @@ class PerturbationResponse:
 
         e.g. ``f_{0:\\text{inlet}}`` -- a fragment (no ``$``); the plotting layer wraps it.
         """
-        return f"{_CHAR_SYM[char]}_{{{self._node_tag(node)}}}"
+        return f"{_char_sym(char, self.scalar_names)}_{{{self._node_tag(node)}}}"
 
     def multiport_scattering_labels(self):
         """Per-wave symbols for the multiport columns (incoming) and rows (outgoing).
@@ -909,15 +993,19 @@ class PerturbationResponse:
         incoming, outgoing = self._multiport_io()
 
         def sym(node, _edge, ch):
-            return f"{_CHAR_SYM[ch]}_{{{node}}}"
+            return f"{_char_sym(ch, self.scalar_names)}_{{{node}}}"
 
         return [sym(*w) for w in incoming], [sym(*w) for w in outgoing]
 
     # -- source attribution (where the wave at an edge comes from) -----------
 
     def _source_char(self, fam, t):
-        """The characteristic index a source drives: a terminal's incoming acoustic wave, or entropy."""
-        return t.incoming if fam == "acoustic" else 2
+        """The characteristic index a source drives: a terminal's incoming acoustic wave, entropy, or a scalar."""
+        if fam == "acoustic":
+            return t.incoming
+        if fam == "entropy":
+            return 2
+        return _N_FIXED_CHAR + tuple(self.scalar_names).index(fam)  # a transported scalar's convected wave
 
     def contributions(self, edge, *, incoming=None):
         """Break the wave at ``edge`` into the contribution of each terminal's incoming wave.
@@ -976,7 +1064,7 @@ class PerturbationResponse:
         (columns), so a plotted entry reads ``source → output`` (e.g. ``g₇:Outlet1 → f₅``: the
         incoming wave at terminal Outlet1 contributing to ``f`` at edge 5).
         """
-        outputs = [f"{_CHAR_SYM[c]}_{{{edge}}}" for c in self.cidx]
+        outputs = [f"{_char_sym(c, self.scalar_names)}_{{{edge}}}" for c in self.cidx]
         sources = [self._wave_at_node(self._source_char(fam, t), t.node) for fam, t in self.forcing_kinds]
         return outputs, sources
 

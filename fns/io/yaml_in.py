@@ -49,6 +49,11 @@ def _basis(a: dict) -> str:
     return str(a.get("basis") or "mole")
 
 
+def _marker(a: dict) -> float:
+    """A boundary's injected burnt-marker value (``0`` fresh, default; ``1`` burnt)."""
+    return float(a.get("marker") or 0.0)
+
+
 def _lengths(a: dict) -> dict:
     """Optional storage-length kwargs (``l_up``/``l_down``/``end_correction``) from a UI node.
 
@@ -69,13 +74,17 @@ def _lengths(a: dict) -> dict:
 # ignores them (no transported scalars), so they are harmless to pass always.
 _UI_NODE_BUILDERS = {
     "MassFlowInlet": lambda a: cat.mass_flow_inlet(
-        a["massFlowRate"], a["totalTemperature"], composition=_comp(a), basis=_basis(a)
+        a["massFlowRate"], a["totalTemperature"], composition=_comp(a), basis=_basis(a), marker=_marker(a)
     ),
     "TotalPressureInlet": lambda a: cat.total_pressure_inlet(
-        a["totalPressure"], a["totalTemperature"], composition=_comp(a), basis=_basis(a)
+        a["totalPressure"], a["totalTemperature"], composition=_comp(a), basis=_basis(a), marker=_marker(a)
     ),
     "PressureOutlet": lambda a: cat.pressure_outlet(
-        a["pressure"], a.get("backflowTotalTemperature", 300.0), composition=_comp(a), basis=_basis(a)
+        a["pressure"],
+        a.get("backflowTotalTemperature", 300.0),
+        composition=_comp(a),
+        basis=_basis(a),
+        marker=_marker(a),
     ),
     "MassFlowOutlet": lambda a: cat.mass_flow_outlet(a["massFlowRate"]),
     "ChokedNozzleOutlet": lambda a: cat.choked_nozzle_outlet(a["throatArea"]),
@@ -89,7 +98,12 @@ _UI_NODE_BUILDERS = {
     "HeatReleaseFlame": lambda a: cat.heat_release_flame(a["heatRelease"]),
     "EquilibriumFlame": lambda a: cat.equilibrium_flame(),
     "MassSource": lambda a: cat.mass_source(
-        a["massFlowRate"], a["injectionTemperature"], _comp(a), u_inj=a.get("injectionVelocity", 0.0), basis=_basis(a)
+        a["massFlowRate"],
+        a["injectionTemperature"],
+        _comp(a),
+        u_inj=a.get("injectionVelocity", 0.0),
+        basis=_basis(a),
+        marker=_marker(a),
     ),
     "JunctionStaticP": lambda a: cat.junction(volume=a.get("volume", 0.0) or 0.0),
     "LosslessSplitter": lambda a: cat.splitter(volume=a.get("volume", 0.0) or 0.0),

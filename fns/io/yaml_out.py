@@ -578,6 +578,8 @@ def _build_model(network, prov):
             attrs.update(_bc_to_ui(getattr(spec, "perturbation_bc", None)))
         if reacting and spec.residual_id in _COMPOSITION_RIDS:
             attrs.update(_composition_to_ui(spec))
+        if reacting and float(getattr(spec, "marker", 0.0)) != 0.0:
+            attrs["marker"] = float(spec.marker)  # injected burnt-marker (0 fresh default; omit when fresh)
         if not prov:
             attrs.update(port_attrs.get(i, {}))
         attrs["index"] = i

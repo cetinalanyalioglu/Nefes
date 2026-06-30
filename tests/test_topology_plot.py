@@ -84,3 +84,60 @@ def test_branched_topology_layers_branch_and_merge():
 def test_empty_network_is_safe():
     fig = plot_network_topology(Network(gas=CFG))
     assert fig is not None and len(fig.layout.annotations) == 0
+
+
+# -- solution overlay (color_by / width_by) ---------------------------------
+
+
+def _solved_linear_net():
+    net = Network(gas=CFG, p_ref=101325.0, T_ref=300.0)
+    i = net.add(cat.total_pressure_inlet(150000.0, 320.0))
+    d = net.add(cat.duct(0.5))
+    o = net.add(cat.pressure_outlet(101325.0))
+    net.connect(i, d, 0.02, name="approach")
+    net.connect(d, o, 0.02, name="exit")
+    sol = net.solve()
+    assert sol.converged
+    return net, sol
+
+
+def test_color_by_adds_colorbar_and_tints_edges():
+    net, sol = _solved_linear_net()
+    fig = net.plot_topology(solution=sol, color_by="M")
+    # the edge-midpoint trace carries the colored field + a colorbar
+    edge_trace = next(t for t in fig.data if t.name == "edges")
+    assert edge_trace.marker.showscale is True
+    assert tuple(edge_trace.marker.color) == pytest.approx(tuple(sol.field("M")))
+    # each edge arrow is individually colored (not the default grey)
+    arrow_colors = {ann.arrowcolor for ann in fig.layout.annotations}
+    assert "#9aa5b1" not in arrow_colors
+    # the default title names the overlaid field
+    assert "Mach" in fig.layout.title.text
+
+
+def test_width_by_scales_arrow_widths():
+    net, sol = _solved_linear_net()
+    fig = net.plot_topology(solution=sol, width_by="mdot")
+    widths = [ann.arrowwidth for ann in fig.layout.annotations]
+    assert all(w > 0 for w in widths)  # all scaled from |mdot|
+
+
+def test_overlay_requires_solution():
+    net, _ = _solved_linear_net()
+    with pytest.raises(ValueError, match="need a converged"):
+        net.plot_topology(color_by="T")
+
+
+def test_unknown_field_rejected():
+    net, sol = _solved_linear_net()
+    with pytest.raises(ValueError, match="not a known edge field"):
+        net.plot_topology(solution=sol, color_by="entropy")
+
+
+def test_no_solution_is_structural_view():
+    # the default (no solution) path is unchanged: grey arrows, index labels, no colorbar
+    fig = plot_network_topology(_linear_net())
+    assert all(ann.arrowcolor == "#9aa5b1" for ann in fig.layout.annotations)
+    edge_trace = next(t for t in fig.data if t.name == "edges")
+    assert edge_trace.marker.showscale in (None, False)
+    assert fig.layout.title.text == "Network topology"

@@ -96,9 +96,28 @@ class ElementSpec:
     # a forward-compatibility provision for the S(omega) perturbation phase -- the
     # mean flow ignores it.
     dynamic_source: object = None
+    # burnt-marker value injected at an inflow/source boundary (the last advected
+    # scalar of the marker-gated reacting closure).  ``0.0`` is fresh reactant
+    # (default); ``1.0`` is fully burnt gas (e.g. exhaust-gas recirculation as a feed),
+    # which forces the equilibrium closure on the downstream edge.  Only meaningful on
+    # a marker-gated network (an equilibrium-flame reacting net with no explicit
+    # per-edge closure); a non-zero value elsewhere is rejected at build time.
+    marker: float = 0.0
 
 
-def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", perturbation_bc=None):
+def _validate_marker(marker, name):
+    """Validate a boundary burnt-marker value (in ``[0, 1]``); return it as a float.
+
+    ``0.0`` is fresh reactant, ``1.0`` fully-burnt; the marker gate is calibrated on
+    ``[0, 1]`` so values outside it have no calibrated meaning.
+    """
+    m = float(marker)
+    if not 0.0 <= m <= 1.0:
+        raise ValueError(f"{name}: marker must be in [0, 1] (0 fresh, 1 burnt); got {marker}")
+    return m
+
+
+def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", perturbation_bc=None, marker=0.0):
     """Prescribed mass-flow inlet feeding a stream of the given ``composition``.
 
     ``composition`` is a named species mixture (``{species: fraction}``) for the
@@ -111,6 +130,12 @@ def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", pert
     Reverse flow (a negative prescribed mass rate, i.e. suction out through the inlet)
     is not permitted -- use a :func:`pressure_outlet`, which models ingestion/backflow,
     for a boundary that may reverse.
+
+    ``marker`` (default ``0.0``, fresh reactant) is the injected burnt-marker value of
+    the marker-gated reacting closure; set ``1.0`` to feed already-burnt gas (e.g.
+    exhaust-gas recirculation), forcing the equilibrium closure downstream.  It is only
+    accepted on a marker-gated network (equilibrium-flame reacting, no explicit per-edge
+    closure); a non-zero value elsewhere is rejected at build time.
     """
     if float(mdot) < 0.0:
         raise ValueError(
@@ -124,11 +149,16 @@ def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", pert
         perturbation_bc=perturbation_bc,
         composition_spec=composition,
         basis=basis,
+        marker=_validate_marker(marker, name),
     )
 
 
-def total_pressure_inlet(pt, Tt, composition=None, basis="mole", name="pt-inlet", perturbation_bc=None):
-    """Prescribed total-pressure inlet feeding a stream of the given ``composition``."""
+def total_pressure_inlet(pt, Tt, composition=None, basis="mole", name="pt-inlet", perturbation_bc=None, marker=0.0):
+    """Prescribed total-pressure inlet feeding a stream of the given ``composition``.
+
+    ``marker`` injects the burnt-marker value (``0.0`` fresh, default; ``1.0`` burnt --
+    e.g. recirculated exhaust gas as a feed); see :func:`mass_flow_inlet`.
+    """
     return ElementSpec(
         PT_INLET,
         [float(pt), float(Tt)],
@@ -136,11 +166,18 @@ def total_pressure_inlet(pt, Tt, composition=None, basis="mole", name="pt-inlet"
         perturbation_bc=perturbation_bc,
         composition_spec=composition,
         basis=basis,
+        marker=_validate_marker(marker, name),
     )
 
 
-def pressure_outlet(p, Tt_backflow=300.0, composition=None, basis="mole", name="outlet", perturbation_bc=None):
-    """Static-pressure outlet; ``composition`` is the backflow stream (on ingestion)."""
+def pressure_outlet(
+    p, Tt_backflow=300.0, composition=None, basis="mole", name="outlet", perturbation_bc=None, marker=0.0
+):
+    """Static-pressure outlet; ``composition`` is the backflow stream (on ingestion).
+
+    ``marker`` is the burnt-marker value of the backflow stream drawn in on ingestion
+    (``0.0`` fresh, default; ``1.0`` burnt); see :func:`mass_flow_inlet`.
+    """
     return ElementSpec(
         P_OUTLET,
         [float(p), float(Tt_backflow)],
@@ -148,6 +185,7 @@ def pressure_outlet(p, Tt_backflow=300.0, composition=None, basis="mole", name="
         perturbation_bc=perturbation_bc,
         composition_spec=composition,
         basis=basis,
+        marker=_validate_marker(marker, name),
     )
 
 
@@ -488,7 +526,7 @@ def equilibrium_flame(name="flame", dynamic_source=None):
     return ElementSpec(FLAME_EQUILIBRIUM, [], name, dynamic_source=dynamic_source)
 
 
-def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dynamic_source=None):
+def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dynamic_source=None, marker=0.0):
     """A 2-port inline mass-injection element (e.g. a fuel injector).
 
     Injects a stream of mass-flow ``mdot`` [kg/s], total temperature ``T`` [K] and
@@ -525,6 +563,10 @@ def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dy
         Forward-compatibility provision for the dynamic ``S(omega)`` phase (e.g. a
         fuel-flow that fluctuates with an upstream ``u'``).  Ignored by the mean
         flow.
+    marker : float, optional
+        Burnt-marker value of the injected stream (``0.0`` fresh, default; ``1.0``
+        burnt); see :func:`mass_flow_inlet`.  An injector normally feeds fresh fuel,
+        so the default is appropriate; set it only to inject already-burnt gas.
     """
     return ElementSpec(
         MASS_SOURCE,
@@ -533,6 +575,7 @@ def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dy
         composition_spec=composition,
         basis=basis,
         dynamic_source=dynamic_source,
+        marker=_validate_marker(marker, name),
     )
 
 
@@ -1036,6 +1079,16 @@ def build_problem_from_connectivity(
     marker_gated = thermo.model_id == EQ_KERNEL and bool(flame_nodes) and edge_models is None
     n_marker = 1 if marker_gated else 0
 
+    # A user-set inflow marker only has a transport scalar to ride when the network is
+    # marker-gated; reject a non-zero marker elsewhere rather than silently dropping it.
+    if not marker_gated:
+        stray = [el.name or f"node {n}" for n, el in enumerate(elements) if float(getattr(el, "marker", 0.0)) != 0.0]
+        if stray:
+            raise ValueError(
+                "a non-zero burnt marker requires a marker-gated reacting network (an equilibrium-flame "
+                "reacting model with no explicit per-edge closure); marker was set on: " + ", ".join(stray)
+            )
+
     # pack node float params in node order.  A boundary element that prescribes
     # advected scalars carries [base, h_t, Z_el...]: slot 0 is the prescribed
     # mdot/pt/p, slot 1 the absolute total enthalpy datum (converted from Tt), and
@@ -1047,14 +1100,15 @@ def build_problem_from_connectivity(
     # such donor -- their edge inherits the interior scalars (scalar-transparent, see node_donor).
     boundary_rids = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
     # The burnt marker is the *last* advected scalar, so its donor param sits after the
-    # composition: a fresh feed/backflow enters with marker = 0 (an inlet injecting already-burnt
-    # gas is the exception, not yet exposed).  Appended only when the network is marker-gated.
-    marker_param = [0.0] * n_marker
+    # composition.  A fresh feed/backflow enters with marker = 0 (the default); a boundary
+    # may set ``marker = 1`` to inject already-burnt gas (e.g. exhaust-gas recirculation).
+    # Appended only when the network is marker-gated.
     npar_f = []
     npar_fptr = np.zeros(n_nodes + 1, dtype=np.int64)
     for n, el in enumerate(elements):
         fp = list(el.fparams)
         k = -1 if node_stream is None else node_stream.get(n, -1)
+        marker_param = [float(el.marker)] if n_marker else []
         if el.residual_id in boundary_rids and len(fp) >= 2:
             base, Tt = float(fp[0]), float(fp[1])
             fp = [base] + _boundary_scalars(thermo, el, Tt, n_elem, _node_label(n, el), k) + marker_param

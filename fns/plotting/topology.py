@@ -11,8 +11,26 @@ to confirm the connectivity, element indices and edge directions before solving.
 
 import numpy as np
 import plotly.graph_objects as go
+from plotly.colors import sample_colorscale
 
 from .theme import FNS_TEMPLATE_NAME
+
+# Per-edge solved field -> (display label, unit, value format) for the overlay
+# colorbar / labels / hover.  Keys match :data:`fns.shell.network._EDGE_FIELDS`.
+_FIELD_INFO = {
+    "mdot": ("mass flow", "kg/s", ".3g"),
+    "p": ("static pressure", "Pa", ".4g"),
+    "h_t": ("total enthalpy", "J/kg", ".3g"),
+    "rho": ("density", "kg/m³", ".3g"),
+    "u": ("velocity", "m/s", ".4g"),
+    "T": ("temperature", "K", ".0f"),
+    "c": ("sound speed", "m/s", ".4g"),
+    "M": ("Mach", "", ".3f"),
+    "p_t": ("total pressure", "Pa", ".4g"),
+    "area": ("area", "m²", ".3g"),
+    "W": ("molar mass", "kg/mol", ".4g"),
+    "cp": ("cp", "J/kgK", ".4g"),
+}
 
 # Semantic node colours by element role (matched on the residual-type name).  A
 # role keyword -> fill colour; anything unmatched is an interior element.
@@ -76,28 +94,65 @@ def _positions(n, edges):
     return x, y
 
 
+def _edge_field(solution, name, n_edges, kind):
+    """Per-edge values of a solved field for an overlay (clear errors on misuse)."""
+    if name not in _FIELD_INFO:
+        raise ValueError(f"{kind}={name!r} is not a known edge field; choose from {sorted(_FIELD_INFO)}")
+    vals = np.asarray(solution.field(name), dtype=float)
+    if vals.shape[0] != n_edges:
+        raise ValueError(
+            f"the solution has {vals.shape[0]} edges but the network has {n_edges}; "
+            "pass the Solution from solving *this* network"
+        )
+    return vals
+
+
 def plot_network_topology(
     network,
     *,
+    solution=None,
+    color_by=None,
+    width_by=None,
+    colorscale="Viridis",
     show_edge_labels=True,
     show_areas=False,
-    title="Network topology",
+    title=None,
     height=None,
     width=None,
 ):
     """Plot the element/edge topology of a :class:`~fns.shell.network.Network`.
 
+    With no ``solution`` this is a structural view (no solve needed): the element
+    graph with one arrow per directed edge.  Pass a converged ``solution`` to overlay
+    the solved field on the edges -- the edges carry the state in FNS, so a solved
+    quantity (temperature, Mach, mass flow, ...) is drawn *on the edges*: ``color_by``
+    tints each edge (with a colorbar) and ``width_by`` scales its arrow width.
+
     Parameters
     ----------
     network : fns.shell.network.Network
-        The network to draw (elements and directed edges; no solve required).
+        The network to draw (elements and directed edges).
+    solution : fns.shell.network.Solution, optional
+        A converged mean-flow solution of *this* network.  Required for ``color_by``
+        / ``width_by``; when given it also enriches the edge hover with ``mdot``,
+        ``T`` and ``M``.
+    color_by : str, optional
+        Solved edge field to color the edges by (e.g. ``"T"``, ``"M"``, ``"mdot"``;
+        keys of :data:`fns.shell.network._EDGE_FIELDS`).  Adds a colorbar and labels
+        each edge with its value.  Requires ``solution``.
+    width_by : str, optional
+        Solved edge field whose magnitude scales the arrow width (e.g. ``"mdot"`` --
+        a flow-weighted diagram).  Requires ``solution``.
+    colorscale : str, optional
+        Plotly colorscale name for ``color_by`` (default ``"Viridis"``).
     show_edge_labels : bool, optional
-        Label each edge with its index at the edge midpoint (default ``True``).
+        Label each edge at its midpoint (the edge index, or the ``color_by`` value
+        when coloring; default ``True``).
     show_areas : bool, optional
-        Append the edge area to the edge label (default ``False``; the area is
-        always in the hover text).
+        Append the edge area to the edge label (default ``False``; always in hover).
     title : str, optional
-        Figure title.
+        Figure title.  Defaults to ``"Network topology"``, or names the overlaid
+        field when ``color_by`` is set.
     height, width : int, optional
         Figure size in pixels.
 
@@ -111,9 +166,27 @@ def plot_network_topology(
     n = len(elements)
     x, y = _positions(n, [(t, h) for (t, h, _a) in edges])
 
+    if (color_by or width_by) and solution is None:
+        raise ValueError("color_by / width_by need a converged `solution` of this network")
+
+    # -- solved-field overlays (edge-centric: FNS state lives on edges)
+    cvals = _edge_field(solution, color_by, len(edges), "color_by") if color_by else None
+    wvals = _edge_field(solution, width_by, len(edges), "width_by") if width_by else None
+    edge_colors = None
+    if cvals is not None and len(cvals):
+        cmin, cmax = float(np.min(cvals)), float(np.max(cvals))
+        span = (cmax - cmin) or 1.0
+        edge_colors = sample_colorscale(colorscale, [(v - cmin) / span for v in cvals])
+    edge_widths = None
+    if wvals is not None and len(wvals):
+        mag = np.abs(wvals)
+        wmax = float(np.max(mag)) or 1.0
+        edge_widths = [1.0 + 6.0 * (m / wmax) for m in mag]  # 1..7 px, scaled by magnitude
+    sol_field = solution.field if solution is not None else None
+
     fig = go.Figure()
 
-    # -- edges: a grey arrow per directed edge, plus a midpoint marker for hover/label
+    # -- edges: an arrow per directed edge, plus a midpoint marker for hover/label
     annotations = []
     mids_x, mids_y, mid_text, mid_hover = [], [], [], []
     for i, (t, h, a) in enumerate(edges):
@@ -130,8 +203,8 @@ def plot_network_topology(
                 showarrow=True,
                 arrowhead=2,
                 arrowsize=1.2,
-                arrowwidth=1.4,
-                arrowcolor="#9aa5b1",
+                arrowwidth=edge_widths[i] if edge_widths is not None else 1.4,
+                arrowcolor=edge_colors[i] if edge_colors is not None else "#9aa5b1",
                 standoff=14,  # stop short of the head marker
                 startstandoff=14,  # start past the tail marker
                 opacity=0.9,
@@ -139,23 +212,48 @@ def plot_network_topology(
         )
         mids_x.append((x[t] + x[h]) / 2.0)
         mids_y.append((y[t] + y[h]) / 2.0)
-        label = str(i)
+        if cvals is not None:  # label the edge with its colored field value
+            _lab, _unit, _fmt = _FIELD_INFO[color_by]
+            label = format(cvals[i], _fmt)
+        else:
+            label = str(i)
         if show_areas:
             label += f"\nA={a:.3g}"
         mid_text.append(label)
         nm = edge_names[i] if i < len(edge_names) else f"e{i}"
-        mid_hover.append(f"edge {i} ({nm})<br>{network._node_label(t)} → {network._node_label(h)}<br>A = {a:.4g} m²")
+        hov = f"edge {i} ({nm})<br>{network._node_label(t)} → {network._node_label(h)}<br>A = {a:.4g} m²"
+        if sol_field is not None:  # enrich with the headline solved state
+            hov += (
+                f"<br>mdot = {sol_field('mdot')[i]:.3g} kg/s"
+                f"<br>T = {sol_field('T')[i]:.0f} K"
+                f"<br>M = {sol_field('M')[i]:.3f}"
+            )
+        mid_hover.append(hov)
 
     if edges:
+        if cvals is not None:
+            clabel, cunit, _ = _FIELD_INFO[color_by]
+            marker = dict(
+                size=16,
+                color=cvals,
+                colorscale=colorscale,
+                cmin=float(np.min(cvals)),
+                cmax=float(np.max(cvals)),
+                showscale=True,
+                colorbar=dict(title=clabel + (f" [{cunit}]" if cunit else ""), thickness=14),
+                line=dict(width=0),
+            )
+        else:
+            marker = dict(size=14, color="rgba(255,255,255,0.85)", line=dict(width=0))
         fig.add_trace(
             go.Scatter(
                 x=mids_x,
                 y=mids_y,
                 mode="markers+text" if show_edge_labels else "markers",
                 text=mid_text if show_edge_labels else None,
-                textposition="middle center",
+                textposition="middle center" if cvals is None else "top center",
                 textfont=dict(size=10, color="#52606d"),
-                marker=dict(size=14, color="rgba(255,255,255,0.85)", line=dict(width=0)),
+                marker=marker,
                 hovertext=mid_hover,
                 hoverinfo="text",
                 showlegend=False,
@@ -184,6 +282,13 @@ def plot_network_topology(
                 name=role,
             )
         )
+
+    if title is None:
+        if color_by:
+            clabel, cunit, _ = _FIELD_INFO[color_by]
+            title = f"Network solution: {clabel}" + (f" [{cunit}]" if cunit else "")
+        else:
+            title = "Network topology"
 
     pad = 0.6
     fig.update_layout(

@@ -52,6 +52,7 @@ from fns.elements.ids import (
     MASS_FLOW_OUTLET,
     CHOKED_NOZZLE_OUTLET,
     LINEAR_RESISTANCE,
+    PIPE,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
@@ -287,6 +288,14 @@ def _probe_linear_resistance():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
+def _probe_pipe():
+    # length-bearing pipe (DUCT + LOSS): the Darcy-Weisbach friction head q ~ u*|u| with
+    # the smooth-abs floor must stay analytic through forward / reverse / near-zero /
+    # near-choke flow (the same signed quadratic as LOSS, here with K = f*L/D).
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.pipe(0.5, 0.3, 0.02), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+
+
 def _probe_junction():
     # two inflow legs merging (junction: shared static pressure)
     els = [
@@ -380,6 +389,7 @@ PROBES = {
     SUDDEN_AREA_CHANGE: _probe_sudden_area_change,
     LOSS: _probe_loss,
     LINEAR_RESISTANCE: _probe_linear_resistance,
+    PIPE: _probe_pipe,
     DUCT: _probe_duct,
     JUNCTION: _probe_junction,
     SPLITTER: _probe_splitter,

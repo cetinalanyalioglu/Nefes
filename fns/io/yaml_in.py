@@ -95,6 +95,7 @@ _UI_NODE_BUILDERS = {
     "LossElement": lambda a: cat.loss(a["lossCoefficient"], **_lengths(a)),
     "LinearResistance": lambda a: cat.linear_resistance(a["resistance"], **_lengths(a)),
     "Duct": lambda a: cat.duct(a.get("length", 0.0)),
+    "Pipe": lambda a: cat.pipe(a["length"], a["diameter"], a["frictionFactor"]),
     "HeatReleaseFlame": lambda a: cat.heat_release_flame(a["heatRelease"]),
     "EquilibriumFlame": lambda a: cat.equilibrium_flame(),
     "MassSource": lambda a: cat.mass_source(

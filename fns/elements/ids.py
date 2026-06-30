@@ -24,6 +24,7 @@ CHOKED_NOZZLE_OUTLET = 16  # 1-port outlet: compact choked nozzle of throat area
 LINEAR_RESISTANCE = 17  # 2-port linear flow resistance: Pt drop proportional to mass flow (Pt0 - Pt1 = R*mdot)
 CAVITY = 18  # 1-port finite-volume cavity: mean flow is a wall (mdot = 0); acoustically a compliance (storage M)
 FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (N-1) outflow rates forced to fractions
+PIPE = 20  # 2-port length-bearing pipe: Darcy-Weisbach friction (Pt drop K = f*L/D) + the duct acoustic phase
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
 # element overrides its default CSD face with.  DUCT (P), VOLUME (storage M) and
@@ -91,6 +92,7 @@ FIXED_NPORTS = {
     FLAME_EQUILIBRIUM: 2,
     MASS_SOURCE: 2,
     LINEAR_RESISTANCE: 2,
+    PIPE: 2,
 }
 
 # Whether an element permits an area change across it (its incident edges may
@@ -119,6 +121,7 @@ ALLOWS_AREA_CHANGE = {
     SPLITTER: True,
     FORCED_SPLITTER: True,  # manifold (flow divider); imposes no area-equality constraint
     DUCT: False,
+    PIPE: False,  # constant-area length-bearing pipe (like the duct, both ports share one area)
     LOSS: True,
     FLAME_HEAT_RELEASE: False,  # constant-area compact flame (Pt-continuity pressure row)
     FLAME_EQUILIBRIUM: False,  # constant-area compact reacting flame (static-p continuity)
@@ -148,4 +151,5 @@ RESIDUAL_NAMES = {
     MASS_FLOW_OUTLET: "MassFlowOutlet",
     CHOKED_NOZZLE_OUTLET: "ChokedNozzleOutlet",
     LINEAR_RESISTANCE: "LinearResistance",
+    PIPE: "Pipe",
 }

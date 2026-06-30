@@ -31,6 +31,7 @@ from .ids import (
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
     LINEAR_RESISTANCE,
+    PIPE,
 )
 
 
@@ -337,6 +338,24 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         # port 0 equals the outflow at port 1).  Using the port orientation keeps
         # the loss sign correct regardless of how the two edges were wired.
         mdot_through = -s0 * est[ES_MDOT, e0]
+        u_ref = mdot_through / denom
+        u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
+        q_signed = 0.5 * rho_avg * u_ref * u_abs
+        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - kappa_term
+        return
+
+    if rid == PIPE:
+        # Length-bearing pipe (the DUCT (+) LOSS unification, Greyvenstein-Laurie): the
+        # Darcy-Weisbach friction total-pressure drop on the mean flow PLUS the duct
+        # acoustic phase (acoustic_id = ACOUSTIC_DUCT) and length for it.  fparams =
+        # [length, diameter, friction_factor]; the loss coefficient is K = f * L / D
+        # (D the hydraulic diameter).  Constant area (a0 == a1), so a0 normalizes the
+        # through-flow.  Same smooth signed quadratic head as LOSS (q ~ u*|u|, the
+        # smooth-abs floor regularizes the near-zero-flow slope), so complex-step clean.
+        K = npar_f[pb + 2] * npar_f[pb + 0] / npar_f[pb + 1]  # f * L / D
+        rho_avg = 0.5 * (est[ES_RHO, e0] + est[ES_RHO, e1])
+        denom = rho_avg * a0
+        mdot_through = -s0 * est[ES_MDOT, e0]  # +ve in the e0 -> e1 sense
         u_ref = mdot_through / denom
         u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
         q_signed = 0.5 * rho_avg * u_ref * u_abs

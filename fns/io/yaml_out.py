@@ -54,6 +54,7 @@ from ..elements.ids import (
     JUNCTION,
     SPLITTER,
     DUCT,
+    PIPE,
     WALL,
     CAVITY,
     LINEAR_RESISTANCE,
@@ -61,6 +62,7 @@ from ..elements.ids import (
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
 )
+from ..elements.composite import is_composite
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL
 from .yaml_in import MODEL_ID
 
@@ -738,6 +740,11 @@ def _manifold_attrs(fp):
 
 def _spec_to_ui(spec):
     """Map an ``ElementSpec`` to its UI ``(type, modeled-attributes)`` pair."""
+    if is_composite(spec):
+        raise ValueError(
+            f"composite element {spec.name!r} ({spec.kind}) cannot yet be serialized to the UI format; "
+            "build the network from its atomic primitives to export it (composite YAML is a future extension)"
+        )
     rid = spec.residual_id
     fp = spec.fparams
     if rid == MASS_FLOW_INLET:
@@ -764,6 +771,8 @@ def _spec_to_ui(spec):
         return "LosslessSplitter", _manifold_attrs(fp)
     if rid == DUCT:
         return "Duct", {"length": float(fp[0]) if fp else 0.0}
+    if rid == PIPE:
+        return "Pipe", {"length": float(fp[0]), "diameter": float(fp[1]), "frictionFactor": float(fp[2])}
     if rid == WALL:
         return "Wall", {}
     if rid == CAVITY:

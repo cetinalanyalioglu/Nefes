@@ -717,6 +717,45 @@ def duct(length=0.0, name="duct"):
     return ElementSpec(DUCT, [float(length)], name, acoustic_id=ACOUSTIC_DUCT)
 
 
+def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
+    """A length-bearing pipe: Darcy-Weisbach wall friction + the duct acoustic phase.
+
+    The ``DUCT (+) LOSS`` unification (Greyvenstein-Laurie): one element that drops total
+    pressure ``pt0 - pt1 = K * (1/2 rho u^2)`` with the Darcy-Weisbach loss coefficient
+    ``K = friction_factor * length / diameter`` on the mean flow, **and** carries its
+    ``length`` for the acoustic phase stamp ``P(omega)`` (so it propagates waves like a
+    duct).  Constant area -- its two ports share one flow area (set on the wired edges; for
+    a circular pipe that is ``pi * diameter^2 / 4``).  ``diameter`` is the hydraulic
+    diameter used only in the friction term, so a non-circular passage is supported by
+    passing its hydraulic diameter and matching flow area.
+
+    The lumped pipe is exact in the low-Mach limit (the paper's Example 3, M ~ 0.01); a
+    long or fast pipe develops Fanno gradients -- chain several with :func:`fanno_pipe`
+    (which uses this as its atom) to resolve the Mach rise toward choke.
+
+    Parameters
+    ----------
+    length : float
+        Pipe length ``L`` [m] (the acoustic propagation length and the friction length).
+    diameter : float
+        Hydraulic diameter ``D`` [m] for the friction term ``K = f L / D``.
+    friction_factor : float
+        Darcy friction factor ``f`` (e.g. ``64/Re`` laminar, Haaland/Colebrook turbulent).
+    name : str, optional
+        Element label.
+
+    Returns
+    -------
+    ElementSpec
+    """
+    from .ids import PIPE
+
+    L, D, f = float(length), float(diameter), float(friction_factor)
+    if not L > 0.0 or not D > 0.0 or not f >= 0.0:
+        raise ValueError(f"pipe {name!r}: length and diameter must be positive and friction_factor >= 0")
+    return ElementSpec(PIPE, [L, D, f], name, acoustic_id=ACOUSTIC_DUCT)
+
+
 # ---------------------------------------------------------------------------
 # Composite elements (Class-1 macros): a single user element that expands to a
 # fixed recipe of atomic elements + internal edges at build time.  The expander

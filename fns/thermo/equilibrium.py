@@ -38,9 +38,15 @@ import numpy as np
 from numba import njit
 
 from ..composition import stream_pack_arrays
+from ..smooth import marker_gate
 from ._chem import RU, equil_state_cs, equilibrate_hp_cs, equilibrium_sound_speed, frozen_state_from_moles_cs
 
 _OFF_BLOCKS = 3  # p_ref, T_init, T_init_frozen precede the flat data blocks
+
+# Transition width of the burnt-marker blend gate (fns.smooth.marker_gate).  Gentle (so the
+# coupled solve stays Newton-friendly); the gate's zero-leak normalization makes the converged
+# accuracy independent of it -- a frozen edge is pure frozen, a burnt edge pure equilibrium.
+MARKER_GATE_WIDTH = 0.1
 
 
 def pack_equilibrium(lib, stream_Y, T_init=3000.0, T_init_frozen=300.0):
@@ -267,6 +273,43 @@ def eq_frozen_state(tf, ti, xi, h, p):
 
     T, rho, c, ntot = frozen_state_from_moles_cs(feed_coeffs, feed_Tint, n_feed, h, p, T_init_fr)
     return T, rho, c, 1.0 / ntot
+
+
+@njit(cache=True)
+def eq_marker_state(tf, ti, xi, marker, h, p):
+    """Marker-gated blend of the frozen and equilibrium states ``(T, rho, c, W)``.
+
+    Runs **both** closures at the transported point ``(xi, h, p)`` and blends each recovered
+    field by ``g = marker_gate(marker)``::
+
+        field = (1 - g) * frozen + g * equilibrium
+
+    ``g(0) = 0`` (pure frozen / unburnt) and ``g(1) = 1`` (pure equilibrium / burnt) exactly, so
+    the blend is only active in transients (the marker is bimodal at convergence).  The same
+    ``h_t`` is a valid enthalpy for *both* compositions -- the unburnt reactant inverts to its
+    cold ``T``, the burnt mixture to the flame ``T`` -- so both solves always converge and the
+    gate selects the physical one.  Complex-step-safe (smooth gate, complex-analytic closures).
+    """
+    Tf, rf, cf, Wf = eq_frozen_state(tf, ti, xi, h, p)
+    Te, re, ce, We = eq_kernel_state(tf, ti, xi, h, p)
+    g = marker_gate(marker, MARKER_GATE_WIDTH)
+    return (1.0 - g) * Tf + g * Te, (1.0 - g) * rf + g * re, (1.0 - g) * cf + g * ce, (1.0 - g) * Wf + g * We
+
+
+@njit(cache=True)
+def eq_marker_state_warm(tf, ti, xi, marker, h, p, cache):
+    """Warm-started :func:`eq_marker_state`: the equilibrium leg seeds from ``cache``.
+
+    Identical to :func:`eq_marker_state`, but the (dominant-cost) burnt equilibrium solve is
+    warm-started from the per-edge ``cache`` (moles + temperature).  The frozen leg needs no
+    cache.  The equilibrium kernel runs on **every** marker-gated edge regardless of ``marker``
+    (its blend weight may be ~0), so the cache stays populated and the burnt product moles are
+    available for post-processing on any reacting edge.
+    """
+    Tf, rf, cf, Wf = eq_frozen_state(tf, ti, xi, h, p)
+    Te, re, ce, We = eq_kernel_state_warm(tf, ti, xi, h, p, cache)
+    g = marker_gate(marker, MARKER_GATE_WIDTH)
+    return (1.0 - g) * Tf + g * Te, (1.0 - g) * rf + g * re, (1.0 - g) * cf + g * ce, (1.0 - g) * Wf + g * We
 
 
 @njit(cache=True)

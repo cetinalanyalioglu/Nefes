@@ -367,6 +367,9 @@ def _chemistry_items(network, solution):
     for name in prob.scalar_names:
         vals = [float(solution.mixture_fractions(e).get(name, 0.0)) for e in range(n_edges)]
         items.append(DataItem(f"xi:{name}", "edge", vals, ""))
+    # transported burnt marker (marker-gated reacting networks): 0 fresh / 1 burnt per edge
+    if int(getattr(prob, "marker_row", -1)) >= 0:
+        items.append(DataItem("burnt", "edge", [float(solution.marker(e)) for e in range(n_edges)], ""))
     # solved chemical species (reacting only -- a perfect gas carries passive scalars, no species)
     lib = network.gas.library
     if lib is not None:

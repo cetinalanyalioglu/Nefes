@@ -321,7 +321,14 @@ def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, res_scale, var_s
             reporter.iteration(it, R)
         if norm < tol:
             return x2d, True, it, norm
-        J = jacobian(prob, x2d, eps, EPS_FB, kappa)
+        try:
+            J = jacobian(prob, x2d, eps, EPS_FB, kappa)
+        except np.linalg.LinAlgError:
+            # A reacting (EQ_MARKER / EQ_KERNEL) complex-step column can drive the inner
+            # equilibrium Newton to a non-finite state on a wild iterate (e.g. a flame drawn
+            # both-in, whose auto-start is poor); the inner linear solve then raises.  Degrade
+            # gracefully -- end this stage non-converged -- instead of crashing the whole solve.
+            return x2d, False, it, norm
         J_hat, R_hat = scaled_system(J, R, vcol, res_scale)
 
         dy = newton_step(J_hat, R_hat)
@@ -436,6 +443,10 @@ def solve(
         x2d = auto_initial_guess(prob)
     else:
         x2d = initial_guess(prob)
+    # seed the burnt marker from the topology flood-fill (demoted to an initial guess; the
+    # signed-flow transport self-corrects it).  Skipped when the caller supplies x0.
+    if x0 is None and getattr(prob, "marker_row", -1) >= 0 and prob.marker_seed is not None:
+        x2d[prob.marker_row, :] = prob.marker_seed
     reporter = _Reporter(level=int(verbose), interval=max(1, int(progress_interval)), prob=prob)
     history: List[float] = []
     total_it = 0
@@ -449,7 +460,8 @@ def solve(
         eps = _stage_eps(mdot_ref, kappa)
         if adaptive_scale:
             mass, h = measure_inflow_scales(prob, x2d, seed_mass, seed_h)
-            res_scale, var_scale = compose_scales(prob.node_rid, degrees, prob.n_edges, prob.n_elem, mass, p_scale, h)
+            n_scalars = prob.n_solve - 3  # composition mixture fractions + the optional burnt marker
+            res_scale, var_scale = compose_scales(prob.node_rid, degrees, prob.n_edges, n_scalars, mass, p_scale, h)
         else:
             res_scale, var_scale = prob.res_scale, prob.var_scale
         reporter.stage_start(kappa, eps)
@@ -471,7 +483,10 @@ def states_table(prob, x2d):
 
     est = np.zeros((NS_EST, prob.n_edges))
     nj_cache = np.zeros((prob.n_edges, 0))  # diagnostics: no warm start (single pass, robust uniform)
-    recover_all(prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, est, nj_cache)
+    marker_row = int(getattr(prob, "marker_row", -1))
+    recover_all(
+        prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, marker_row, est, nj_cache
+    )
     return est
 
 

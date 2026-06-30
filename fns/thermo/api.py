@@ -20,6 +20,7 @@ PERFECT_GAS = 0
 EQ_KERNEL = 1  # thermolib element-potential HP equilibrium (burnt side)
 EQ_TABLE = 2  # reserved: precomputed equilibrium table
 EQ_FROZEN = 3  # thermolib frozen real-gas of the reactant composition (unburnt side)
+EQ_MARKER = 4  # burnt-marker-gated blend of EQ_FROZEN (b=0) and EQ_KERNEL (b=1)
 
 # --- evaluation modes (how much of `out` to fill) --------------------------
 MODE_STATE = 0  # T, rho, c, W
@@ -65,6 +66,7 @@ def thermo_total_pressure(model_id, tf, ti, Z_el, M, p, T, c, W):
     """
     if model_id == PERFECT_GAS:
         return pg_total_pressure(tf, M, p)
-    if model_id == EQ_KERNEL or model_id == EQ_FROZEN:
+    if model_id == EQ_KERNEL or model_id == EQ_FROZEN or model_id == EQ_MARKER:
+        # variable-gamma isentropic relation from the (blended, for EQ_MARKER) band-2 fields
         return eq_total_pressure(M, p, T, c, W)
     raise ValueError("unknown thermo model_id")

@@ -66,6 +66,14 @@ class CompiledProblem:
     # flow ignores it (a constant mean source is acoustically passive).  length N,
     # or empty -> none.
     node_dynamic_source: tuple = ()
+    # band-1 row of the transported burnt marker (the last advected scalar, row 3 + n_elem),
+    # or -1 when the network carries none (perfect gas, or a hard-closure reacting network).
+    # Marker-gated reacting networks (auto closure with a flame) use EQ_MARKER on every edge
+    # and read this row to blend frozen/equilibrium.
+    marker_row: int = -1
+    # per-edge initial marker (0 fresh / 1 burnt) from the compile-time flood-fill, demoted to
+    # the marker transport's initial guess; None when the network carries no marker.
+    marker_seed: np.ndarray = None  # float64[E]
 
     @property
     def n_col(self) -> int:

@@ -6,6 +6,7 @@ of element specs plus directed edges into the immutable CompiledProblem.
 """
 
 import math
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -14,7 +15,7 @@ import numpy as np
 from ..composition import build_streams, enthalpy_mass, species_mass_fractions
 from ..connectivity import connectivity_from_directed_edges, build_jacobian_pattern, Connectivity
 from ..problem import CompiledProblem
-from ..thermo.api import EQ_FROZEN, EQ_KERNEL, PERFECT_GAS
+from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from ..thermo.configure import ThermoConfig
 from .ids import (
     MASS_FLOW_INLET,
@@ -27,6 +28,7 @@ from .ids import (
     JUNCTION,
     SPLITTER,
     FORCED_SPLITTER,
+    FLAME_EQUILIBRIUM,
     MASS_SOURCE,
     ACOUSTIC_DEFAULT,
     ACOUSTIC_DUCT,
@@ -881,6 +883,34 @@ def _mass_source_params(thermo: ThermoConfig, el: ElementSpec, n_elem: int, labe
 _STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
 
 
+def _burnt_seed(conn: Connectivity, flame_nodes) -> np.ndarray:
+    """Per-edge burnt-marker initial guess ``(0 fresh / 1 burnt)`` by a topology flood-fill.
+
+    Seeds ``b = 1`` on every edge leaving an equilibrium flame (along the *declared* tail->head
+    arrows) and floods it downstream.  This is only the marker transport's **initial guess** --
+    the signed-mass-flow transport self-corrects a backward-drawn flame at convergence -- so its
+    job is purely to warm the start (a correct drawing converges in one shot).
+    """
+    n_edges = int(conn.n_edges)
+    tail = np.asarray(conn.tail_node)
+    head = np.asarray(conn.head_node)
+    out_edges = defaultdict(list)  # node -> outgoing edges (declared tail -> head)
+    for e in range(n_edges):
+        out_edges[int(tail[e])].append(e)
+    burnt = np.zeros(n_edges, dtype=np.float64)
+    stack = []
+    for e in range(n_edges):  # seed: every edge leaving a flame is burnt
+        if int(tail[e]) in flame_nodes:
+            burnt[e] = 1.0
+            stack.append(int(head[e]))
+    while stack:  # flood downstream; each edge is marked at most once -> terminates on cycles
+        for e in out_edges[stack.pop()]:
+            if burnt[e] == 0.0:
+                burnt[e] = 1.0
+                stack.append(int(head[e]))
+    return burnt
+
+
 def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec]):
     """Discover the network's feed streams and pack the equilibrium bundle.
 
@@ -995,6 +1025,17 @@ def build_problem_from_connectivity(
     node_rid = np.array([el.residual_id for el in elements], dtype=np.int64)
     node_acoustic_id = np.array([el.acoustic_id for el in elements], dtype=np.int64)
 
+    # Marker-gated reacting closure (the default/auto reacting path): a reacting network with at
+    # least one equilibrium flame and no explicit per-edge override runs EQ_MARKER on every edge
+    # and transports one extra "burnt" marker scalar (the last advected scalar) that gates the
+    # frozen/equilibrium blend.  The marker rides the *signed* mass flow, so it labels "downstream
+    # of a flame" robustly regardless of how the edges were drawn -- demoting the old topology
+    # flood-fill to the marker's initial guess.  An explicit ``edge_models`` keeps the hard
+    # per-edge closure (EQ_FROZEN/EQ_KERNEL, no marker), the power-user escape hatch.
+    flame_nodes = {n for n in range(n_nodes) if int(node_rid[n]) == FLAME_EQUILIBRIUM}
+    marker_gated = thermo.model_id == EQ_KERNEL and bool(flame_nodes) and edge_models is None
+    n_marker = 1 if marker_gated else 0
+
     # pack node float params in node order.  A boundary element that prescribes
     # advected scalars carries [base, h_t, Z_el...]: slot 0 is the prescribed
     # mdot/pt/p, slot 1 the absolute total enthalpy datum (converted from Tt), and
@@ -1005,6 +1046,10 @@ def build_problem_from_connectivity(
     # The mass-flow / choked-nozzle outlets are outflow-only (no backflow), so they carry no
     # such donor -- their edge inherits the interior scalars (scalar-transparent, see node_donor).
     boundary_rids = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
+    # The burnt marker is the *last* advected scalar, so its donor param sits after the
+    # composition: a fresh feed/backflow enters with marker = 0 (an inlet injecting already-burnt
+    # gas is the exception, not yet exposed).  Appended only when the network is marker-gated.
+    marker_param = [0.0] * n_marker
     npar_f = []
     npar_fptr = np.zeros(n_nodes + 1, dtype=np.int64)
     for n, el in enumerate(elements):
@@ -1012,9 +1057,9 @@ def build_problem_from_connectivity(
         k = -1 if node_stream is None else node_stream.get(n, -1)
         if el.residual_id in boundary_rids and len(fp) >= 2:
             base, Tt = float(fp[0]), float(fp[1])
-            fp = [base] + _boundary_scalars(thermo, el, Tt, n_elem, _node_label(n, el), k)
+            fp = [base] + _boundary_scalars(thermo, el, Tt, n_elem, _node_label(n, el), k) + marker_param
         elif el.residual_id == MASS_SOURCE:
-            fp = _mass_source_params(thermo, el, n_elem, _node_label(n, el), k)
+            fp = _mass_source_params(thermo, el, n_elem, _node_label(n, el), k) + marker_param
         npar_f.extend(fp)
         npar_fptr[n + 1] = npar_fptr[n] + len(fp)
     npar_f = np.array(npar_f, dtype=np.float64)
@@ -1031,48 +1076,58 @@ def build_problem_from_connectivity(
     # per-node dynamic-source descriptor (S(omega) provision; mean flow ignores it)
     node_dynamic_source = tuple(getattr(el, "dynamic_source", None) for el in elements)
 
-    n_solve = 3 + thermo.n_elem
+    n_scalars = thermo.n_elem + n_marker  # composition mixture fractions + the optional burnt marker
+    n_solve = 3 + n_scalars
+    marker_row = (3 + thermo.n_elem) if marker_gated else -1  # the marker is the last band-1 row
     pat = build_jacobian_pattern(conn, degrees, n_solve=n_solve)
 
-    # residual scales: node rows, then the advected-scalar transport rows
-    # (h_t for every edge, then each composition scalar for every edge).
-    # Composition scalars are elemental mass fractions, O(1), so scale = 1.
+    # residual scales: node rows, then the advected-scalar transport rows (h_t for every edge,
+    # then each composition scalar for every edge, then the marker for every edge).  Composition
+    # mixture fractions and the marker are O(1) (in [0, 1]), so their scale = 1.
     z_scale = 1.0
     res_scale = []
     for n, el in enumerate(elements):
         res_scale.extend(_row_kinds(el.residual_id, degrees[n], mdot_ref, p_ref))
     res_scale.extend([h_ref] * conn.n_edges)
-    for _ in range(thermo.n_elem):
+    for _ in range(n_scalars):
         res_scale.extend([z_scale] * conn.n_edges)
     res_scale = np.array(res_scale, dtype=np.float64)
 
-    var_scale = np.array([mdot_ref, p_ref, h_ref] + [z_scale] * thermo.n_elem, dtype=np.float64)
+    var_scale = np.array([mdot_ref, p_ref, h_ref] + [z_scale] * n_scalars, dtype=np.float64)
 
-    # per-edge thermo model (default: the config's model on every edge)
+    # per-edge thermo model: marker-gated -> EQ_MARKER everywhere; explicit override -> verbatim;
+    # otherwise the config's model on every edge.
     if edge_models is None:
-        edge_model = np.full(conn.n_edges, thermo.model_id, dtype=np.int64)
+        edge_model = np.full(conn.n_edges, EQ_MARKER if marker_gated else thermo.model_id, dtype=np.int64)
     else:
         edge_model = np.ascontiguousarray(edge_models, dtype=np.int64)
         if edge_model.shape[0] != conn.n_edges:
             raise ValueError(f"edge_models has {edge_model.shape[0]} entries but the network has {conn.n_edges} edges")
 
-    # an unburnt (EQ_FROZEN) edge reconstructs its species from the feed streams; at
-    # least one stream must exist (an inlet / mass source must inject a composition).
-    if thermo.model_id != PERFECT_GAS and np.any(edge_model == EQ_FROZEN):
+    # an unburnt (EQ_FROZEN) or marker-gated (EQ_MARKER, which runs the frozen leg) edge
+    # reconstructs species from the feed streams; at least one stream must exist (an inlet /
+    # mass source must inject a composition).
+    if thermo.model_id != PERFECT_GAS and np.any((edge_model == EQ_FROZEN) | (edge_model == EQ_MARKER)):
         n_streams = int(thermo.ti[5]) if thermo.ti.shape[0] > 5 else 0
         if n_streams == 0:
             raise ValueError(
-                "the network has EQ_FROZEN (unburnt) edges but no feed streams were "
-                "found; an inlet or mass source must inject an explicit species "
-                "composition for the frozen closure to reconstruct from"
+                "the network has frozen / marker-gated (unburnt-capable) edges but no feed streams "
+                "were found; an inlet or mass source must inject an explicit species composition "
+                "for the frozen closure to reconstruct from"
             )
+
+    # burnt-marker initial guess: the old topology flood-fill, demoted to the marker's seed
+    # (b = 1 downstream of a flame along the declared arrows, b = 0 elsewhere).  Correctness no
+    # longer depends on it -- the transport self-corrects a backward-drawn flame -- it only warms
+    # the start.  None when the network carries no marker.
+    marker_seed = _burnt_seed(conn, flame_nodes) if marker_gated else None
 
     return CompiledProblem(
         model_id=thermo.model_id,
         tf=thermo.tf,
         ti=thermo.ti,
         n_elem=thermo.n_elem,
-        n_solve=3 + thermo.n_elem,
+        n_solve=n_solve,
         n_nodes=n_nodes,
         n_edges=conn.n_edges,
         n_eq=pat.n_eq,
@@ -1098,4 +1153,6 @@ def build_problem_from_connectivity(
         node_names=node_names,
         node_dynamic_source=node_dynamic_source,
         scalar_names=tuple(thermo.element_names),
+        marker_row=marker_row,
+        marker_seed=marker_seed,
     )

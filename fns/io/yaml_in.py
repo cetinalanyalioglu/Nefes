@@ -337,25 +337,36 @@ def _reacting_h_ref(gas, specs) -> float:
 
 
 def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
-    """Per-edge thermo-model ids for the compiled problem (``None`` -> the gas default).
+    """Per-edge thermo-model ids for the compiled problem (``None`` -> the gas/marker default).
 
-    Perfect gas: every edge follows the gas default (``None``).  Reacting: an explicit edge
-    closure (``frozen`` / ``equilibrium``) wins; an ``auto`` edge is frozen (unburnt) upstream of
-    an :func:`~fns.elements.catalog.equilibrium_flame` and equilibrium (burnt) downstream of one
-    (flood-filled along the flow direction).  With no flame in the network every ``auto`` edge is
-    equilibrium (equilibrium-everywhere, the base reacting model).
+    Perfect gas: every edge follows the gas default (``None``).  Reacting:
+
+    * **all ``auto``** (the common case) -> every edge ``None``, deferring to the marker-gated
+      closure: :func:`~fns.elements.catalog.build_problem` adds the transported burnt marker and
+      runs ``EQ_MARKER`` on every edge.  The marker rides the *signed* mass flow, so the
+      frozen/equilibrium split is orientation-proof (no flood-fill labeling, no draw-direction
+      hazard) -- the topology flood-fill survives only as the marker's initial guess.
+    * **any explicit ``frozen`` / ``equilibrium``** -> the hard per-edge closure (no marker): the
+      pinned edges take their stated closure and the remaining ``auto`` edges are labeled by the
+      flood-fill (frozen upstream of a flame, equilibrium downstream).  Here the declared-arrow
+      labeling *is* load-bearing, so a flame not drawn flow-aligned is warned about.
     """
     n_edges = len(parsed)
     if not reacting:
         return [None] * n_edges
 
+    # all-auto: defer to the marker-gated closure (orientation-robust; build_problem marker-gates).
+    if all(edge_tokens[ei] == "auto" for ei in range(n_edges)):
+        for tok in edge_tokens:
+            if tok != "auto":  # defensive: only reachable if a token is malformed
+                raise ValueError(f"unknown edge closure {tok!r}; choose 'auto', 'frozen' or 'equilibrium'")
+        return [None] * n_edges
+
     flame_nodes = {i for i, sp in enumerate(specs) if sp.residual_id == FLAME_EQUILIBRIUM}
-    # Orientation guard: the auto frozen/equilibrium split floods "burnt" downstream of a flame
-    # along the *declared* tail->head arrows, so a flame whose edges are not drawn flow-aligned
-    # (no outgoing edge -> nothing seeded burnt; no incoming edge -> no reactant approach) is
-    # silently mislabeled.  Warn loudly -- the burnt-marker closure (transported along the signed
-    # mass flow) is the orientation-proof fix; until then, draw flame edges in the flow direction
-    # or set the per-edge closure explicitly.
+    # Orientation guard (hard-closure path only): the flood-fill labels "burnt" downstream of a
+    # flame along the *declared* tail->head arrows, so a flame not drawn flow-aligned (no outgoing
+    # edge -> nothing seeded burnt; no incoming edge -> no reactant approach) is silently
+    # mislabeled.  The marker-gated (all-auto) path above is immune; switch to it to avoid this.
     out_deg = defaultdict(int)
     in_deg = defaultdict(int)
     for ei, s, t, _area, _name in parsed:
@@ -365,9 +376,10 @@ def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
         if out_deg[f] == 0 or in_deg[f] == 0:
             warnings.warn(
                 f"flame node {f} is not drawn flow-aligned (declared in/out edges: {in_deg[f]}/{out_deg[f]}); "
-                "the auto frozen/equilibrium edge labeling floods burnt along the declared arrows, so this "
-                "flame's reactant/product sides may be mislabeled. Draw its edges in the flow direction, or set "
-                "each incident edge's closure explicitly ('frozen'/'equilibrium').",
+                "the explicit hard-closure flood-fill labels burnt along the declared arrows, so this flame's "
+                "reactant/product sides may be mislabeled. Draw its edges in the flow direction, set each "
+                "incident edge's closure explicitly, or use all-'auto' edges (the orientation-proof marker "
+                "closure).",
                 stacklevel=2,
             )
     burnt = set()

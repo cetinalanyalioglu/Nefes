@@ -126,11 +126,12 @@ def edge_caloric(prob, x_bar):
         ``E`` rows ``(a, m, b)``, one per edge.
     """
     from ..solver.control import states_table
-    from ..thermo.api import thermo_state, PERFECT_GAS
+    from ..thermo.api import thermo_state, PERFECT_GAS, EQ_MARKER, EQ_KERNEL, EQ_FROZEN
 
     est = states_table(prob, x_bar)
     K = float(prob.tf[0]) / float(prob.tf[1])
     n_elem = int(prob.n_elem)
+    marker_row = int(getattr(prob, "marker_row", -1))
     x_bar = np.ascontiguousarray(x_bar)
     rows = []
     for e in range(int(prob.n_edges)):
@@ -141,12 +142,19 @@ def edge_caloric(prob, x_bar):
         if mid == PERFECT_GAS:
             rows.append((-K * p / rho**2, u, K / rho))
             continue
+        # A marker-gated edge is bimodal at convergence (marker ~ 0 or 1), so its blend is the
+        # *dominant* closure and its caloric derivatives equal that closure's (the gate depends on
+        # the marker, not on rho/h/p).  Map EQ_MARKER to the dominant pure closure for the step.
+        eff = mid
+        if mid == EQ_MARKER:
+            b_mark = float(x_bar[marker_row, e]) if marker_row >= 0 else 0.0
+            eff = EQ_KERNEL if b_mark >= 0.5 else EQ_FROZEN
         # reacting: rho = rho(xi, h_t, p) (KE dropped); invert by complex step.
         xi = np.ascontiguousarray(x_bar[3 : 3 + n_elem, e]).astype(np.complex128)
         ht = complex(x_bar[2, e])
         d = 1e-30
-        drho_dh = thermo_state(mid, prob.tf, prob.ti, xi, ht + 1j * d, complex(p))[1].imag / d
-        drho_dp = thermo_state(mid, prob.tf, prob.ti, xi, ht + 0j, p + 1j * d)[1].imag / d
+        drho_dh = thermo_state(eff, prob.tf, prob.ti, xi, ht + 1j * d, complex(p))[1].imag / d
+        drho_dp = thermo_state(eff, prob.tf, prob.ti, xi, ht + 0j, p + 1j * d)[1].imag / d
         a = 1.0 / drho_dh  # (dh/drho)_p
         b = -drho_dp / drho_dh  # (dh/dp)_rho
         rows.append((a, 0.0, b))

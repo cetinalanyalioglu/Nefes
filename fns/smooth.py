@@ -53,6 +53,31 @@ def smooth_step(x, delta):
 
 
 @njit(cache=True)
+def marker_gate(x, delta):
+    """Burnt-marker blend weight: a smooth gate with ``g(0) = 0`` and ``g(1) = 1`` exactly.
+
+    The reacting closure blends the frozen (unburnt) and equilibrium (burnt) states by
+    ``g = marker_gate(b)`` of the transported burnt marker ``b`` (theory: the marker is
+    bimodal at convergence, ``b in {0, 1}``).  Built by re-centering and **normalizing** the
+    smooth step about ``b = 1/2``::
+
+        g(b) = (S(b - 1/2) - S(-1/2)) / (S(1/2) - S(-1/2)),   S(.) = smooth_step(., delta)
+
+    so ``g(0) = 0`` and ``g(1) = 1`` to machine precision (the normalization removes the
+    rational step's tail leak) -- a frozen edge is *pure* frozen and a burnt edge *pure*
+    equilibrium, with the blend active only in transients.  Monotone and bounded for every
+    real ``b`` (no overflow, no overshoot blow-up outside ``[0, 1]``), and complex-step-safe
+    (only ``smooth_step`` primitives).  ``delta`` sets the transition width; the zero-leak
+    normalization makes the converged accuracy independent of it, so it can stay gentle
+    (Newton-friendly).  ``dg/db`` is small at ``b in {0, 1}``, so the marker is nearly
+    decoupled from the acoustics at the converged state.
+    """
+    s_lo = smooth_step(-0.5, delta)
+    s_hi = smooth_step(0.5, delta)
+    return (smooth_step(x - 0.5, delta) - s_lo) / (s_hi - s_lo)
+
+
+@njit(cache=True)
 def smooth_sign_sq(x, delta):
     """``x * |x|`` regularized as ``x * sqrt(x^2 + delta^2)`` (smooth at 0).
 

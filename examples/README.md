@@ -80,6 +80,15 @@
   reacting **equilibrium flame** (unburnt `EQ_FROZEN` approach → `EQ_KERNEL` products,
   "ignition" by a per-edge closure switch). The network flame T matches the standalone
   equilibrium across an equivalence-ratio sweep. Self-contained `matplotlib`.
+- **`burnt_marker.ipynb`** — the **orientation-proof reacting closure**. A transported
+  **burnt marker** scalar `b` gates a single `EQ_MARKER` blend of the frozen (unburnt) and
+  equilibrium (burnt) states; the flame stamps `b = 1` on whatever edge the flow actually
+  leaves it by (the marker rides the *signed* mass flow), so the frozen/equilibrium split is
+  correct no matter how the edges were drawn. Shows the smooth blend gate, the marker field
+  jumping with `T` across the flame, **seed-independent self-correction** (three scrambled
+  initial guesses recover the same answer), the per-edge marker / species / `W` / `cp`
+  post-processing, and that the acoustic transfer matrix is identical to an explicit
+  hard-closure network (the marker is acoustically passive). `plotly`.
 - **`gas_turbine_combustor.ipynb`** — a **complete gas-turbine combustor**:
   compressor-discharge air → a **fuel mass source** (the injector) → an **equilibrium
   flame** → a **dilution-air mass source** (cooling to the turbine-inlet temperature) →

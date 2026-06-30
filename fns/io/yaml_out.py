@@ -89,6 +89,8 @@ _FIELD_META = {
     "c": ("Speed of sound", "m/s"),
     "h_t": ("Total enthalpy", "J/kg"),
     "area": ("Area", "m^2"),
+    "W": ("Molar mass", "kg/mol"),
+    "cp": ("Specific heat", "J/(kg K)"),
 }
 
 # Forced-response field key -> (display label, ForcedResponse basis, component, unit).
@@ -334,11 +336,46 @@ def _build_datasets(
             MetaEntry("converged", "Converged", bool(solution.converged)),
         ]
         datasets.append(DataSet("Mean flow", items, include_in_save, info=info))
+        chem = _chemistry_items(network, solution)
+        if chem:
+            datasets.append(
+                DataSet("Chemistry", chem, include_in_save, info=[MetaEntry("kind", "Analysis", "Chemistry")])
+            )
     if forced is not None:
         datasets += _forced_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save)
     if eigenmodes is not None:
         datasets += _eigenmode_datasets(network, eigenmodes, eig_modes, eig_fields, node_data, include_in_save)
     return datasets
+
+
+def _chemistry_items(network, solution):
+    """Per-edge composition datasets: feed-stream mixture fractions and species mole fractions.
+
+    Emitted by default whenever the network transports a composition.  Each transported
+    feed stream becomes one edge field ``xi:<stream>``; for a reacting network each species
+    present anywhere becomes one edge field ``X:<species>`` (mole fraction, ``0`` where the
+    species is absent).  Light enough to always include -- the per-edge chemistry the solver
+    otherwise hides behind the conserved mixture fractions.
+    """
+    prob = solution.problem
+    n_elem = int(prob.n_elem)
+    if n_elem == 0:
+        return []
+    n_edges = len(network._edges)
+    items = []
+    # transported feed-stream mixture fractions (always present when composition is carried)
+    for name in prob.scalar_names:
+        vals = [float(solution.mixture_fractions(e).get(name, 0.0)) for e in range(n_edges)]
+        items.append(DataItem(f"xi:{name}", "edge", vals, ""))
+    # solved chemical species (reacting only -- a perfect gas carries passive scalars, no species)
+    lib = network.gas.library
+    if lib is not None:
+        per_edge = [solution.species(e, basis="mole") for e in range(n_edges)]
+        present = [s for s in (sp.name for sp in lib.species) if any(s in d for d in per_edge)]
+        for s in present:
+            vals = [float(d.get(s, 0.0)) for d in per_edge]
+            items.append(DataItem(f"X:{s}", "edge", vals, ""))
+    return items
 
 
 def _select_fields(fields):

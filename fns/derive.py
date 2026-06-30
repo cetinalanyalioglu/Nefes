@@ -15,6 +15,7 @@ from numba import njit
 from .closure import closure_solve
 from .thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL
 from .thermo.equilibrium import eq_kernel_state_warm
+from .thermo._chem import RU
 
 # edge-state table (est) slot layout
 ES_MDOT = 0
@@ -27,7 +28,9 @@ ES_C = 6
 ES_M = 7
 ES_PT = 8
 ES_AREA = 9
-NS_EST = 10
+ES_W = 10  # mixture molar mass [kg/mol] (rho * R_u * T / p)
+ES_CP = 11  # mixture specific heat [J/(kg K)], consistent with the local sound speed
+NS_EST = 12
 
 
 @njit(cache=True)
@@ -69,6 +72,14 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out, nj_io):
     out[ES_M] = M
     out[ES_PT] = pt
     out[ES_AREA] = area
+    # Mixture molar mass and specific heat, derived from the recovered state (cheap,
+    # complex-step-safe).  gamma = c^2 rho / p is the local isentropic exponent (the
+    # equilibrium one on an EQ_KERNEL edge, the frozen one on an EQ_FROZEN edge, since
+    # ``c`` carries that flavor); cp = c^2 / (T (gamma - 1)) = gamma R / (gamma - 1) is the
+    # specific heat consistent with it (exact for a perfect gas).  W = rho R_u T / p.
+    gamma = c * c * rho / p
+    out[ES_W] = rho * RU * T / p
+    out[ES_CP] = c * c / (T * (gamma - 1.0))
 
 
 @njit(cache=True)

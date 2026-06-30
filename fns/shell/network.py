@@ -15,7 +15,7 @@ from ..elements.ids import RESIDUAL_NAMES
 from ..problem import CompiledProblem
 from ..solver import solve as _solve
 from ..solver.control import states_table, initial_guess, print_states, residual_breakdown, print_residuals
-from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
+from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
 
 # ES for "edge state"
 _EDGE_FIELDS = {
@@ -29,6 +29,8 @@ _EDGE_FIELDS = {
     "M": ES_M,
     "p_t": ES_PT,
     "area": ES_AREA,
+    "W": ES_W,
+    "cp": ES_CP,
 }
 
 # Cap on per-table rows in the Network repr (elements / edges); larger networks are truncated.
@@ -524,8 +526,62 @@ class Solution:
         return {name: float(col[idx]) for name, idx in _EDGE_FIELDS.items()}
 
     def field(self, name: str) -> np.ndarray:
-        """Return the named field (e.g. ``"mdot"``, ``"p"``, ``"M"``) across all edges."""
+        """Return the named field across all edges.
+
+        Names are the keys of the per-edge state: ``mdot, p, h_t, rho, u, T, c, M, p_t,
+        area``, plus the mixture molar mass ``W`` [kg/mol] and specific heat ``cp``
+        [J/(kg K)] (the latter consistent with the local sound speed -- exact for a
+        perfect gas, the frozen value on an unburnt edge and the equilibrium value on a
+        burnt one).
+        """
         return self.table()[_EDGE_FIELDS[name], :]
+
+    def mixture_fractions(self, e: int) -> dict:
+        """Transported feed-stream mixture fractions ``{stream_label: xi}`` on edge ``e``.
+
+        These are the conserved scalars the solver carries (one per distinct injected feed),
+        not chemical species; for the actual species use :meth:`species`.  Empty for a
+        perfect gas with no passive scalars.
+        """
+        names = self.problem.scalar_names
+        xi = self.result.x[3 : 3 + self.problem.n_elem, e]
+        return {name: float(v) for name, v in zip(names, xi)}
+
+    def _chemistry_caches(self):
+        """Lazily build and cache the per-edge product moles and per-stream mass fractions."""
+        if getattr(self, "_chem_cache", None) is None:
+            from ..chemistry import product_moles, stream_mass_fractions
+
+            lib = self.network.gas.library
+            moles = product_moles(self.problem, self.result.x)
+            stream_Y = None if lib is None else stream_mass_fractions(self.network._elements, lib)
+            self._chem_cache = (moles, stream_Y)
+        return self._chem_cache
+
+    def species(self, e: int, basis: str = "mole") -> dict:
+        """Solved chemical species ``{name: fraction}`` on edge ``e``.
+
+        A burnt (equilibrium) edge reports its HP-equilibrium products; an unburnt (frozen)
+        edge reports the forward blend of its feed streams; a perfect-gas edge has no
+        chemical species (use :meth:`mixture_fractions` for its passive scalars).
+
+        Parameters
+        ----------
+        e : int
+            Edge id.
+        basis : {"mole", "mass"}, optional
+            Mole or mass fractions (default ``"mole"``).
+
+        Returns
+        -------
+        dict
+            ``{species_name: fraction}`` for the species present on the edge.
+        """
+        from ..chemistry import edge_species
+
+        moles, stream_Y = self._chemistry_caches()
+        lib = self.network.gas.library
+        return edge_species(self.problem, self.result.x, e, lib, basis=basis, moles=moles, stream_Y=stream_Y)
 
     def save(self, path: str, **kwargs) -> None:
         """Write the network and this solution's results as a UI-readable case.

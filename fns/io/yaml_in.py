@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import warnings
 from collections import defaultdict
 from typing import List, Optional, Tuple
 
@@ -349,6 +350,26 @@ def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
         return [None] * n_edges
 
     flame_nodes = {i for i, sp in enumerate(specs) if sp.residual_id == FLAME_EQUILIBRIUM}
+    # Orientation guard: the auto frozen/equilibrium split floods "burnt" downstream of a flame
+    # along the *declared* tail->head arrows, so a flame whose edges are not drawn flow-aligned
+    # (no outgoing edge -> nothing seeded burnt; no incoming edge -> no reactant approach) is
+    # silently mislabeled.  Warn loudly -- the burnt-marker closure (transported along the signed
+    # mass flow) is the orientation-proof fix; until then, draw flame edges in the flow direction
+    # or set the per-edge closure explicitly.
+    out_deg = defaultdict(int)
+    in_deg = defaultdict(int)
+    for ei, s, t, _area, _name in parsed:
+        out_deg[s] += 1
+        in_deg[t] += 1
+    for f in flame_nodes:
+        if out_deg[f] == 0 or in_deg[f] == 0:
+            warnings.warn(
+                f"flame node {f} is not drawn flow-aligned (declared in/out edges: {in_deg[f]}/{out_deg[f]}); "
+                "the auto frozen/equilibrium edge labeling floods burnt along the declared arrows, so this "
+                "flame's reactant/product sides may be mislabeled. Draw its edges in the flow direction, or set "
+                "each incident edge's closure explicitly ('frozen'/'equilibrium').",
+                stacklevel=2,
+            )
     burnt = set()
     if flame_nodes:
         adj = defaultdict(list)  # node -> [(edge id, head node)], following the flow direction

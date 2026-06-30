@@ -29,6 +29,7 @@ from ..elements.ids import (
     row_kind_tags,
 )
 from ..thermo.api import EQ_KERNEL, PERFECT_GAS
+from ..scaling import compose_scales, measure_inflow_scales
 from .linear import newton_step, lm_step, scaled_system, col_scale
 
 EPS_FB = 1e-5
@@ -310,9 +311,8 @@ def _merit(prob, x2d, eps, kappa, res_scale):
     return float(np.linalg.norm(R_hat)), R
 
 
-def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, reporter=None):
-    res_scale = prob.res_scale
-    vcol = col_scale(prob.var_scale, prob.n_edges)
+def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, res_scale, var_scale, reporter=None):
+    vcol = col_scale(var_scale, prob.n_edges)
     lam = 1e-3
     norm, R = _merit(prob, x2d, eps, kappa, res_scale)
     for it in range(max_iter):
@@ -363,6 +363,7 @@ def solve(
     max_iter=80,
     kappa_stages=(0.1, 0.01, 0.0),
     kappa_scale="dp",
+    adaptive_scale=True,
     verbose=0,
     progress_interval=1,
 ):
@@ -392,6 +393,13 @@ def solve(
         absolute coefficient.  ``"absolute"`` always uses that historical unit coefficient
         (artificial drop ``kappa * mdot``).  Either way ``eps`` tracks the dimensionless
         ``kappa``.
+    adaptive_scale : bool, optional
+        When ``True`` (default), the residual / variable scales are re-measured from the
+        realized inflow at each homotopy stage (total inlet ``mdot`` for the mass rows, the
+        mass-weighted mean inlet ``|h_t|`` for the energy rows) instead of the fixed compiled
+        references -- so the nondimensionalization tracks the actual flow and the user need not
+        supply ``mdot_ref`` / ``h_ref``.  The quiescent ``mdot = 0`` case falls back to the seed
+        scales.  ``False`` uses the compiled ``prob.res_scale`` / ``prob.var_scale``.
     verbose : int or bool, optional
         Progress verbosity.  ``0``/``False`` is silent; ``1``/``True`` prints a
         one-line gross-residual summary per homotopy stage; ``2`` additionally prints
@@ -433,11 +441,22 @@ def solve(
     total_it = 0
     converged = False
     norm = np.inf
+    # seed scales from the compiled references; the adaptive path re-measures them from the
+    # realized inflow at each homotopy stage (kept constant within a stage).
+    seed_mass, p_scale, seed_h = float(prob.var_scale[0]), float(prob.var_scale[1]), float(prob.var_scale[2])
+    degrees = np.diff(prob.row_ptr)
     for kappa in kappa_stages:
         eps = _stage_eps(mdot_ref, kappa)
+        if adaptive_scale:
+            mass, h = measure_inflow_scales(prob, x2d, seed_mass, seed_h)
+            res_scale, var_scale = compose_scales(prob.node_rid, degrees, prob.n_edges, prob.n_elem, mass, p_scale, h)
+        else:
+            res_scale, var_scale = prob.res_scale, prob.var_scale
         reporter.stage_start(kappa, eps)
         # eps tracks the dimensionless kappa; the kernel friction uses the scaled coefficient.
-        x2d, converged, it, norm = _solve_stage(prob, x2d, eps, kappa * r_art, tol, max_iter, history, reporter)
+        x2d, converged, it, norm = _solve_stage(
+            prob, x2d, eps, kappa * r_art, tol, max_iter, history, res_scale, var_scale, reporter
+        )
         total_it += it
         reporter.stage_end(kappa, it, norm, converged)
         if not converged and kappa == 0.0:

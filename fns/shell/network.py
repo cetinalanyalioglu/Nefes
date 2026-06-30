@@ -124,26 +124,53 @@ class Network:
 
     @property
     def h_ref(self) -> float:
-        """Reference enthalpy: the explicit datum if set, else ``cp * T_ref`` (perfect-gas convention)."""
+        """Reference enthalpy scale (a hidden override; normally auto-derived).
+
+        Like :attr:`mdot_ref`, only the seed for the residual scaling -- the solve re-measures
+        the enthalpy scale from the realized inflow.  Auto-derivation is the perfect-gas
+        ``cp * T_ref``; the reacting backend passes its formation-inclusive datum explicitly.
+        Set ``h_ref=`` only to override.
+        """
         if self._h_ref is not None:
             return self._h_ref
         return self.gas.tf[0] * self.T_ref
 
     @property
     def mdot_ref(self) -> float:
-        """Reference mass flow: the explicit value if set, else the largest mass-flow inlet, else a M=0.3 estimate."""
+        """Reference mass-flow scale (a hidden override; normally auto-derived).
+
+        This is only the *seed* for the residual scaling -- the solve re-measures it from
+        the realized inflow at each homotopy stage (``adaptive_scale``) -- so it need only be
+        order-of-magnitude right.  Auto-derivation: the **total** specified inflow when every
+        inlet is a mass-flow inlet; otherwise a dP-based isentropic estimate
+        ``A * sqrt(2 rho dP_max)`` from the boundary pressures (replacing the old
+        pressure-blind M=0.3 guess); a quiescent / pressureless network falls back to the
+        M=0.3 estimate.  Set ``mdot_ref=`` on the network only to override it.
+        """
         if self._mdot_ref is not None:
             return self._mdot_ref
-        specs = [el.fparams[0] for el in self._elements if el.residual_id == cat.MASS_FLOW_INLET]
-        if specs and max(abs(s) for s in specs) > 0.0:
-            return max(abs(s) for s in specs)
-        cp, R = self.gas.tf[0], self.gas.tf[1]
-        gamma = cp / (cp - R)
-        rho = self.p_ref / (R * self.T_ref)
-        c = np.sqrt(gamma * R * self.T_ref)
-        # Median edge area is used as a proxy for the average area.
+        mass = [abs(el.fparams[0]) for el in self._elements if el.residual_id == cat.MASS_FLOW_INLET]
+        has_pt = any(el.residual_id == cat.PT_INLET for el in self._elements)
+        # every inlet a mass-flow inlet -> the total specified inflow is exactly known.
+        if mass and not has_pt and sum(mass) > 0.0:
+            return sum(mass)
         a_med = float(np.median([a for (_t, _h, a) in self._edges]))
-        return 0.3 * rho * c * a_med
+        rho = self.p_ref / (self.gas.tf[1] * self.T_ref) if self.gas.model_id == PERFECT_GAS else 1.0
+        # pressure-driven: an isentropic mass-flux estimate from the largest boundary dP.
+        dp = self._boundary_dp()
+        if dp > 0.0:
+            return a_med * np.sqrt(2.0 * rho * dp)
+        # quiescent / no pressure spread: the M=0.3 fallback (perfect gas) or a unit scale.
+        if self.gas.model_id == PERFECT_GAS:
+            cp, R = self.gas.tf[0], self.gas.tf[1]
+            c = np.sqrt((cp / (cp - R)) * R * self.T_ref)
+            return 0.3 * rho * c * a_med
+        return max(sum(mass), 1.0)
+
+    def _boundary_dp(self) -> float:
+        """Largest a-priori pressure drop across the boundary pressure references (0 if < 2)."""
+        refs = [el.fparams[0] for el in self._elements if el.residual_id in (cat.PT_INLET, cat.P_OUTLET)]
+        return (max(refs) - min(refs)) if len(refs) >= 2 else 0.0
 
     # -- compile / solve ----------------------------------------------------------------------------------------------
 

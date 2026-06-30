@@ -13,8 +13,8 @@ The recovered state is packed into a fixed-width "edge-state table" column
 from numba import njit
 
 from .closure import closure_solve
-from .thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL
-from .thermo.equilibrium import eq_kernel_state_warm
+from .thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER
+from .thermo.equilibrium import eq_kernel_state_warm, eq_marker_state_warm
 from .thermo._chem import RU
 
 # edge-state table (est) slot layout
@@ -34,7 +34,7 @@ NS_EST = 12
 
 
 @njit(cache=True)
-def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out, nj_io):
+def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, marker, out, nj_io):
     """Recover one edge's full state into ``out[0:NS_EST]`` (dtype-generic).
 
     For the reacting models the equilibrium/frozen solve is the dominant cost and
@@ -44,9 +44,12 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out, nj_io):
     gas keeps its two distinct cheap steps (the density root-find carries the exact
     ``h = h_t - u^2/2`` kinetic-energy coupling).
 
+    ``marker`` is the transported burnt-marker scalar; only the ``EQ_MARKER`` model reads
+    it, to gate the frozen/equilibrium blend (the other models ignore it).
+
     ``nj_io`` is the per-edge equilibrium warm-start cache (a moles vector): the
-    ``EQ_KERNEL`` solve seeds from it and writes the converged composition back, so a
-    nearby re-solve (the next Newton iterate or a complex-step Jacobian column)
+    ``EQ_KERNEL`` / ``EQ_MARKER`` solve seeds from it and writes the converged composition
+    back, so a nearby re-solve (the next Newton iterate or a complex-step Jacobian column)
     converges fast.  It only hints the solver -- the equilibrium is unique -- and is
     ignored (any size) by the perfect-gas and frozen branches.
     """
@@ -56,6 +59,9 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out, nj_io):
     elif model_id == EQ_KERNEL:
         # reacting (equilibrium): one warm-started solve gives rho, T, c, W; KE dropped (h = h_t)
         T, rho, c, W = eq_kernel_state_warm(tf, ti, Z_el, ht, p, nj_io)
+    elif model_id == EQ_MARKER:
+        # reacting (marker-gated): blend frozen (b=0) and equilibrium (b=1); KE dropped (h = h_t)
+        T, rho, c, W = eq_marker_state_warm(tf, ti, Z_el, marker, ht, p, nj_io)
     else:
         # reacting (frozen): one solve gives rho, T, c, W; KE dropped (h = h_t)
         T, rho, c, W = thermo_state(model_id, tf, ti, Z_el, ht, p)
@@ -83,16 +89,20 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, out, nj_io):
 
 
 @njit(cache=True)
-def recover_all(edge_model, tf, ti, x, area, n_elem, est, nj_cache):
+def recover_all(edge_model, tf, ti, x, area, n_elem, marker_row, est, nj_cache):
     """Recover every edge state into ``est[NS_EST, E]`` (per-edge thermo model).
 
     ``edge_model[e]`` selects the thermo model for edge ``e`` -- so a frozen
     (unburnt) approach edge and an equilibrium (burnt) edge can coexist in one
-    network, with the flame element bridging them.  ``nj_cache`` is the per-edge
-    equilibrium warm-start cache, shape ``(E, Ns + 1)`` (moles + temperature, or
-    ``(E, 0)`` to disable); row ``e`` seeds and stores edge ``e``'s converged state.
+    network, with the flame element bridging them.  ``marker_row`` is the band-1 row of
+    the transported burnt marker (``< 0`` when the network carries none -- perfect gas, or
+    a hard-closure reacting network); it gates the ``EQ_MARKER`` blend per edge.  ``nj_cache``
+    is the per-edge equilibrium warm-start cache, shape ``(E, Ns + 1)`` (moles + temperature,
+    or ``(E, 0)`` to disable); row ``e`` seeds and stores edge ``e``'s converged state.
     """
     E = x.shape[1]
+    has_marker = marker_row >= 0
     for e in range(E):
         Z_el = x[3 : 3 + n_elem, e]
-        recover_edge(edge_model[e], tf, ti, x[0, e], x[1, e], x[2, e], area[e], Z_el, est[:, e], nj_cache[e])
+        marker = x[marker_row, e] if has_marker else x[2, e] * 0.0
+        recover_edge(edge_model[e], tf, ti, x[0, e], x[1, e], x[2, e], area[e], Z_el, marker, est[:, e], nj_cache[e])

@@ -621,6 +621,17 @@ class Solution:
         xi = self.result.x[3 : 3 + self.problem.n_elem, e]
         return {name: float(v) for name, v in zip(names, xi)}
 
+    def marker(self, e: int) -> float:
+        """Transported burnt marker on edge ``e`` (``0`` fresh / unburnt, ``1`` burnt).
+
+        The scalar that gates the reacting closure's frozen/equilibrium blend.  Bimodal at
+        convergence (a flame is a discrete ``0 -> 1`` jump), so it reads ~0 on an unburnt edge
+        and ~1 on a burnt one.  Returns ``0.0`` when the network carries no marker (a perfect
+        gas, or a reacting network built with an explicit hard per-edge closure).
+        """
+        mr = int(getattr(self.problem, "marker_row", -1))
+        return 0.0 if mr < 0 else float(self.result.x[mr, e])
+
     def _chemistry_caches(self):
         """Lazily build and cache the per-edge product moles and per-stream mass fractions."""
         if getattr(self, "_chem_cache", None) is None:

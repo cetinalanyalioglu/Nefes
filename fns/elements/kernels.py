@@ -35,14 +35,15 @@ from .ids import (
 
 
 @njit(cache=True)
-def node_donor(n, rid, s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e):
+def node_donor(n, rid, s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e):
     """Value of advected scalar ``s`` this element offers to an edge drawing from it.
 
     The advected scalars are band-1 rows ``2 .. 2 + n_scalars`` -- ``s = 0`` is
     total enthalpy ``h_t``, ``s >= 1`` are the conserved composition scalars
-    ``Z_el[s-1]`` (reactive-flow D-2/D-4).  ``mdot_e`` and ``phi_e`` are the per-edge
-    mass-flow and scalar-``s`` rows; element float params hold the boundary value
-    (``Tt`` then the per-element feed/backflow composition, in order).
+    ``Z_el[s-1]`` (reactive-flow D-2/D-4), and ``s == marker_s`` (when ``>= 0``) is the
+    transported burnt marker.  ``mdot_e`` and ``phi_e`` are the per-edge mass-flow and
+    scalar-``s`` rows; element float params hold the boundary value (``Tt`` then the
+    per-element feed/backflow composition, then the marker, in order).
     """
     base = row_ptr[n]
     deg = row_ptr[n + 1] - base
@@ -82,6 +83,14 @@ def node_donor(n, rid, s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         wphi_sum = wphi_sum + msrc * npar_f[pb + 2 + s]
         return wphi_sum / w_sum
     mix = wphi_sum / w_sum
+    if rid == FLAME_EQUILIBRIUM and s == marker_s:
+        # Burnt-marker source: the gas leaving an equilibrium flame is fully burnt (b = 1).
+        # The donor is a constant, so the smooth-upwind transport lands b = 1 on the genuinely
+        # downstream edge (the mdot_in > 0 side) regardless of the declared edge orientation --
+        # the orientation-robust "downstream of a flame" detector the topology flood-fill cannot
+        # be.  Its linearization is zero (b' reset to 0 downstream), so the source is
+        # acoustically silent; complex-step-safe (no flow-state dependence).
+        return mix * 0.0 + 1.0
     if rid == FLAME_HEAT_RELEASE and s == 0:
         # Heat-addition flame: raise the outflow's total enthalpy by Q_dot / |mdot|.
         # |mdot| is floored by smooth_abs so the jump stays bounded and smooth at

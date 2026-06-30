@@ -38,6 +38,8 @@ def assemble_residual(
     npar_fptr,
     node_row_ptr,
     transport_row0,
+    marker_row,
+    marker_s,
     eps,
     node_eps,
     eps_fb,
@@ -49,7 +51,7 @@ def assemble_residual(
     """Fill the full residual vector R (length n_eq) and the est table."""
     N = node_rid.shape[0]
     E = x.shape[1]
-    recover_all(edge_model, tf, ti, x, area, n_elem, est, nj_cache)
+    recover_all(edge_model, tf, ti, x, area, n_elem, marker_row, est, nj_cache)
 
     for n in range(N):
         eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
@@ -57,14 +59,16 @@ def assemble_residual(
             n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps_n, eps_fb, kappa, est, R, node_row_ptr
         )
 
-    # advected scalars: band-1 rows 2.. (s=0 is h_t, s>=1 are composition Z_el)
+    # advected scalars: band-1 rows 2.. (s=0 is h_t, s>=1 are composition Z_el, marker_s is the marker)
     n_scalars = x.shape[0] - 2
     mdot_e = est[ES_MDOT]
     Hd = R[:N] * 0.0
     for s in range(n_scalars):
         phi_e = x[2 + s]
         for n in range(N):
-            Hd[n] = node_donor(n, node_rid[n], s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e)
+            Hd[n] = node_donor(
+                n, node_rid[n], s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e
+            )
         for e in range(E):
             theta = smooth_step(est[ES_MDOT, e], eps)
             phi_up = theta * Hd[tail_node[e]] + (1.0 - theta) * Hd[head_node[e]]
@@ -102,6 +106,8 @@ def jacobian_fill(
     npar_fptr,
     node_row_ptr,
     transport_row0,
+    marker_row,
+    marker_s,
     n_eq,
     indptr,
     indices,
@@ -115,12 +121,13 @@ def jacobian_fill(
     """Fill the CSC ``Jdata`` array against the fixed (indptr, indices) pattern."""
     n_solve = x.shape[0]
     E = x.shape[1]
-    n_scalars = n_solve - 2  # advected scalars: h_t (s=0) + composition Z_el (s>=1)
+    n_scalars = n_solve - 2  # advected scalars: h_t (s=0) + composition Z_el (s>=1) + marker
     H = CS_H
+    has_marker = marker_row >= 0
 
     xc = x.astype(np.complex128)
     est = np.zeros((NS_EST, E), dtype=np.complex128)
-    recover_all(edge_model, tf, ti, xc, area, n_elem, est, nj_cache)
+    recover_all(edge_model, tf, ti, xc, area, n_elem, marker_row, est, nj_cache)
     Rc = np.zeros(n_eq, dtype=np.complex128)
 
     for e in range(E):
@@ -131,6 +138,7 @@ def jacobian_fill(
         for v in range(n_solve):
             c = n_solve * e + v
             xc[v, e] = x[v, e] + 1j * H
+            marker = xc[marker_row, e] if has_marker else xc[2, e] * 0.0
             recover_edge(
                 edge_model[e],
                 tf,
@@ -140,6 +148,7 @@ def jacobian_fill(
                 xc[2, e],
                 area[e],
                 xc[3 : 3 + n_elem, e],
+                marker,
                 est[:, e],
                 nj_cache[e],
             )
@@ -196,6 +205,7 @@ def jacobian_fill(
                             tail_node[e2],
                             node_rid[tail_node[e2]],
                             s,
+                            marker_s,
                             row_ptr,
                             col_edge,
                             orient,
@@ -210,6 +220,7 @@ def jacobian_fill(
                             head_node[e2],
                             node_rid[head_node[e2]],
                             s,
+                            marker_s,
                             row_ptr,
                             col_edge,
                             orient,
@@ -225,6 +236,7 @@ def jacobian_fill(
 
             # restore
             xc[v, e] = x[v, e]
+            marker = xc[marker_row, e] if has_marker else xc[2, e] * 0.0
             recover_edge(
                 edge_model[e],
                 tf,
@@ -234,6 +246,7 @@ def jacobian_fill(
                 xc[2, e],
                 area[e],
                 xc[3 : 3 + n_elem, e],
+                marker,
                 est[:, e],
                 nj_cache[e],
             )
@@ -249,6 +262,17 @@ def _resolve_node_eps(prob):
     if prob.node_eps is not None:
         return prob.node_eps
     return np.full(prob.n_nodes, -1.0, dtype=np.float64)
+
+
+def _marker_row(prob):
+    """Band-1 row of the transported burnt marker (``-1`` when the network carries none)."""
+    return int(getattr(prob, "marker_row", -1))
+
+
+def _marker_s(prob):
+    """Advected-scalar index of the burnt marker (``-1`` when absent); band-1 row is ``2 + s``."""
+    mr = int(getattr(prob, "marker_row", -1))
+    return mr - 2 if mr >= 0 else -1
 
 
 def _nj_cache_off(prob):
@@ -291,6 +315,8 @@ def residual(prob, x2d, eps, eps_fb, kappa=0.0):
         prob.npar_fptr,
         prob.node_row_ptr,
         prob.transport_row0,
+        _marker_row(prob),
+        _marker_s(prob),
         eps,
         _resolve_node_eps(prob),
         eps_fb,
@@ -322,6 +348,8 @@ def jacobian(prob, x2d, eps, eps_fb, kappa=0.0):
         prob.npar_fptr,
         prob.node_row_ptr,
         prob.transport_row0,
+        _marker_row(prob),
+        _marker_s(prob),
         prob.n_eq,
         prob.indptr,
         prob.indices,

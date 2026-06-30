@@ -17,7 +17,7 @@ from fns.io import load_case, save_case
 from fns.io.yaml_in import _parse_composition
 from fns.solver.control import states_table
 from fns.derive import ES_T, ES_RHO, ES_MDOT, ES_HT
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, PERFECT_GAS
+from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 # Stoichiometric H2/air as a single premixed feed (mole basis).
@@ -191,13 +191,15 @@ def test_inlet_inherit_vs_explicit_bc(tmp_path):
 def test_reacting_auto_edge_models_and_ignition(tmp_path):
     net = load_case(_series_reacting(tmp_path))
     assert net.gas.model_id == EQ_KERNEL
-    # auto: frozen (unburnt) upstream of the flame, equilibrium (burnt) downstream
-    assert net._edge_models == [EQ_FROZEN, EQ_KERNEL]
+    # auto: defer to the orientation-proof marker closure (EQ_MARKER on every edge + the marker)
+    assert net._edge_models == [None, None]
+    prob = net.compile()
+    assert prob.edge_model.tolist() == [EQ_MARKER, EQ_MARKER] and prob.marker_row == 3 + prob.n_elem
     sol = net.solve()
     assert sol.converged
     est = states_table(net.compile(), sol.x)
-    assert float(est[ES_T, 0]) == pytest.approx(300.0, abs=1.0)  # unburnt
-    assert float(est[ES_T, 1]) > 2000.0  # burnt
+    assert float(est[ES_T, 0]) == pytest.approx(300.0, abs=1.0)  # unburnt (marker ~ 0 -> frozen)
+    assert float(est[ES_T, 1]) > 2000.0  # burnt (marker ~ 1 -> equilibrium)
     assert float(est[ES_RHO, 0] / est[ES_RHO, 1]) > 5.0  # dilatation
     # one feed stream, discovered from the inlet composition
     assert list(net.compile().scalar_names) == ["fuel-air"]
@@ -232,7 +234,9 @@ def test_reacting_no_flame_is_equilibrium_everywhere(tmp_path):
     ]
     edges = [_edge("e1", "in", "out", 0, 0, 0, 0.05)]
     net = load_case(_dump(tmp_path, "noflame.yaml", g, nodes, edges))
-    assert net._edge_models == [EQ_KERNEL]
+    # no flame -> not marker-gated; every auto edge is plain equilibrium (the base reacting model)
+    assert net._edge_models == [None]
+    assert net.compile().edge_model.tolist() == [EQ_KERNEL]
 
 
 def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
@@ -367,10 +371,16 @@ def test_reacting_roundtrip_resolves(tmp_path):
     ga = doc["model"]["globalAttributes"]
     assert ga["thermoModel"] == "equilibrium"
     assert ga["mechanismFile"] == MECH  # preserved through provenance
-    assert [e["attributes"]["thermoModel"] for e in doc["model"]["edges"]] == ["frozen", "equilibrium"]
+    # the auto edges stay 'auto' (the marker closure handles the split internally -- no need to
+    # bake the frozen/equilibrium labels into the file); the marker rides in as a 'burnt' dataset
+    assert [e["attributes"]["thermoModel"] for e in doc["model"]["edges"]] == ["auto", "auto"]
+    chem = next(d for d in doc["data"]["datasets"] if d["name"] == "Chemistry")
+    burnt = next(it for it in chem["items"] if it["name"] == "burnt")
+    assert burnt["values"][0] == pytest.approx(0.0, abs=1e-6)  # fresh approach
+    assert burnt["values"][1] == pytest.approx(1.0, abs=1e-6)  # burnt downstream
 
     net2 = load_case(out)
-    assert net2._edge_models == [EQ_FROZEN, EQ_KERNEL]
+    assert net2._edge_models == [None, None] and net2.compile().edge_model.tolist() == [EQ_MARKER, EQ_MARKER]
     est0 = states_table(net.compile(), sol.x)
     sol2 = net2.solve()
     est1 = states_table(net2.compile(), sol2.x)

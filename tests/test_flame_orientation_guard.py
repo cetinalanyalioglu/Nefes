@@ -1,9 +1,10 @@
-"""Parse-time guard against an orientation-mislabeled equilibrium flame.
+"""Edge-closure resolution for reacting YAML networks (``_resolve_edge_models``).
 
-The ``auto`` frozen/equilibrium edge split floods "burnt" downstream of a flame along the
-*declared* tail->head arrows.  A flame whose edges are not drawn flow-aligned (no outgoing
-edge, or no incoming edge) is silently mislabeled, so the parser warns.  This is the interim
-safety net; the orientation-proof fix is the transported burnt-marker closure.
+All-``auto`` reacting networks defer to the orientation-proof burnt-marker closure (every edge
+``None`` -> ``build_problem`` marker-gates), so a flame drawn any which way is handled correctly
+with no warning.  The explicit hard-closure path (any ``frozen`` / ``equilibrium`` token) keeps
+the declared-arrow flood-fill, whose labeling *is* load-bearing -- so a flame not drawn
+flow-aligned is still warned about there.
 """
 
 import warnings
@@ -20,55 +21,65 @@ class _Spec:
 
 # specs: node 1 is an equilibrium flame, flanked by two passthrough nodes
 _SPECS = [_Spec(0), _Spec(FLAME_EQUILIBRIUM), _Spec(0)]
-_TOKENS = ["auto", "auto"]
 
 
-def _resolve(parsed):
+def _resolve(parsed, tokens):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        models = _resolve_edge_models(True, _SPECS, parsed, _TOKENS)
+        models = _resolve_edge_models(True, _SPECS, parsed, tokens)
     return models, [w for w in caught if "flow-aligned" in str(w.message)]
 
 
-def test_flow_aligned_flame_no_warning():
-    # edge 0: 0 -> 1 (approach), edge 1: 1 -> 2 (downstream) -> frozen then equilibrium
+# -- all-auto: the orientation-proof marker closure --------------------------
+
+
+def test_all_auto_defers_to_marker_no_warning():
+    # flow-aligned: edge 0 (0->1 approach), edge 1 (1->2 downstream)
     parsed = [(0, 0, 1, 0.1, "a"), (1, 1, 2, 0.1, "b")]
-    models, warns = _resolve(parsed)
+    models, warns = _resolve(parsed, ["auto", "auto"])
+    assert models == [None, None]  # defer to build_problem's marker-gating
+    assert not warns
+
+
+def test_all_auto_backward_flame_still_no_warning():
+    # both edges point INTO the flame: the marker rides the signed flow, so no mislabel hazard
+    parsed = [(0, 0, 1, 0.1, "a"), (1, 2, 1, 0.1, "b")]
+    models, warns = _resolve(parsed, ["auto", "auto"])
+    assert models == [None, None]
+    assert not warns
+
+
+# -- explicit / mixed: hard closure keeps the flood-fill + guard -------------
+
+
+def test_explicit_hard_closure_labels_edges():
+    parsed = [(0, 0, 1, 0.1, "a"), (1, 1, 2, 0.1, "b")]
+    models, warns = _resolve(parsed, ["frozen", "equilibrium"])
+    assert models == [EQ_FROZEN, EQ_KERNEL]
+    assert not warns  # flow-aligned -> no warning
+
+
+def test_mixed_auto_explicit_flood_fills_auto_edge():
+    # one explicit token forces the hard-closure path; the auto edge is flood-filled (burnt
+    # downstream of the flame along the declared arrows)
+    parsed = [(0, 0, 1, 0.1, "a"), (1, 1, 2, 0.1, "b")]
+    models, warns = _resolve(parsed, ["frozen", "auto"])
     assert models == [EQ_FROZEN, EQ_KERNEL]
     assert not warns
 
 
-def test_backward_flame_warns():
-    # both edges point INTO the flame (out-degree 0): nothing gets seeded burnt
+def test_explicit_closure_warns_on_bad_orientation():
+    # both edges into the flame: the hard-closure flood-fill seeds nothing burnt -> mislabel.
     parsed = [(0, 0, 1, 0.1, "a"), (1, 2, 1, 0.1, "b")]
-    _models, warns = _resolve(parsed)
+    _models, warns = _resolve(parsed, ["frozen", "equilibrium"])
     assert len(warns) == 1
     assert "in/out edges: 2/0" in str(warns[0].message)
 
 
-def test_source_flame_warns():
-    # both edges point OUT of the flame (in-degree 0): no reactant approach
-    parsed = [(0, 1, 0, 0.1, "a"), (1, 1, 2, 0.1, "b")]
-    _models, warns = _resolve(parsed)
-    assert len(warns) == 1
-    assert "in/out edges: 0/2" in str(warns[0].message)
-
-
-def test_explicit_closure_still_warns_on_bad_orientation():
-    # the warning is about orientation, independent of whether the closure is auto or explicit;
-    # an asymmetric flame is flagged regardless so the user notices the drawing problem.
-    parsed = [(0, 0, 1, 0.1, "a"), (1, 2, 1, 0.1, "b")]
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _resolve_edge_models(True, _SPECS, parsed, ["frozen", "equilibrium"])
-    assert any("flow-aligned" in str(w.message) for w in caught)
-
-
 def test_perfect_gas_no_guard():
-    # non-reacting networks have no flame closure to mislabel
     parsed = [(0, 0, 1, 0.1, "a"), (1, 2, 1, 0.1, "b")]
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        models = _resolve_edge_models(False, _SPECS, parsed, _TOKENS)
+        models = _resolve_edge_models(False, _SPECS, parsed, ["auto", "auto"])
     assert models == [None, None]
     assert not [w for w in caught if "flow-aligned" in str(w.message)]

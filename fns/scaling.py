@@ -19,7 +19,7 @@ from .elements.ids import MASS_FLOW_INLET, PT_INLET
 # (one per edge), then the composition transport rows (n_elem per edge).
 
 
-def compose_scales(node_rid, degrees, n_edges, n_elem, mass, p, h, z=1.0):
+def compose_scales(node_rid, degrees, n_edges, n_scalars, mass, p, h, z=1.0):
     """Assemble ``(res_scale, var_scale)`` from the four kind-scales.
 
     Parameters
@@ -28,26 +28,27 @@ def compose_scales(node_rid, degrees, n_edges, n_elem, mass, p, h, z=1.0):
         Per-node residual id (``CompiledProblem.node_rid``).
     degrees : sequence of int
         Per-node degree (port count).
-    n_edges, n_elem : int
-        Edge count and transported-composition (mixture-fraction) count.
+    n_edges, n_scalars : int
+        Edge count and the number of transported scalars *beyond* ``h_t`` -- the
+        composition mixture fractions plus the optional burnt marker (``n_solve - 3``).
     mass, p, h, z : float
         Characteristic scales for the mass-flux, pressure, total-enthalpy and
-        composition rows/variables.
+        composition/marker rows/variables.
 
     Returns
     -------
     res_scale : ndarray
         One scale per residual row, in row order.
     var_scale : ndarray
-        One scale per band-1 variable ``(mdot, p, h_t, Z...)``.
+        One scale per band-1 variable ``(mdot, p, h_t, Z..., marker)``.
     """
     res = []
     for n in range(len(node_rid)):
         for tag in row_kind_tags(int(node_rid[n]), int(degrees[n])):
             res.append(mass if tag == KIND_MASS else p)
     res.extend([h] * n_edges)
-    res.extend([z] * n_edges * n_elem)
-    var = np.array([mass, p, h] + [z] * n_elem, dtype=np.float64)
+    res.extend([z] * n_edges * n_scalars)
+    var = np.array([mass, p, h] + [z] * n_scalars, dtype=np.float64)
     return np.array(res, dtype=np.float64), var
 
 

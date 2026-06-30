@@ -720,6 +720,22 @@ def _length_attrs(fp, off):
     return out
 
 
+def _manifold_attrs(fp):
+    """UI manifold attributes: chamber ``volume`` and optional per-branch ``neck_length``.
+
+    ``fparams = [volume, *neck_lengths]``.  Each is emitted only when non-zero, so a plain
+    manifold serializes bare; a single broadcast neck round-trips as a scalar, per-branch
+    necks as a list.
+    """
+    out = {}
+    if fp and float(fp[0]) != 0.0:
+        out["volume"] = float(fp[0])
+    necks = [float(v) for v in fp[1:]]
+    if any(v != 0.0 for v in necks):
+        out["neck_length"] = necks[0] if len(necks) == 1 else necks
+    return out
+
+
 def _spec_to_ui(spec):
     """Map an ``ElementSpec`` to its UI ``(type, modeled-attributes)`` pair."""
     rid = spec.residual_id
@@ -743,9 +759,9 @@ def _spec_to_ui(spec):
     if rid == LINEAR_RESISTANCE:
         return "LinearResistance", {"resistance": float(fp[0]), **_length_attrs(fp, 1)}
     if rid == JUNCTION:
-        return "JunctionStaticP", ({"volume": float(fp[0])} if fp and float(fp[0]) != 0.0 else {})
+        return "JunctionStaticP", _manifold_attrs(fp)
     if rid == SPLITTER:
-        return "LosslessSplitter", ({"volume": float(fp[0])} if fp and float(fp[0]) != 0.0 else {})
+        return "LosslessSplitter", _manifold_attrs(fp)
     if rid == DUCT:
         return "Duct", {"length": float(fp[0]) if fp else 0.0}
     if rid == WALL:

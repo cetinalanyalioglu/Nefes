@@ -41,6 +41,7 @@ import numpy as np
 import scipy.sparse.linalg as spla
 
 from .operator import build_acoustic_blocks, assemble_acoustic
+from .stamps import storage_stamps_from_est
 from .characteristics import edge_transforms, basis_block_from_state, edge_caloric
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
 from .terminals import find_terminals
@@ -572,6 +573,7 @@ def eigenmodes(
         node_names=tuple(getattr(prob, "node_names", ()) or ()),
         expected=expected,
         geometry=build_geometry(prob),
+        storage=storage_stamps_from_est(prob, est, K, cals),
     )
 
 
@@ -636,6 +638,8 @@ class EigenmodeResult:
     terminals: Optional[list] = None
     # topology + duct lengths for spatial mode-shape reconstruction (modeshape.build_geometry)
     geometry: Optional[NetworkGeometry] = None
+    # per-element storage stamps (stamps.storage_stamps_from_est) for the lumped-storage energy ledger
+    storage: Optional[list] = None
 
     def __len__(self) -> int:
         return int(self.omega.size)

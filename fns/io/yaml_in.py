@@ -105,8 +105,12 @@ _UI_NODE_BUILDERS = {
         basis=_basis(a),
         marker=_marker(a),
     ),
-    "JunctionStaticP": lambda a: cat.junction(volume=a.get("volume", 0.0) or 0.0),
-    "LosslessSplitter": lambda a: cat.splitter(volume=a.get("volume", 0.0) or 0.0),
+    "JunctionStaticP": lambda a: cat.junction(
+        volume=a.get("volume", 0.0) or 0.0, neck_length=a.get("neck_length") or 0.0
+    ),
+    "LosslessSplitter": lambda a: cat.splitter(
+        volume=a.get("volume", 0.0) or 0.0, neck_length=a.get("neck_length") or 0.0
+    ),
 }
 
 # Boundary types that carry a perturbation BC group in the UI schema.

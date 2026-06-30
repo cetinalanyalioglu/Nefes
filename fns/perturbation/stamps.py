@@ -17,9 +17,12 @@ Three faces (implementation-plan.md s8.2-8.3):
 ``build_storage`` assembles the storage ``M`` block -- the ``d/dt integral_V U``
 term dropped at steady state.  It is populated per element through a small
 registry (``_STORAGE_BUILDERS``, keyed by residual id): a finite-volume
-:func:`~fns.elements.catalog.cavity` contributes its mass-row compliance today,
-and added-mass / end-correction inertance (area changes, losses, perforate
-necks) plug in the same way.  ``M`` enters the operator as ``i*omega*M``.
+:func:`~fns.elements.catalog.cavity` contributes its mass-row compliance, the
+inline pressure elements their per-port compliance + series inertance, and the
+manifolds their chamber compliance + per-branch neck inertance -- all from
+length/volume inputs read off the same per-port machinery.  ``M`` enters the
+operator as ``i*omega*M``, and its stored energy enters the acoustic-power
+ledger (:func:`fns.perturbation.power._lumped_storage_energy`).
 
 These run **above the @njit line** -- plain Python / SciPy.
 """
@@ -733,29 +736,64 @@ def _inline_storage(prob, est, n, K=None, cals=None):
 
 
 def _manifold_storage(prob, est, n, K=None, cals=None):
-    """Compliance of a finite-volume manifold (a :func:`~fns.elements.catalog.junction`
-    or :func:`~fns.elements.catalog.splitter` plenum).
+    """Compliance + per-branch neck inertance of a finite-volume manifold (a
+    :func:`~fns.elements.catalog.junction` or :func:`~fns.elements.catalog.splitter` plenum).
 
-    A non-zero chamber ``volume`` (``fparams[0]``) gives the manifold the lumped
-    compliance ``C = V/(rho c^2)``.  All ports share one pressure (the ``p_0 = p_i``
-    coupling rows tie them), so the stamp is a single ``+ V/c^2`` on the mass row at the
-    port-0 pressure column -- the cavity rule with through-flow.  Per-branch neck
-    inertance is deferred (see ``scratch/inertance-end-correction-theory.md`` s5/s9).
+    The manifold's ``fparams = [volume, *neck_lengths]`` (catalog ``_manifold_block``) give
+    it two stores (theory ``scratch/inertance-end-correction-theory.md`` s5):
+
+    * **compliance** -- a non-zero chamber ``volume`` is the lumped ``C = V/(rho c^2)``.  All
+      ports share one pressure (the ``p_0 = p_i`` coupling rows tie them), so it is a single
+      ``+ V/c^2`` on the mass row at the port-0 pressure column -- the cavity rule with
+      through-flow.
+    * **inertance** -- a short inertive neck of effective length ``l_eff_i`` on each branch
+      ``i = 1 .. deg-1`` (port 0 being the common-pressure reference, which carries no
+      coupling row of its own).  It stamps ``- s_i * l_eff_i / A_i`` onto that branch's
+      ``p_0 - p_i`` coupling row (``r0 + i``) at the branch ``mdot_i`` column, the reactive
+      dual of the row's resistive ``- kappa * (s_i * mdot_i)`` term: the neck momentum
+      balance ``p_0' - p_i' = i*omega*(l_eff_i/A_i)*(s_i*mdot_i')``.  The orientation sign
+      ``s_i = orient[base+i]`` makes it flip-invariant (flipping a branch edge flips both
+      ``s_i`` and ``mdot_i``).
+
+    The neck lengths are a scalar broadcast to every branch or one per branch (validated
+    against the degree at build).  All knobs default to zero -> no storage, today's manifold.
     """
     pb = int(prob.npar_fptr[n])
-    V = float(prob.npar_f[pb])  # junction/splitter chamber volume (catalog _manifold_volume)
-    if not V > 0.0:
-        return None
+    pend = int(prob.npar_fptr[n + 1])
     base = int(prob.row_ptr[n])
-    e0 = int(prob.col_edge[base])
+    deg = int(prob.row_ptr[n + 1]) - base
     ns = int(prob.n_solve)
-    c = float(est[ES_C, e0])
     r0 = int(prob.node_row_ptr[n])  # the manifold's mass-balance row
+    rows, cols, vals = [], [], []
+
+    # compliance: chamber volume on the common (port-0) pressure column
+    V = float(prob.npar_f[pb])  # junction/splitter chamber volume (catalog _manifold_block fparams[0])
+    if V > 0.0:
+        e0 = int(prob.col_edge[base])
+        c0 = float(est[ES_C, e0])
+        rows.append(r0)
+        cols.append(ns * e0 + 1)  # common pressure column
+        vals.append(V / (c0 * c0))
+
+    # inertance: per-branch neck length on each p_0 - p_i coupling row
+    necks = prob.npar_f[pb + 1 : pend]  # [l] (broadcast) or [l_1 .. l_{deg-1}]
+    for i in range(1, deg):
+        l_eff = float(necks[0]) if necks.size == 1 else float(necks[i - 1])
+        if l_eff > 0.0:
+            e_i = int(prob.col_edge[base + i])
+            s_i = int(prob.orient[base + i])
+            A_i = float(est[ES_AREA, e_i])
+            rows.append(r0 + i)  # the branch's p_0 - p_i coupling row
+            cols.append(ns * e_i + 0)  # the branch mdot column
+            vals.append(-s_i * l_eff / A_i)
+
+    if not rows:
+        return None
     return StorageStamp(
         node=n,
-        rows=np.array([r0], dtype=np.intp),
-        cols=np.array([ns * e0 + 1], dtype=np.intp),  # common pressure column
-        vals=np.array([V / (c * c)], dtype=np.complex128),
+        rows=np.array(rows, dtype=np.intp),
+        cols=np.array(cols, dtype=np.intp),
+        vals=np.array(vals, dtype=np.complex128),
     )
 
 
@@ -799,9 +837,18 @@ def build_storage_stamps(prob, x_bar, K, cals=None):
     list of StorageStamp
         One per storage element (empty when the network carries none).
     """
+    return storage_stamps_from_est(prob, states_table(prob, x_bar), K, cals)
+
+
+def storage_stamps_from_est(prob, est, K=None, cals=None):
+    """Per-element storage stamps from a precomputed mean edge-state table ``est``.
+
+    The frozen-mean half of :func:`build_storage_stamps` (which calls this after building
+    ``est`` from ``x_bar``).  Exposed so the acoustic-power ledger can recover each
+    element's ``M`` contribution from a solved field without re-deriving ``est``.
+    """
     if not _STORAGE_BUILDERS:
         return []
-    est = states_table(prob, x_bar)
     stamps = []
     for n in range(int(prob.n_nodes)):
         builder = _STORAGE_BUILDERS.get(int(prob.node_rid[n]))

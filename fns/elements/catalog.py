@@ -579,31 +579,69 @@ def mass_source(mdot, T, composition, u_inj=0.0, basis="mole", name="source", dy
     )
 
 
-def _manifold_volume(name, volume):
-    """Validate a manifold's optional chamber volume (a plenum compliance, default 0)."""
+def _manifold_block(name, volume, neck_length):
+    """Validate + pack a manifold's chamber volume and optional per-branch neck length(s).
+
+    Packs ``fparams = [volume, *neck_lengths]``.  ``volume`` is the plenum compliance
+    (default 0).  ``neck_length`` is the inertive neck length [m] on each branch's
+    ``p0 - pi`` coupling row (theory ``scratch/inertance-end-correction-theory.md`` s5):
+    either a **scalar** broadcast to every branch, or a **sequence** of one length per
+    branch port (ports ``1 .. deg-1``, in attachment order), validated against the wired
+    degree at build (:func:`build_problem`).  Default 0 -> no inertance, the pure-compliance
+    manifold of before.  Read by :func:`fns.perturbation.stamps._manifold_storage`.
+    """
     V = float(volume)
     if V < 0.0:
         raise ValueError(f"{name}: volume must be non-negative (a chamber volume in m^3); got {volume}")
-    return [V]
+    try:
+        necks = [float(x) for x in neck_length]  # a per-branch sequence
+    except TypeError:
+        necks = [float(neck_length)]  # a scalar broadcast to every branch
+    if not necks:
+        raise ValueError(f"{name}: neck_length list must carry at least one length (or pass a scalar)")
+    for l_eff in necks:
+        if l_eff < 0.0:
+            raise ValueError(f"{name}: neck_length must be non-negative (an inertive length in metres); got {l_eff}")
+    return [V] + necks
 
 
-def junction(name="junction", volume=0.0):
+def junction(name="junction", volume=0.0, neck_length=0.0):
     """A static-pressure manifold (header node) tying all ports to a common pressure.
 
     Optionally a **plenum**: a non-zero chamber ``volume`` [m^3] gives it the acoustic
     compliance ``C = V / (rho c^2)`` (populating the storage block ``M`` on the common
     pressure), so a header with a real internal volume resonates -- a junction with a
-    volume is a cavity with through-flow.  The volume is inert in the mean flow.
+    volume is a cavity with through-flow.  A non-zero ``neck_length`` gives each branch a
+    short inertive neck into the common chamber (the storage block's per-branch inertance
+    ``-l_eff_i / A_i`` on the ``p0 - pi`` row); together a volume + necks make the manifold
+    a lumped Helmholtz network.  Both are inert in the mean flow.
+
+    Parameters
+    ----------
+    name : str, optional
+        Display name.
+    volume : float, optional
+        Chamber volume [m^3] (default 0 -> no compliance).
+    neck_length : float or sequence of float, optional
+        Inertive neck length [m] on each branch's ``p0 - pi`` row -- a scalar broadcast to
+        every branch, or one length per branch port (ports ``1 .. deg-1``, in attachment
+        order, so wire the branches in the order the lengths are given).  Default 0 -> no
+        inertance.
+
+    Returns
+    -------
+    ElementSpec
     """
-    return ElementSpec(JUNCTION, _manifold_volume("junction", volume), name)
+    return ElementSpec(JUNCTION, _manifold_block("junction", volume, neck_length), name)
 
 
-def splitter(name="splitter", volume=0.0):
+def splitter(name="splitter", volume=0.0, neck_length=0.0):
     """A lossless (total-pressure) manifold; optionally a finite-volume plenum.
 
-    As :func:`junction`, a non-zero ``volume`` adds the chamber compliance to ``M``.
+    As :func:`junction`, a non-zero ``volume`` adds the chamber compliance to ``M`` and a
+    non-zero ``neck_length`` adds the per-branch neck inertance; both inert in the mean flow.
     """
-    return ElementSpec(SPLITTER, _manifold_volume("splitter", volume), name)
+    return ElementSpec(SPLITTER, _manifold_block("splitter", volume, neck_length), name)
 
 
 def forced_splitter(fractions, name="splitter"):
@@ -766,6 +804,13 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
         elif rid in (JUNCTION, SPLITTER):
             if deg < 2:
                 raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
+            # fparams = [volume, *neck_lengths]: a scalar neck (1) broadcasts, else one per branch (deg - 1)
+            n_neck = len(el.fparams) - 1
+            if n_neck not in (1, deg - 1):
+                raise ValueError(
+                    f"{label}: neck_length must be a scalar or a list of {deg - 1} per-branch lengths "
+                    f"(one per p0-pi branch of this {deg}-port manifold); got {n_neck}"
+                )
         elif rid == FORCED_SPLITTER:
             if deg < 3:
                 raise ValueError(

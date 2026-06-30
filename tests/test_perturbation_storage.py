@@ -17,7 +17,7 @@ from fns.thermo.configure import perfect_gas
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_MDOT, ES_C
+from fns.derive import ES_MDOT, ES_C, ES_AREA
 from fns.perturbation import build_acoustic_blocks, assemble_acoustic, perturbation_response
 from fns.perturbation.operator import _assemble_reference
 
@@ -338,3 +338,121 @@ def test_inline_storage_fast_path_matches_reference(with_boundaries):
         fast = assemble_acoustic(w, blocks, with_boundaries=with_boundaries).toarray()
         ref = _assemble_reference(w, blocks, with_boundaries=with_boundaries).toarray()
         assert np.max(np.abs(fast - ref)) < 1e-9 * (1.0 + np.max(np.abs(ref)))
+
+
+# ---------------------------------------------------------------------------
+# Per-branch manifold neck inertance (junction/splitter), the storage-M remainder.
+# A neck length on each branch's p0 - pi coupling row stamps - s_i * l_eff_i / A_i
+# at its mdot_i column (scratch/inertance-end-correction-theory.md s5).
+# ---------------------------------------------------------------------------
+
+
+def _manifold_neck_hr(volume, neck_area, l_neck, main_area=3.0e-3, l_main=0.05, flip=False):
+    """Side-branch HR whose neck inertance lives on the junction branch (no neck duct).
+
+    inlet - duct - junction[neck on the cavity branch] - duct - outlet, with the junction
+    wired straight to the cavity by one branch edge.  The junction's per-branch
+    ``neck_length = [0, l_neck]`` puts the inertance on the cavity branch only (the main-out
+    branch carries none), so junction-neck + cavity compliance is the dual of the duct-neck
+    ``_side_branch_hr`` and the inline-neck ``_hr_with_inline_neck``.
+    """
+    cfg = perfect_gas(R_AIR, GAMMA)
+    els = [
+        cat.total_pressure_inlet(P0, TT),
+        cat.duct(l_main),
+        cat.junction(neck_length=[0.0, l_neck]),  # branch 1 (main out) = 0, branch 2 (neck) = l_neck
+        cat.duct(l_main),
+        cat.pressure_outlet(P0, Tt_backflow=TT),
+        cat.cavity(volume),
+    ]
+    neck = (5, 2, neck_area) if flip else (2, 5, neck_area)  # cavity is node 5
+    edges = [(0, 1, main_area), (1, 2, main_area), (2, 3, main_area), (3, 4, main_area), neck]
+    prob = cat.build_problem(cfg, els, edges, 1.0, P0, CP * TT)
+    res = solve(prob)
+    assert res.converged
+    return prob, res.x
+
+
+def test_manifold_inertance_entries():
+    # a junction carrying a per-branch neck on its cavity branch stamps the inertance
+    # - s_i * l_eff_i / A_i on that branch's p0 - pi coupling row, at the branch mdot column.
+    LN = 0.02
+    prob, x = _manifold_neck_hr(1.0e-3, 5.0e-4, LN)
+    est = states_table(prob, x)
+    ns = int(prob.n_solve)
+    base = int(prob.row_ptr[2])  # the junction's port block
+    r0 = int(prob.node_row_ptr[2])
+    # branch 2 (port ordinal 2) is the neck edge into the cavity
+    e_neck = int(prob.col_edge[base + 2])
+    s_neck = int(prob.orient[base + 2])
+    a_neck = float(est[ES_AREA, e_neck])
+    M = _M_dict(build_acoustic_blocks(prob, x))
+    assert M[(r0 + 2, ns * e_neck + 0)] == pytest.approx(-s_neck * LN / a_neck, rel=1e-12)
+    # the zero-length main-out branch (port 1) carries no inertance entry
+    assert (r0 + 1, ns * int(prob.col_edge[base + 1]) + 0) not in M
+
+
+def test_manifold_neck_helmholtz_matches_duct():
+    # the junction-neck inertance + cavity compliance resonate at the same Helmholtz
+    # frequency as the neck modeled as a duct -- the per-branch sign/magnitude is physical.
+    V, AN, LN = 1.0e-3, 5.0e-4, 0.02
+    freqs = np.linspace(50.0, 1100.0, 1100)
+    p_duct, x_duct = _side_branch_hr(V, AN, LN)
+    p_man, x_man = _manifold_neck_hr(V, AN, LN)
+    c = float(states_table(p_man, x_man)[ES_C, 3])
+    f0 = c * np.sqrt(AN / (V * LN)) / (2.0 * np.pi)
+    f_duct, _ = _tl_peak_frequency(p_duct, x_duct, freqs)
+    f_man, tl_man = _tl_peak_frequency(p_man, x_man, freqs)
+    assert f_man == pytest.approx(f_duct, rel=0.02)
+    assert f_man == pytest.approx(f0, rel=0.03)
+    assert tl_man > 20.0  # a genuine reactive resonance
+
+
+def test_manifold_neck_sign_is_orientation_invariant():
+    # flipping the neck edge flips both the branch orientation s_i and its mdot variable,
+    # so the inertance contribution -- and the resonance -- is arrow-independent.
+    V, AN, LN = 1.0e-3, 5.0e-4, 0.02
+    freqs = np.linspace(50.0, 1100.0, 1100)
+    f_fwd, _ = _tl_peak_frequency(*_manifold_neck_hr(V, AN, LN, flip=False), freqs)
+    f_rev, _ = _tl_peak_frequency(*_manifold_neck_hr(V, AN, LN, flip=True), freqs)
+    assert f_rev == pytest.approx(f_fwd, rel=0.005)
+
+
+def test_manifold_neck_scalar_broadcasts_to_every_branch():
+    # a scalar neck_length stamps an inertance on *every* branch (deg - 1 of them); a
+    # per-branch list of the wrong length is rejected at build.  A 1-in / 2-out manifold
+    # (deg = 3) so the broadcast lands on two distinct branches.
+    cfg = perfect_gas(R_AIR, GAMMA)
+    els = [
+        cat.mass_flow_inlet(0.8, TT),
+        cat.junction(volume=1.0e-3, neck_length=0.01),  # scalar -> both outflow branches
+        cat.pressure_outlet(P0, Tt_backflow=TT),
+        cat.pressure_outlet(P0, Tt_backflow=TT),
+    ]
+    edges = [(0, 1, 2e-3), (1, 2, 2e-3), (1, 3, 2e-3)]
+    prob = cat.build_problem(cfg, els, edges, 0.8, P0, CP * TT)
+    res = solve(prob)
+    assert res.converged
+    # one common-pressure compliance + one inertance per branch (deg = 3 -> 2 branches)
+    assert build_acoustic_blocks(prob, res.x).M.nnz == 3
+    # a per-branch list must match the branch count (deg - 1 = 2), else a clear build error
+    bad = [els[0], cat.junction(neck_length=[0.01, 0.02, 0.03]), els[2], els[3]]
+    with pytest.raises(ValueError, match="per-branch lengths"):
+        cat.build_problem(cfg, bad, edges, 0.8, P0, CP * TT)
+
+
+def test_manifold_necks_are_inert_in_the_mean_flow():
+    # the neck lengths are acoustic metadata only: the converged mean state is unchanged.
+    cfg = perfect_gas(R_AIR, GAMMA)
+
+    def solve_with(j):
+        els = [cat.mass_flow_inlet(0.4, TT), cat.duct(0.05), j, cat.duct(0.05), cat.pressure_outlet(P0, Tt_backflow=TT)]
+        edges = [(0, 1, 2e-3), (1, 2, 2e-3), (2, 3, 2e-3), (3, 4, 2e-3)]
+        prob = cat.build_problem(cfg, els, edges, 0.4, P0, CP * TT)
+        res = solve(prob)
+        assert res.converged
+        return res.x
+
+    x_plain = solve_with(cat.junction(volume=1.0e-3))
+    x_neck = solve_with(cat.junction(volume=1.0e-3, neck_length=0.02))
+    assert np.max(np.abs(x_plain - x_neck)) < 1e-10

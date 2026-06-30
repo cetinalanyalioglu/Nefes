@@ -45,6 +45,7 @@ import numpy as np
 
 from ..derive import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
 from ..elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
+from .stamps import storage_stamps_from_est
 
 _INLET_RIDS = (MASS_FLOW_INLET, PT_INLET)
 
@@ -416,6 +417,60 @@ def _stored_energy(waves, est, ducts, omega, n_x):
     return energy
 
 
+def _edge_network_var(w, est, e, v):
+    """Network-variable perturbation amplitude on edge ``e`` from its wave amplitudes ``w``.
+
+    ``w`` is ``(K, n_char)`` (``K`` swept frequencies or 1 mode) with columns ``(f, g, h)``;
+    the maps are ``p' = rho c (f + g)`` and ``mdot' = A (u rho' + rho u')`` with
+    ``rho' = h + p'/c^2`` and ``u' = f - g`` (theory.md s9.1).  Only ``v = 0`` (mass flow)
+    and ``v = 1`` (pressure) are reconstructed -- the only solve variables a storage stamp
+    couples -- and neither needs the caloric (``h_t``) row.
+    """
+    f = w[:, 0]
+    g = w[:, 1]
+    rho = float(est[ES_RHO, e])
+    c = float(est[ES_C, e])
+    p_prime = rho * c * (f + g)
+    if v == 1:  # static pressure
+        return p_prime
+    if v == 0:  # mass flow
+        h = w[:, 2] if w.shape[1] > 2 else 0.0  # entropy/convected wave (absent in the isentropic operator)
+        rho_prime = h + p_prime / (c * c)
+        u_prime = f - g
+        return float(est[ES_AREA, e]) * (float(est[ES_U, e]) * rho_prime + rho * u_prime)
+    raise ValueError(
+        f"lumped-storage energy for solve-variable {v} is unsupported (only mass flow v=0 and "
+        "pressure v=1 carry a storage stamp; the total-enthalpy store is the deferred heated-volume element)"
+    )
+
+
+def _lumped_storage_energy(stamps, est, waves, n_solve):
+    """Acoustic energy stored in the lumped storage block ``M``, shape ``(K,)``.
+
+    The element-agnostic complement of :func:`_stored_energy` (which integrates the
+    *distributed* duct field): every storage stamp ``(row, col = n_solve*e + v, val)`` adds a
+    term ``i*omega*val*x'_{e,v}`` onto a conservation row, and stores the time-averaged
+    acoustic energy ``0.25 * |val|/rho_e * |x'_{e,v}|^2`` -- a compliance entry (``v = 1``) its
+    potential energy ``0.25 (V/c^2)/rho |p'|^2``, an inertance entry (``v = 0``) its kinetic
+    energy ``0.25 (L_eff/A)/rho |mdot'|^2`` (theory ``inertance-end-correction-theory.md`` s8).
+    Walking the stamp triplets makes the ledger pick up any storage element -- cavity, inline
+    area-change/loss, manifold plenum + neck -- with no per-element bookkeeping; the duct
+    stores live only in ``_stored_energy``, so the two never double-count (theory.md s12.5).
+
+    Returns scalar ``0.0`` when the network carries no storage stamp (so it adds onto the duct
+    energy spectrum harmlessly).
+    """
+    ns = int(n_solve)
+    energy = 0.0
+    for st in stamps:
+        for col, val in zip(st.cols, st.vals):
+            e = int(col) // ns
+            v = int(col) % ns
+            amp = _edge_network_var(waves(e), est, e, v)
+            energy = energy + 0.25 * abs(complex(val)) / float(est[ES_RHO, e]) * np.real(amp * np.conj(amp))
+    return energy
+
+
 def _interior_nodes(geo, terminals):
     """Node ids that are neither length-bearing ducts nor 1-port terminals (the compact sources/sinks)."""
     duct_nodes = {int(d.node) for d in geo.ducts}
@@ -666,6 +721,8 @@ def forced_power_balance(fr, prob, *, n_x: int = 120) -> ForcedPowerBalance:
         generation = generation + _node_power(waves, est, geo.tail_node, geo.head_node, geo.n_edges, node)
     reflection, source = _boundary_split(waves, est, terms, getattr(prob, "node_bc", None), fr.freqs)
     energy = _stored_energy(waves, est, geo.ducts, 2.0 * np.pi * np.asarray(fr.freqs, dtype=float), n_x)
+    # add the lumped storage block's energy (cavity/manifold compliance + neck inertance)
+    energy = energy + _lumped_storage_energy(storage_stamps_from_est(prob, est), est, waves, prob.n_solve)
     return ForcedPowerBalance(
         freqs=np.asarray(fr.freqs, dtype=float),
         energy=energy,
@@ -790,7 +847,10 @@ def modal_energy_balance(result, mode: int = 0, *, n_x: int = 160) -> ModalEnerg
     for node in _interior_nodes(geo, terms):
         generation += float(_node_power(waves, est, geo.tail_node, geo.head_node, geo.n_edges, node)[0])
     boundary_flux = float(boundary_power(result, mode, terminals=terms).net) if terms else 0.0
-    energy = float(_stored_energy(waves, est, geo.ducts, np.array([complex(result.omega[mode])]), n_x)[0])
+    duct_energy = _stored_energy(waves, est, geo.ducts, np.array([complex(result.omega[mode])]), n_x)
+    # add the lumped storage block's energy (cavity/manifold compliance + neck inertance)
+    lumped = _lumped_storage_energy(getattr(result, "storage", None) or [], est, waves, result.n_solve)
+    energy = float((duct_energy + lumped)[0])
     sigma = (generation + boundary_flux) / (2.0 * energy) if energy != 0.0 else float("nan")
     return ModalEnergyBalance(
         freq_hz=float(result.freqs[mode]),

@@ -28,12 +28,16 @@ from fns.perturbation import (
 )
 from fns.perturbation.boundary_bc import PerturbationBC
 from fns.perturbation.modeshape import build_geometry
+from fns.perturbation.power import _lumped_storage_energy, _stored_energy
 from fns.shell import Network
 from fns.solver import solve
+from fns.solver.control import states_table
 from fns.thermo.configure import perfect_gas
+from fns.derive import ES_RHO, ES_C, ES_U, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
+P0 = 101325.0
 
 
 # --------------------------------------------------------------------------
@@ -329,3 +333,115 @@ def test_modal_energy_balance_recovers_growth_rate():
     # the convenience function and the method agree
     direct = modal_energy_balance(res, 0)
     assert direct.growth_rate_energy == pytest.approx(res.energy_balance(0).growth_rate_energy)
+
+
+# --------------------------------------------------------------------------
+# Lumped-storage energy ledger (cavity/manifold compliance + neck inertance):
+# the M block's stored energy now enters the budget alongside the duct integral.
+# --------------------------------------------------------------------------
+
+
+def _side_branch_hr(volume, neck_area, l_neck, drive, main_area=3.0e-3, l_main=0.05):
+    """inlet - duct - junction - duct - (driven) outlet, with junction - neck duct - cavity."""
+    bc = PerturbationBC.mean_flow_open_end(driven=("acoustic",) if drive else ())
+    els = [
+        cat.total_pressure_inlet(P0, 300.0),
+        cat.duct(l_main),
+        cat.junction(),
+        cat.duct(l_main),
+        cat.pressure_outlet(P0, Tt_backflow=300.0, perturbation_bc=bc),
+        cat.duct(l_neck),
+        cat.cavity(volume),
+    ]
+    edges = [
+        (0, 1, main_area),
+        (1, 2, main_area),
+        (2, 3, main_area),
+        (3, 4, main_area),
+        (2, 5, neck_area),
+        (5, 6, neck_area),
+    ]
+    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 1.0, P0, CP * 300.0)
+    res = solve(prob)
+    assert res.converged
+    return prob, res.x
+
+
+def test_lumped_storage_energy_enters_the_forced_balance():
+    """The forced budget's stored energy now includes the cavity's lumped potential energy.
+
+    The compliance entry V/c^2 stores 0.25*(V/c^2)/rho*|p'_cav|^2 -- read off the operator's M
+    block, independent of the distributed duct integral, and the two never overlap.
+    """
+    V, AN, LN = 1.0e-3, 5.0e-4, 0.02
+    prob, x = _side_branch_hr(V, AN, LN, drive=True)
+    freqs = np.linspace(50.0, 1100.0, 600)
+    fr = forced_response(prob, x, freqs, isentropic=True)
+    bal = forced_power_balance(fr, prob)
+    duct_e = duct_energy_spectrum(fr, build_geometry(prob).ducts)
+    lumped = bal.energy - duct_e
+    # the lumped term is the analytic cavity potential energy (cavity edge = 5)
+    est = states_table(prob, x)
+    rho, c = float(est[ES_RHO, 5]), float(est[ES_C, 5])
+    w = fr.waves(5)
+    p_cav = rho * c * (w[:, 0] + w[:, 1])
+    expected = 0.25 * (V / c**2) / rho * np.real(p_cav * np.conj(p_cav))
+    assert np.allclose(lumped, expected, rtol=1e-9, atol=1e-12 * expected.max())
+    assert np.all(bal.energy >= 0.0)
+    assert lumped.max() > 0.1 * duct_e.max()  # a genuine, non-negligible contribution
+
+
+def test_lumped_inertance_energy_matches_the_kinetic_form():
+    """A pure-inertance element stores 0.25*(L_eff/A)/rho*|mdot'|^2 -- the M block's kinetic side."""
+    A, L = 1.0e-3, 0.05
+    bc = PerturbationBC.mean_flow_open_end(driven=("acoustic",))
+    els = [
+        cat.total_pressure_inlet(P0, 300.0),
+        cat.loss(0.0, end_correction=L),  # L_eff = L, no compliance (l_up = l_down = 0)
+        cat.pressure_outlet(P0, Tt_backflow=300.0, perturbation_bc=bc),
+    ]
+    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A), (1, 2, A)], 1.0, P0, CP * 300.0)
+    res = solve(prob)
+    assert res.converged
+    freqs = np.linspace(60.0, 900.0, 400)
+    fr = forced_response(prob, res.x, freqs, isentropic=True)
+    bal = forced_power_balance(fr, prob)
+    duct_e = duct_energy_spectrum(fr, build_geometry(prob).ducts)  # no ducts -> zero
+    assert np.allclose(duct_e, 0.0)
+    est = states_table(prob, res.x)
+    rho, area = float(est[ES_RHO, 0]), float(est[ES_AREA, 0])
+    f, g, h = fr.waves(0)[:, 0], fr.waves(0)[:, 1], fr.waves(0)[:, 2]
+    c = float(est[ES_C, 0])
+    mdot = area * (float(est[ES_U, 0]) * (h + rho * c * (f + g) / c**2) + rho * (f - g))
+    expected = 0.25 * (L / area) / rho * np.real(mdot * np.conj(mdot))
+    assert np.allclose(bal.energy, expected, rtol=1e-9, atol=1e-12 * max(expected.max(), 1e-30))
+    assert bal.energy.max() > 0.0
+
+
+def test_modal_energy_balance_consistent_with_lumped_storage():
+    """The modal cross-check still closes once the cavity's lumped energy is in the ledger.
+
+    The Helmholtz mode parks roughly half its energy in the cavity compliance; the energy- and
+    contour-derived growth rates agree only because that lumped store is now counted.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = eigenmodes(
+            *_side_branch_hr(1.0e-3, 5.0e-4, 0.02, drive=False),
+            freq_band=(150.0, 400.0),
+            growth_band=(-400.0, 400.0),
+            isentropic=True,
+        )
+    assert res.n_modes >= 1
+    m = 0
+    eb = modal_energy_balance(res, m)
+    assert eb.consistent
+    # the new lumped term is a material fraction of the stored energy (the path is exercised)
+
+    def waves(e):
+        return res.mode_waves(m, int(e))[None, :]
+
+    om = np.array([complex(res.omega[m])])
+    duct = _stored_energy(waves, res.est, res.geometry.ducts, om, 160)[0]
+    lumped = float(_lumped_storage_energy(res.storage, res.est, waves, res.n_solve)[0])
+    assert lumped > 0.1 * (duct + lumped)

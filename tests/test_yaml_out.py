@@ -134,7 +134,7 @@ def test_storage_elements_roundtrip(tmp_path):
     net.add(cat.total_pressure_inlet(101325.0, 300.0, name="src"))
     net.add(cat.isentropic_area_change(name="diffuser", l_up=0.03, l_down=0.02, end_correction=0.005))
     net.add(cat.linear_resistance(40.0, name="screen", l_up=0.01, end_correction=0.004))
-    net.add(cat.junction(name="plenum", volume=2.0e-3))
+    net.add(cat.junction(name="plenum", volume=2.0e-3, neck_length=0.015))
     net.add(cat.duct(0.02, name="neck"))
     net.add(cat.cavity(1.0e-3, name="cav"))
     net.add(cat.pressure_outlet(101325.0, 300.0, name="back"))
@@ -153,6 +153,7 @@ def test_storage_elements_roundtrip(tmp_path):
     by_type = {n["type"]: n["attributes"] for n in doc["model"]["nodes"]}
     assert by_type["Cavity"]["volume"] == pytest.approx(1.0e-3)
     assert by_type["JunctionStaticP"]["volume"] == pytest.approx(2.0e-3)
+    assert by_type["JunctionStaticP"]["neck_length"] == pytest.approx(0.015)
     assert by_type["IsentropicAreaChange"]["lengthUpstream"] == pytest.approx(0.03)
     assert by_type["IsentropicAreaChange"]["endCorrection"] == pytest.approx(0.005)
     assert by_type["LinearResistance"]["resistance"] == pytest.approx(40.0)

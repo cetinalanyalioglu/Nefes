@@ -1,7 +1,5 @@
 ## To implement
 
-- [ ] Kinetic-energy coupling for the reacting closure: `EQ_KERNEL`/`EQ_FROZEN` currently drop `u^2/2` (h ~ h_t), O(M^2) at low Mach. Restore the outer KE fixed point (R-B2.2). A first attempt is diagnosed in `scratch/ke-coupling-diagnosis.md`: the real-part-gated outer fixed point + sub-sonic KE cap + frozen-T floor work, but the blocker is the equilibrium IFT sensitivity solve going singular at near-underflow moles under the warm cache once `h_static` varies per column -- regularize `_chem.equil_state_cs`'s `Msens` (overlaps Item 2's keep_sp compaction), validate vs the Cantera oracle. Then restore the perturbation caloric map's KE term (`characteristics.edge_caloric` `m=0 -> m=u`).
-- [ ] Element-dropping in the `@njit` equilibrium kernel (`fns/thermo/_chem.equilibrate_hp`) for burnt edges whose elemental abundance (`Z = xi @ Zfeed`) has a zero element (e.g. a parallel branch whose products lack carbon). Mirror thermolib's keep_el/keep_sp compaction (locate-on-real). Series injection (all elements present downstream) avoids it today.
 ## To verify
 
 ## To brainstorm

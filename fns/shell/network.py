@@ -40,7 +40,43 @@ _REPR_MAX_ROWS = 20
 class Network:
     """The main object for building and solving flow networks."""
 
-    def __init__(self, gas: Optional[ThermoConfig] = None, p_ref=101325.0, T_ref=300.0, mdot_ref=None, h_ref=None):
+    def __init__(
+        self,
+        gas: Optional[ThermoConfig] = None,
+        p_ref=101325.0,
+        T_ref=300.0,
+        mdot_ref=None,
+        h_ref=None,
+        nodes=None,
+        edges=None,
+        edge_models=None,
+    ):
+        """Create a network, optionally fully specified in one shot.
+
+        The network can be built incrementally with :meth:`add` / :meth:`connect`, or
+        constructed complete by passing ``nodes`` and ``edges`` -- the convenient one-shot
+        form that supersedes the lower-level :func:`fns.elements.catalog.build_problem`.
+
+        Parameters
+        ----------
+        gas : ThermoConfig, optional
+            The thermodynamic model (default: dry-air perfect gas).
+        p_ref : float, optional
+            Absolute-pressure gauge reference [Pa] (default 101325).
+        T_ref : float, optional
+            Reference temperature [K] for the initial guess (default 300).
+        mdot_ref, h_ref : float, optional
+            Hidden seed overrides for the residual scaling; normally auto-derived and
+            re-measured during the solve (see :attr:`mdot_ref` / :attr:`h_ref`).
+        nodes : sequence of ElementSpec, optional
+            The elements, in node order -- attached via :meth:`add`.
+        edges : sequence of tuple, optional
+            Directed edges ``(tail, head, area)`` referencing node indices, attached via
+            :meth:`connect` (ports auto-assigned in attachment order).
+        edge_models : sequence of int, optional
+            Per-edge thermo-model id override aligned with ``edges`` (e.g. frozen-unburnt
+            vs equilibrium-burnt across a flame); ``None`` entries use the gas default.
+        """
         self.gas = gas if gas is not None else perfect_gas()
         self.p_ref = p_ref
         self.T_ref = T_ref
@@ -56,6 +92,17 @@ class Network:
         self._edge_models: List[Optional[int]] = []
         # Provenance metadata for the network (e.g. from the UI).
         self.provenance = None
+
+        for spec in nodes or ():
+            self.add(spec)
+        if edge_models is not None and edges is None:
+            raise ValueError("edge_models was given without edges")
+        edges = list(edges or ())
+        models = list(edge_models) if edge_models is not None else [None] * len(edges)
+        if len(models) != len(edges):
+            raise ValueError(f"edge_models has {len(models)} entries but there are {len(edges)} edges")
+        for (tail, head, area), model in zip(edges, models):
+            self.connect(tail, head, area, edge_model=model)
 
     # -- construction -------------------------------------------------------------------------------------------------
 

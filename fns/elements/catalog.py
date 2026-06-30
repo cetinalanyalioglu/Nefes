@@ -949,6 +949,10 @@ def build_problem(
 ) -> CompiledProblem:
     """Assemble a CompiledProblem from elements and directed (tail, head, area) edges.
 
+    This is the lower-level functional builder; the user-facing path is
+    :class:`fns.shell.network.Network`, whose constructor accepts the same ``nodes`` /
+    ``edges`` lists (and auto-derives the reference scales), then ``.solve()``.
+
     Ports are auto-assigned in attachment order.  Use
     ``build_problem_from_connectivity`` to supply explicit ports (e.g. a UI
     export where the port ordinals carry meaning).  ``edge_models`` optionally

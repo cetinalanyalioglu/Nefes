@@ -854,6 +854,55 @@ def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) ->
     )
 
 
+def sudden_contraction(downstream_area, cc=0.62, name="contraction", eps=None) -> CompositeElementSpec:
+    """Sudden contraction that resolves the vena-contracta state (composite).
+
+    A flow contracting into a smaller pipe necks to a **vena contracta** of area
+    ``cc * downstream_area`` just past the contraction plane, where the static pressure
+    is at its minimum, then re-expands (with mixing loss) to fill the downstream pipe.
+    This composite resolves that explicitly -- an :func:`isentropic_area_change` from the
+    upstream area to the vena contracta, then a :func:`sudden_area_change` (Borda-Carnot)
+    re-expansion to the downstream area -- so the total-pressure loss and the **minimum
+    static pressure** are exact at higher Mach.
+
+    This is the compressible upgrade to :func:`sudden_area_change`'s ``cc``-loss, whose
+    incompressible ``1/2 rho u^2`` head is accurate only to ``O(M^2)``.  Read the
+    vena-contracta state off the composite's throat edge
+    (``solution.composite(name).throat_state``).
+
+    Parameters
+    ----------
+    downstream_area : float
+        The downstream pipe area ``A2`` [m^2] (must match the wired outflow edge).
+    cc : float, optional
+        Vena-contracta contraction coefficient in ``(0, 1]`` (default 0.62, a sharp-edged
+        contraction; ``cc = 1`` is the loss-free limit).
+    name : str, optional
+        Display name.
+    eps : float, optional
+        Sharpens the embedded Borda re-expansion switch (see :func:`sudden_area_change`).
+
+    Returns
+    -------
+    CompositeElementSpec
+    """
+    A2, c = float(downstream_area), float(cc)
+    if not A2 > 0.0:
+        raise ValueError(f"sudden_contraction {name!r}: downstream_area must be positive; got {downstream_area}")
+    if not 0.0 < c <= 1.0:
+        raise ValueError(f"sudden_contraction {name!r}: cc must be in (0, 1]; got {cc}")
+    A_vc = c * A2  # the vena-contracta (minimum) area
+    return CompositeElementSpec(
+        name=name,
+        sub_elements=[
+            isentropic_area_change(name=f"{name}.contract"),
+            sudden_area_change(name=f"{name}.borda", eps=eps),
+        ],
+        internal_edges=[(0, 1, A_vc)],  # isentropic acceleration to the vena contracta, then Borda re-expansion
+        kind="sudden_contraction",
+    )
+
+
 def helmholtz_resonator(volume, neck_length, neck_area, name="hr") -> CompositeElementSpec:
     """Side-branch Helmholtz resonator: a tee, a neck duct, and a backing cavity.
 

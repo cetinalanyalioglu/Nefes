@@ -17,7 +17,7 @@ from fns.elements import catalog as cat
 from fns.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_M, ES_P, ES_RHO, ES_U, ES_AREA
+from fns.derive import ES_M, ES_P, ES_RHO, ES_U, ES_AREA, ES_PT
 from fns.perturbation import perturbation_response
 from fns.shell import Network
 
@@ -376,3 +376,76 @@ def test_segments_for_frequency():
     assert cat.segments_for_frequency(0.1, 340.0, 100.0) >= 1
     with pytest.raises(ValueError):
         cat.segments_for_frequency(0.0, 340.0, 100.0)
+
+
+# -- sudden contraction (vena-contracta composite, item 6) -----------------------------------------
+
+A_BIG, A_SMALL, CC = 4.0e-3, 1.0e-3, 0.62
+
+
+def _contraction(pt_in, cc=CC, eps=None):
+    net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
+    i = net.add(cat.total_pressure_inlet(pt_in, T0))
+    sc = net.add(cat.sudden_contraction(A_SMALL, cc=cc, name="contr", eps=eps))
+    o = net.add(cat.pressure_outlet(P0, T0))
+    e_in = net.connect(i, sc, A_BIG)
+    e_out = net.connect(sc, o, A_SMALL)
+    sol = net.solve()
+    assert sol.converged
+    return sol, e_in, e_out
+
+
+def test_sudden_contraction_resolves_the_vena_contracta():
+    # the throat is the vena contracta cc*A2, carrying the minimum static pressure of the
+    # whole element (below both the upstream and the recovered downstream) -- the resolved
+    # minimum a lumped cc-loss cannot report.
+    sol, e_in, e_out = _contraction(130000.0)
+    est = sol.table()
+    cv = sol.composite("contr")
+    assert cv.throat_state["area"] == pytest.approx(CC * A_SMALL)
+    p_vc = est[ES_P, cv.throat]
+    assert p_vc < est[ES_P, e_in] and p_vc < est[ES_P, e_out]  # the minimum static pressure
+    assert p_vc == pytest.approx(est[ES_P].min())
+    assert est[ES_M, cv.throat] > est[ES_M, e_out]  # fastest at the vena contracta, then re-expands
+    assert est[ES_M, cv.throat] < 1.0  # subsonic (v1)
+
+
+def test_sudden_contraction_loss_is_compressible():
+    # the resolved loss matches the O(M^2) sudden_area_change(cc) at low Mach but diverges
+    # from it as the Mach rises -- the compressible correction that is the point of item 6.
+    def sac_loss(pt_in):
+        net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
+        i = net.add(cat.total_pressure_inlet(pt_in, T0))
+        s = net.add(cat.sudden_area_change(cc=CC))
+        o = net.add(cat.pressure_outlet(P0, T0))
+        a = net.connect(i, s, A_BIG)
+        b = net.connect(s, o, A_SMALL)
+        sol = net.solve()
+        assert sol.converged
+        est = sol.table()
+        return (est[ES_PT, a] - est[ES_PT, b]) / est[ES_PT, a], float(est[ES_M, b])
+
+    def sc_loss(pt_in):
+        sol, a, b = _contraction(pt_in)
+        est = sol.table()
+        return (est[ES_PT, a] - est[ES_PT, b]) / est[ES_PT, a], float(est[ES_M, b])
+
+    l_lo_sac, m_lo = sac_loss(102000.0)  # low Mach
+    l_lo_sc, _ = sc_loss(102000.0)
+    l_hi_sac, m_hi = sac_loss(128000.0)  # higher Mach
+    l_hi_sc, _ = sc_loss(128000.0)
+    assert m_lo < 0.15 and m_hi > 0.4  # the sweep genuinely spans low -> high subsonic Mach
+    # both losses are real and positive
+    assert l_lo_sc > 0.0 and l_hi_sc > 0.0
+    # near-agreement at low Mach, growing divergence at high Mach (the compressible correction)
+    rel_lo = abs(l_lo_sc - l_lo_sac) / l_lo_sc
+    rel_hi = abs(l_hi_sc - l_hi_sac) / l_hi_sc
+    assert rel_lo < 0.12
+    assert rel_hi > 0.25
+
+
+def test_sudden_contraction_validation():
+    with pytest.raises(ValueError, match="downstream_area must be positive"):
+        cat.sudden_contraction(0.0)
+    with pytest.raises(ValueError, match="cc must be in"):
+        cat.sudden_contraction(A_SMALL, cc=1.5)

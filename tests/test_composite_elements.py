@@ -17,7 +17,7 @@ from fns.elements import catalog as cat
 from fns.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_M, ES_P, ES_RHO, ES_U
+from fns.derive import ES_M, ES_P, ES_RHO, ES_U, ES_AREA
 from fns.perturbation import perturbation_response
 from fns.shell import Network
 
@@ -254,3 +254,125 @@ def test_validate_composite_rejects_bad_recipes():
 def test_is_composite_discriminates():
     assert is_composite(cat.orifice(AT))
     assert not is_composite(cat.duct(0.1))
+
+
+# -- Class-2 discretization composites (fanno_pipe, tapered_duct) -----------------------------------
+
+
+def _fanno(n, length=8.0, diameter=0.05, friction=0.03, mdot=0.55):
+    area = np.pi * diameter**2 / 4.0
+    els = [cat.mass_flow_inlet(mdot, T0), cat.fanno_pipe(length, diameter, friction, n), cat.pressure_outlet(P0, T0)]
+    prob = cat.build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot, P0, CP * T0)
+    res = solve(prob)
+    assert res.converged
+    return prob, res.x
+
+
+def test_fanno_pipe_chain_converges_in_n():
+    # the exit Mach settles as the chain is refined; N=1 is exactly the lumped pipe atom
+    exits = []
+    for n in (1, 4, 16, 64):
+        prob, x = _fanno(n)
+        assert prob.n_edges == n + 1  # N segments joined by N-1 internal edges, + 2 boundary edges
+        exits.append(float(states_table(prob, x)[ES_M, 1]))
+    assert abs(exits[-1] - exits[-2]) < 1e-3  # converged between N=16 and N=64
+    # the lumped pipe atom is the N=1 limit
+    pp = cat.build_problem(
+        CFG,
+        [cat.mass_flow_inlet(0.55, T0), cat.pipe(8.0, 0.05, 0.03), cat.pressure_outlet(P0, T0)],
+        [(0, 1, np.pi * 0.05**2 / 4), (1, 2, np.pi * 0.05**2 / 4)],
+        0.55,
+        P0,
+        CP * 300.0,
+    )
+    sp = solve(pp)
+    assert states_table(pp, sp.x)[ES_M, 1] == pytest.approx(exits[0], rel=1e-9)
+
+
+def test_fanno_pipe_resolves_the_mach_rise():
+    # constant-area friction accelerates the subsonic flow toward the exit (Fanno)
+    prob, x = _fanno(32)
+    est = states_table(prob, x)
+    assert est[ES_M, 1] > est[ES_M, 0]  # exit faster than inlet
+    # the interior Mach increases monotonically along the chain (a resolved gradient)
+    internal = sorted(prob.composite_map.internal_edges) if prob.composite_map else []
+    Ms = [est[ES_M, 0]] + [est[ES_M, e] for e in internal] + [est[ES_M, 1]]
+    assert all(Ms[i + 1] >= Ms[i] - 1e-9 for i in range(len(Ms) - 1))
+
+
+def _condi(n, pt_in, length=0.4, a_in=3.0e-3, a_th=1.5e-3, a_out=3.0e-3):
+    half = n // 2
+    areas = list(np.linspace(a_in, a_th, half + 1)) + list(np.linspace(a_th, a_out, n - half + 1))[1:]
+    net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
+    i = net.add(cat.total_pressure_inlet(pt_in, T0))
+    td = net.add(cat.tapered_duct(areas, length=length, name="nozzle"))
+    o = net.add(cat.pressure_outlet(P0, T0))
+    net.connect(i, td, a_in)
+    net.connect(td, o, a_out)
+    sol = net.solve()
+    assert sol.converged
+    return sol
+
+
+def test_tapered_duct_throat_is_narrowest_and_fastest():
+    # a subsonic con-di: the composite's throat is the min-area edge and carries the peak Mach
+    sol = _condi(8, pt_in=108000.0)
+    est = sol.table()
+    cv = sol.composite("nozzle")
+    assert cv.throat is not None
+    assert est[ES_AREA, cv.throat] == pytest.approx(est[ES_AREA].min())  # the narrowest edge
+    assert est[ES_M, cv.throat] == pytest.approx(est[ES_M].max(), rel=1e-6)  # the fastest
+    assert est[ES_M, cv.throat] < 1.0  # subsonic (v1)
+
+
+def test_tapered_duct_from_callable_matches_table():
+    # a callable A(x) sampled at N+1 stations builds the same chain as the explicit table
+    import numpy as _np
+
+    L, N = 0.5, 6
+
+    def A(x):
+        return 3.0e-3 - 1.5e-3 * _np.sin(_np.pi * x / L)  # a smooth contraction-expansion
+
+    table = [A(L * k / N) for k in range(N + 1)]
+    a0, aN = table[0], table[-1]
+
+    def build(spec):
+        net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
+        i = net.add(cat.total_pressure_inlet(108000.0, T0))
+        td = net.add(spec)
+        o = net.add(cat.pressure_outlet(P0, T0))
+        net.connect(i, td, a0)
+        net.connect(td, o, aN)
+        sol = net.solve()
+        assert sol.converged
+        return sol.table()
+
+    e_call = build(cat.tapered_duct(A, length=L, n_segments=N))
+    e_tab = build(cat.tapered_duct(table, length=L))
+    assert np.allclose(e_call, e_tab, rtol=1e-9, atol=1e-9)
+
+
+def test_tapered_duct_rejects_inconsistent_n_segments():
+    with pytest.raises(ValueError, match="n_segments"):
+        cat.tapered_duct([3e-3, 2e-3, 3e-3], length=0.3, n_segments=5)
+
+
+def test_grid_refine_reports_convergence():
+    from fns.elements.composite import grid_refine
+
+    def build(n):
+        prob, x = _fanno(n)
+        return states_table(prob, x)
+
+    gr = grid_refine(build, 16, lambda est: {"M_exit": float(est[ES_M, 1])})
+    assert gr.n_coarse == 16 and gr.n_fine == 32
+    assert gr.converged(tol=1e-2) and gr.worst < 1e-2
+
+
+def test_segments_for_frequency():
+    # N >= P * f_max * L / c; e.g. 12 points/wavelength, 1 kHz, 1 m, 340 m/s -> ceil(35.3) = 36
+    assert cat.segments_for_frequency(1.0, 340.0, 1000.0, points_per_wavelength=12) == 36
+    assert cat.segments_for_frequency(0.1, 340.0, 100.0) >= 1
+    with pytest.raises(ValueError):
+        cat.segments_for_frequency(0.0, 340.0, 100.0)

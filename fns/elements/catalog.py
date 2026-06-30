@@ -898,6 +898,167 @@ def helmholtz_resonator(volume, neck_length, neck_area, name="hr") -> CompositeE
     )
 
 
+# ---------------------------------------------------------------------------
+# Composite elements (Class-2 discretization): a continuous 1-D element resolved
+# as an N-segment chain of compact atoms.  N is a fidelity knob -- the chain
+# converges to the true distributed solution as N grows, and grid-refinement (solve
+# at N and 2N) *is* the verification.  Same element-agnostic expander as Class 1.
+# ---------------------------------------------------------------------------
+
+
+def segments_for_frequency(length, sound_speed, f_max, points_per_wavelength=12):
+    """Smallest segment count ``N`` that keeps each segment acoustically compact at ``f_max``.
+
+    A discretization composite resolves waves only where each segment is short against the
+    wavelength (``k dL << 1``).  With ``P`` points per wavelength, ``N >= P * f_max * L / c``.
+    Use it to auto-size :func:`fanno_pipe` / :func:`tapered_duct` from the highest analysis
+    frequency rather than guessing.
+
+    Parameters
+    ----------
+    length : float
+        Element length ``L`` [m].
+    sound_speed : float
+        A representative mean sound speed ``c`` [m/s] (e.g. ``solution.field("c").mean()``).
+    f_max : float
+        Highest analysis frequency [Hz] the chain must resolve.
+    points_per_wavelength : int, optional
+        Target points per wavelength ``P`` (default 12; 10-20 is typical).
+
+    Returns
+    -------
+    int
+        The recommended segment count ``N`` (>= 1).
+    """
+    L, c, fmax = float(length), float(sound_speed), float(f_max)
+    if not (L > 0.0 and c > 0.0 and fmax > 0.0):
+        raise ValueError("segments_for_frequency needs positive length, sound_speed and f_max")
+    return max(1, int(math.ceil(points_per_wavelength * fmax * L / c)))
+
+
+def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> CompositeElementSpec:
+    """Distributed (Fanno) pipe: an ``n_segments`` chain of :func:`pipe` atoms.
+
+    A long or fast pipe is **Fanno flow** -- wall friction drives the subsonic flow toward
+    ``M = 1``, so density, velocity and Mach vary continuously along the length and a single
+    lumped ``K`` misses it.  This chains ``n_segments`` pipe atoms, each of length ``L/N``
+    and the same ``diameter``/``friction_factor``, joined by single internal edges (each
+    internal edge *is* the intermediate flow state -- no junctions).  As ``N`` grows the
+    chain converges to the true Fanno solution and can approach choke at the pipe exit; the
+    locally-uniform per-segment mean state also propagates acoustics through the mean
+    gradient far better than one lumped duct stamp.
+
+    Parameters
+    ----------
+    length, diameter, friction_factor : float
+        Total length ``L`` [m], hydraulic diameter ``D`` [m] and Darcy friction factor ``f``
+        (see :func:`pipe`).
+    n_segments : int
+        Number of pipe-atom segments ``N`` (>= 1; a fidelity knob, see
+        :func:`segments_for_frequency` and :func:`grid_refine`).
+    name : str, optional
+        Display name.
+
+    Returns
+    -------
+    CompositeElementSpec
+    """
+    L, D, f, N = float(length), float(diameter), float(friction_factor), int(n_segments)
+    if not L > 0.0 or not D > 0.0 or not f >= 0.0:
+        raise ValueError(f"fanno_pipe {name!r}: length and diameter must be positive, friction_factor >= 0")
+    if N < 1:
+        raise ValueError(f"fanno_pipe {name!r}: n_segments must be >= 1; got {n_segments}")
+    if N == 1:
+        return pipe(L, D, f, name=name)  # the lumped (N=1) limit is a single pipe atom, no composite
+    area = math.pi * D * D / 4.0  # the constant flow area shared by every segment
+    subs = [pipe(L / N, D, f, name=f"{name}.seg{i}") for i in range(N)]
+    internal = [(i, i + 1, area) for i in range(N - 1)]  # one edge between consecutive segments
+    return CompositeElementSpec(name=name, sub_elements=subs, internal_edges=internal, kind="fanno_pipe")
+
+
+def _taper_stations(area, length, n_segments):
+    """Resolve a taper's ``[A0 .. AN]`` station areas + station x-coordinates.
+
+    ``area`` is either a sequence of station areas (``n_segments = len - 1``) or a callable
+    ``A(x)`` sampled at ``n_segments + 1`` equispaced stations over ``[0, length]``.
+    """
+    if callable(area):
+        if n_segments is None or int(n_segments) < 1:
+            raise ValueError("tapered_duct: pass n_segments >= 1 when area is a callable A(x)")
+        N = int(n_segments)
+        xs = [length * k / N for k in range(N + 1)]
+        areas = [float(area(x)) for x in xs]
+    else:
+        areas = [float(a) for a in area]
+        if len(areas) < 2:
+            raise ValueError("tapered_duct: the area table needs >= 2 stations [A0 .. AN]")
+        if n_segments is not None and int(n_segments) != len(areas) - 1:
+            raise ValueError(
+                f"tapered_duct: n_segments ({n_segments}) must equal len(area) - 1 ({len(areas) - 1}) "
+                "when an explicit area table is given (omit n_segments to infer it)"
+            )
+        N = len(areas) - 1
+        xs = [length * k / N for k in range(N + 1)]
+    if any(a <= 0.0 for a in areas):
+        raise ValueError("tapered_duct: every station area must be positive")
+    return areas, xs
+
+
+def tapered_duct(area, length, n_segments=None, name="taper") -> CompositeElementSpec:
+    """Tapered duct / horn / con-di nozzle resolved from an area profile ``A(x)``.
+
+    Discretizes a continuously area-varying acoustic passage into ``N`` segments, each a
+    compact area change ``A_i -> A_{i+1}`` followed by a length-``L/N`` duct at the segment's
+    downstream area (the catalog has no length-bearing area-change atom, so a segment is two
+    atoms).  As ``N`` grows the chain converges to the true horn, and a con-di profile
+    **chokes at its true throat** -- the min-area edge -- with the isentropic-area-change
+    complementarity engaging on exactly that segment.
+
+    Parameters
+    ----------
+    area : sequence of float, or callable
+        The station areas ``[A0 .. AN]`` (``n_segments`` is then ``len(area) - 1``), or a
+        callable ``A(x)`` [m^2] over ``x in [0, length]`` sampled at ``n_segments + 1``
+        stations.  The two external edges must carry ``A0`` (upstream) and ``AN``
+        (downstream).
+    length : float
+        Total axial length ``L`` [m].
+    n_segments : int, optional
+        Segment count ``N`` -- required when ``area`` is a callable, inferred from the table
+        length otherwise.
+    name : str, optional
+        Display name.
+
+    Returns
+    -------
+    CompositeElementSpec
+    """
+    L = float(length)
+    if not L > 0.0:
+        raise ValueError(f"tapered_duct {name!r}: length must be positive; got {length}")
+    areas, _xs = _taper_stations(area, L, n_segments)
+    N = len(areas) - 1
+    dL = L / N
+    # segment i: iac (A_i -> A_{i+1}) at sub-index 2i, then a duct (length dL) at A_{i+1} at 2i+1
+    subs = []
+    for i in range(N):
+        subs.append(isentropic_area_change(name=f"{name}.iac{i}"))
+        subs.append(duct(length=dL, name=f"{name}.duct{i}"))
+    internal = []
+    for i in range(N):
+        internal.append((2 * i, 2 * i + 1, areas[i + 1]))  # iac_i -> duct_i at the segment's downstream area
+        if i < N - 1:
+            internal.append((2 * i + 1, 2 * i + 2, areas[i + 1]))  # duct_i -> iac_{i+1}
+    return CompositeElementSpec(
+        name=name,
+        sub_elements=subs,
+        internal_edges=internal,
+        upstream_sub=0,
+        downstream_sub=2 * N - 1,
+        kind="tapered_duct",
+    )
+
+
 def _node_label(n: int, el: ElementSpec) -> str:
     """Human-readable identifier for an element, for validation messages."""
     typ = RESIDUAL_NAMES.get(el.residual_id, f"residual {el.residual_id}")

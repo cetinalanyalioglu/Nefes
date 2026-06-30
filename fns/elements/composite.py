@@ -104,6 +104,67 @@ def is_composite(el) -> bool:
     return isinstance(el, CompositeElementSpec)
 
 
+@dataclass(frozen=True)
+class GridRefinement:
+    """The result of refining a discretization composite from ``N`` to ``2N`` segments.
+
+    A converged refinement *is* the verification of a Class-2 composite: if the quantities of
+    interest barely move when the segment count doubles, the chain has resolved the
+    continuous element (theory: ``scratch/composite-elements.md`` "Choosing N").
+
+    Attributes
+    ----------
+    n_coarse, n_fine : int
+        The coarse and (doubled) fine segment counts.
+    coarse, fine : dict
+        The probed quantities ``{name: value}`` at each resolution.
+    rel_change : dict
+        Relative change ``|fine - coarse| / (|fine| + tiny)`` per quantity.
+    """
+
+    n_coarse: int
+    n_fine: int
+    coarse: dict
+    fine: dict
+    rel_change: dict
+
+    def converged(self, tol: float = 1e-2) -> bool:
+        """Whether every quantity changed by less than ``tol`` (relative) under refinement."""
+        return all(v < tol for v in self.rel_change.values())
+
+    @property
+    def worst(self) -> float:
+        """The largest relative change across the probed quantities."""
+        return max(self.rel_change.values()) if self.rel_change else 0.0
+
+
+def grid_refine(build, n_coarse, probe):
+    """Refine a discretization composite from ``n_coarse`` to ``2*n_coarse`` and report the change.
+
+    The principled way to pick ``N`` for a :func:`~fns.elements.catalog.fanno_pipe` /
+    :func:`~fns.elements.catalog.tapered_duct`: solve at two resolutions and watch the
+    quantities of interest settle.  Element-agnostic -- it only calls the supplied callables.
+
+    Parameters
+    ----------
+    build : callable
+        ``build(N)`` -> a solved object (e.g. a ``Solution``) for ``N`` segments.
+    n_coarse : int
+        The coarse segment count; the fine solve uses ``2 * n_coarse``.
+    probe : callable
+        ``probe(solved)`` -> a ``dict`` (or mapping) of scalar quantities of interest (e.g.
+        exit Mach, choke back-pressure).
+
+    Returns
+    -------
+    GridRefinement
+    """
+    coarse = dict(probe(build(int(n_coarse))))
+    fine = dict(probe(build(2 * int(n_coarse))))
+    rel = {k: abs(float(fine[k]) - float(coarse[k])) / (abs(float(fine[k])) + 1e-300) for k in coarse}
+    return GridRefinement(n_coarse=int(n_coarse), n_fine=2 * int(n_coarse), coarse=coarse, fine=fine, rel_change=rel)
+
+
 def _implied_degree(spec: CompositeElementSpec, sub: int) -> int:
     """The wired degree a sub-element should have under the serial-composite recipe.
 

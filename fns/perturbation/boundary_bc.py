@@ -100,15 +100,30 @@ def _eval(value, freq):
     ``value`` is a complex constant, a callable ``freq -> complex``, or a frequency
     table ``(freqs, values)`` linearly interpolated (real and imaginary parts) in
     ``freq`` and held flat outside its range.
+
+    A raw ``(freqs, values)`` table is a real-grid interpolant -- fine for a real-frequency
+    sweep (the forced response, the Nyquist driver), but **not analytic**, so it cannot be
+    evaluated at the complex frequencies the stability eigenproblem visits.  Asking for a
+    complex ``freq`` raises a pointed error; wrap the table with
+    :func:`~fns.elements.continuation.rational_fit` to get an analytically-continuable
+    coefficient usable for stability.
     """
     if value is None:
         return 0.0 + 0.0j
     if callable(value):
         return complex(value(freq))
     if isinstance(value, tuple) and len(value) == 2:
+        fc = complex(freq)
+        if abs(fc.imag) > 1e-12 * (abs(fc.real) + 1.0):
+            raise TypeError(
+                "a tabulated reflection/impedance table (freqs, values) cannot be evaluated at a "
+                "complex frequency (real-grid interpolation is not analytic). Use it for the forced "
+                "response / Nyquist sweep, or wrap it with fns.elements.rational_fit(freqs, values) "
+                "for the stability eigenproblem."
+            )
         xs, ys = np.asarray(value[0], dtype=float), np.asarray(value[1], dtype=complex)
-        re = np.interp(freq, xs, ys.real)
-        im = np.interp(freq, xs, ys.imag)
+        re = np.interp(fc.real, xs, ys.real)
+        im = np.interp(fc.real, xs, ys.imag)
         return complex(re, im)
     return complex(value)
 

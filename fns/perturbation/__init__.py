@@ -79,6 +79,7 @@ from .power import (
     ModalEnergyBalance,
 )
 from .drivers import modes_from_det, scattering_2port
+from ..elements.continuation import RationalFit, rational_fit, continuation_warning
 from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
 from .trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning
@@ -150,6 +151,10 @@ __all__ = [
     "ALPHA_CIRCULAR",
     "modes_from_det",
     "scattering_2port",
+    # analytic continuation of tabulated transfer functions / reflection coefficients
+    "RationalFit",
+    "rational_fit",
+    "continuation_warning",
     # acoustic-power diagnostics
     "acoustic_intensity",
     "acoustic_energy_density",

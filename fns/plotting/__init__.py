@@ -29,6 +29,7 @@ from .complex_matrix import (
     scattering_axis_labels,
 )
 from .transfer_function import plot_transfer_function
+from .continuation import plot_fit, plot_pole_map
 from .spectrum import plot_spectrum, plot_mode_shape
 from .modeshape import animate_mode_shape, AnimSeries
 from .topology import plot_network_topology
@@ -49,6 +50,8 @@ __all__ = [
     "plot_scattering_matrix",
     "scattering_axis_labels",
     "plot_transfer_function",
+    "plot_fit",
+    "plot_pole_map",
     "plot_spectrum",
     "plot_mode_shape",
     "animate_mode_shape",

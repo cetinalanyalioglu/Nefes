@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from fns.assemble import jacobian, jacobian_dense
-from fns.derive import ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
+from fns.derive import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
@@ -127,11 +127,17 @@ def test_equilibrium_flame_ignites():
     assert imp1 == pytest.approx(imp0, rel=1e-7)
     assert est[ES_HT, 0] == pytest.approx(est[ES_HT, 1], rel=1e-9)
 
-    # the approach edge is unburnt (~300 K), the product edge is burnt (hot)
-    assert est[ES_T, 0] == pytest.approx(300.0, abs=1e-3)
+    # the approach edge is unburnt, the product edge is burnt (hot).  With the
+    # kinetic-energy coupling the recovered T is the *static* temperature: the cold
+    # approach sits just below its 300 K stagnation value by u^2/(2 cp).
+    T0_static = 300.0 - 0.5 * est[ES_U, 0] ** 2 / est[ES_CP, 0]
+    assert est[ES_T, 0] == pytest.approx(T0_static, abs=1e-2)
+    assert est[ES_T, 0] < 300.0  # KE drop present
     assert est[ES_T, 1] > 2000.0
-    # the burnt temperature matches a standalone HP-equilibrium solve (== Cantera)
-    ref = th.equilibrate_HP(Z, h_react, est[ES_P, 1])
+    # the burnt *static* temperature matches a standalone HP-equilibrium solve (== Cantera)
+    # at the *static* enthalpy h = h_t - u^2/2 (the KE-coupled closure).
+    h_static_1 = est[ES_HT, 1] - 0.5 * est[ES_U, 1] ** 2
+    ref = th.equilibrate_HP(Z, h_static_1, est[ES_P, 1])
     assert ref.converged
     assert est[ES_T, 1] == pytest.approx(ref.T, rel=1e-4)
     # dilatation: the gas expands strongly across the flame

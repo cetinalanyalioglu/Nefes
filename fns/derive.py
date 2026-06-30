@@ -14,7 +14,7 @@ from numba import njit
 
 from .closure import closure_solve
 from .thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER
-from .thermo.equilibrium import eq_kernel_state_warm, eq_marker_state_warm
+from .thermo.equilibrium import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
 from .thermo._chem import RU
 
 # edge-state table (est) slot layout
@@ -38,11 +38,11 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, marker, out, nj_io):
     """Recover one edge's full state into ``out[0:NS_EST]`` (dtype-generic).
 
     For the reacting models the equilibrium/frozen solve is the dominant cost and
-    yields ``(T, rho, c, W)`` in one shot; the closure's static density is the same
-    solve, so it is folded in here (``h = h_t``, the MVP kinetic-energy drop) instead
-    of running the equilibrium a second time through ``closure_solve``.  The perfect
-    gas keeps its two distinct cheap steps (the density root-find carries the exact
-    ``h = h_t - u^2/2`` kinetic-energy coupling).
+    yields ``(T, rho, c, W)`` in one shot.  The kinetic-energy coupling
+    ``h = h_t - u^2/2`` (``u = mdot/(rho A)``) is carried by an outer bracketed root
+    on the static enthalpy wrapped around that solve (``eq_*_state_ke_*``), mirroring
+    the perfect gas's density root -- so every model now recovers the exact static
+    state, not the ``O(M^2)`` ``h ~ h_t`` approximation.
 
     ``marker`` is the transported burnt-marker scalar; only the ``EQ_MARKER`` model reads
     it, to gate the frozen/equilibrium blend (the other models ignore it).
@@ -57,14 +57,14 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, marker, out, nj_io):
         rho, h = closure_solve(model_id, tf, ti, mdot, p, ht, Z_el, area)
         T, _rho2, c, W = thermo_state(model_id, tf, ti, Z_el, h, p)
     elif model_id == EQ_KERNEL:
-        # reacting (equilibrium): one warm-started solve gives rho, T, c, W; KE dropped (h = h_t)
-        T, rho, c, W = eq_kernel_state_warm(tf, ti, Z_el, ht, p, nj_io)
+        # reacting (equilibrium): warm-started solve with the outer kinetic-energy root
+        T, rho, c, W = eq_kernel_state_ke_warm(tf, ti, Z_el, mdot, p, ht, area, nj_io)
     elif model_id == EQ_MARKER:
-        # reacting (marker-gated): blend frozen (b=0) and equilibrium (b=1); KE dropped (h = h_t)
-        T, rho, c, W = eq_marker_state_warm(tf, ti, Z_el, marker, ht, p, nj_io)
+        # reacting (marker-gated): blend frozen (b=0) and equilibrium (b=1), each with its own KE root
+        T, rho, c, W = eq_marker_state_ke_warm(tf, ti, Z_el, marker, mdot, p, ht, area, nj_io)
     else:
-        # reacting (frozen): one solve gives rho, T, c, W; KE dropped (h = h_t)
-        T, rho, c, W = thermo_state(model_id, tf, ti, Z_el, ht, p)
+        # reacting (frozen): frozen solve with the outer kinetic-energy root
+        T, rho, c, W = eq_frozen_state_ke(tf, ti, Z_el, mdot, p, ht, area, nj_io)
     u = mdot / (rho * area)
     M = u / c
     pt = thermo_total_pressure(model_id, tf, ti, Z_el, M, p, T, c, W)

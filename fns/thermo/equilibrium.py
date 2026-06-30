@@ -35,7 +35,8 @@ species union; ``K`` = number of feed streams = transported mixture fractions).
 """
 
 import numpy as np
-from numba import njit
+from numba import njit, types
+from numba.extending import overload
 
 from ..composition import stream_pack_arrays
 from ..smooth import marker_gate
@@ -317,3 +318,182 @@ def eq_total_pressure(M, p, T, c, W):
     """Isentropic total pressure for a variable-gamma gas (gamma = c^2 W / (R_u T))."""
     gamma = c * c * W / (RU * T)
     return p * (1.0 + 0.5 * (gamma - 1.0) * M * M) ** (gamma / (gamma - 1.0))
+
+
+# ---------------------------------------------------------------------------
+# Kinetic-energy coupling for the reacting closures (R-B2.2)
+# ---------------------------------------------------------------------------
+# The static enthalpy ``h`` an element residual sees is the transported total
+# enthalpy ``h_t`` minus the kinetic energy, ``h = h_t - u^2/2`` with
+# ``u = mdot/(rho A)``.  Because ``rho`` itself is the equilibrium/frozen density
+# at ``h``, this is an implicit (outer) relation on top of the inner composition
+# solve.  Fixing the *static* pressure ``p`` (a band-1 unknown) makes it a
+# strictly monotone scalar root, exactly like the perfect gas's ``F(rho)`` -- so it
+# is solved by a safeguarded bracketed iteration on the real part, with the
+# imaginary part attached by the implicit-function theorem.  No subsonic/supersonic
+# branch ambiguity, no caps, no clamps: the bracket confines every closure
+# evaluation to a physical static enthalpy.
+#
+# ``frozen`` selects the inner closure (0 = HP equilibrium / burnt, 1 = frozen /
+# unburnt) so the same outer machinery serves both; the marker blend runs the two
+# *separately* (each leg with its own density, hence its own ``u`` and ``h``) and
+# blends the recovered states -- the frozen leg then never sees the burnt edge's
+# large kinetic energy.
+
+
+@njit(cache=True)
+def _ke_inner_state(frozen, tf, ti, xi, h, p, cache):
+    """Static reacting state ``(T, rho, c, W)`` at ``(xi, h, p)`` for the selected leg."""
+    if frozen == 0:
+        return eq_kernel_state_warm(tf, ti, xi, h, p, cache)
+    return eq_frozen_state(tf, ti, xi, h, p)
+
+
+@njit(cache=True)
+def _ke_root_real(frozen, tf, ti, xi_r, mdot_r, p_r, ht_r, area_r, cache):
+    """Real root ``h`` of ``G(h) = h_t - 1/2 (mdot/(rho(h) A))^2 - h`` (monotone).
+
+    ``G`` decreases in ``h`` (a lower static enthalpy is colder, so denser, so
+    slower, so less kinetic energy), giving a single root.  ``G(h_t) <= 0`` brackets
+    it from above; the lower bracket is expanded until ``G > 0``, then a
+    bisection-safeguarded secant converges it.  All inputs are real parts.
+    """
+    flux = mdot_r / area_r
+    k = 0.5 * flux * flux  # kinetic energy = k / rho^2
+
+    h_hi = ht_r
+    rho_hi = _ke_inner_state(frozen, tf, ti, xi_r, h_hi, p_r, cache)[1]
+    g_hi = -k / (rho_hi * rho_hi)  # = G(h_t)
+    if g_hi >= -1e-300:  # quiescent / vanishing flux: the root is h_t itself
+        return h_hi
+
+    delta = k / (rho_hi * rho_hi)
+    if delta < 1.0:
+        delta = 1.0
+    h_lo = ht_r - delta
+    g_lo = 1.0
+    bracketed = False
+    for _ in range(200):
+        rho_lo = _ke_inner_state(frozen, tf, ti, xi_r, h_lo, p_r, cache)[1]
+        g_lo = ht_r - k / (rho_lo * rho_lo) - h_lo
+        if g_lo > 0.0:
+            bracketed = True
+            break
+        delta *= 2.0
+        h_lo = ht_r - delta
+    if not bracketed:
+        raise ValueError("kinetic-energy bracket expansion failed")
+
+    a = h_lo  # G(a) > 0
+    ga = g_lo
+    b = h_hi  # G(b) < 0
+    gb = g_hi
+    h = 0.5 * (a + b)
+    for _ in range(100):
+        rho = _ke_inner_state(frozen, tf, ti, xi_r, h, p_r, cache)[1]
+        g = ht_r - k / (rho * rho) - h
+        if g > 0.0:
+            a = h
+            ga = g
+        else:
+            b = h
+            gb = g
+        h_new = a - ga * (b - a) / (gb - ga)  # secant from the straddling pair
+        if not (a < h_new < b):
+            h_new = 0.5 * (a + b)
+        if abs(h_new - h) <= 1e-13 * (abs(h) + 1.0):
+            return h_new
+        h = h_new
+    return h
+
+
+def _attach_ke_state(frozen, tf, ti, xi, mdot, p, ht, area, cache, h_s):
+    """Recover ``(T, rho, c, W)`` at the converged static enthalpy ``h_s`` (dtype-dispatched).
+
+    Pure-Python base path; the ``@overload`` below provides the compiled
+    specializations.  Real inputs -> bare static state at ``h_s``; complex inputs ->
+    the same plus the implicit-function imaginary part of ``h_s`` w.r.t. every input
+    (so the recovered fields carry the exact complex-step seed).
+    """
+    return _ke_inner_state(frozen, tf, ti, xi, h_s, p, cache)
+
+
+@overload(_attach_ke_state, inline="always")
+def _attach_ke_state_ovl(frozen, tf, ti, xi, mdot, p, ht, area, cache, h_s):
+    xi_complex = getattr(xi, "dtype", None) is not None and isinstance(xi.dtype, types.Complex)
+    any_complex = (
+        xi_complex
+        or isinstance(mdot, types.Complex)
+        or isinstance(p, types.Complex)
+        or isinstance(ht, types.Complex)
+        or isinstance(area, types.Complex)
+    )
+    if any_complex:
+
+        def impl(frozen, tf, ti, xi, mdot, p, ht, area, cache, h_s):
+            p_r = p.real
+            area_r = area.real
+            mdot_r = mdot.real
+            xr = xi.real.astype(np.complex128)  # composition with the seed stripped
+            # d rho / d h at the converged point (complex step on the static enthalpy)
+            eps = 1e-30
+            inner_h = _ke_inner_state(frozen, tf, ti, xr, complex(h_s, eps), complex(p_r, 0.0), cache)[1]
+            rho_h = inner_h.imag / eps
+            rho_r = inner_h.real
+            gp = (mdot_r * mdot_r / (rho_r * rho_r * rho_r * area_r * area_r)) * rho_h - 1.0
+            # input-seed contribution to G at the fixed real root (rho carries the p / xi seeds)
+            rho0 = _ke_inner_state(frozen, tf, ti, xi.astype(np.complex128), complex(h_s, 0.0), p, cache)[1]
+            u0 = mdot / (rho0 * area)
+            g0 = ht - 0.5 * u0 * u0 - h_s
+            im_hs = -g0.imag / gp
+            h_complex = complex(h_s, im_hs)
+            return _ke_inner_state(frozen, tf, ti, xi.astype(np.complex128), h_complex, p, cache)
+
+        return impl
+
+    def impl(frozen, tf, ti, xi, mdot, p, ht, area, cache, h_s):
+        return _ke_inner_state(frozen, tf, ti, xi, h_s, p, cache)
+
+    return impl
+
+
+@njit(cache=True)
+def _ke_solve(frozen, tf, ti, xi, mdot, p, ht, area, cache):
+    """KE-coupled reacting state ``(T, rho, c, W)``; dtype-generic, complex-step-safe."""
+    xi_r = xi.real.copy()
+    h_s = _ke_root_real(frozen, tf, ti, xi_r, mdot.real, p.real, ht.real, area.real, cache)
+    return _attach_ke_state(frozen, tf, ti, xi, mdot, p, ht, area, cache, h_s)
+
+
+@njit(cache=True)
+def eq_kernel_state_ke_warm(tf, ti, xi, mdot, p, ht, area, cache):
+    """Burnt (HP-equilibrium) state with the kinetic-energy coupling ``h = h_t - u^2/2``.
+
+    Warm-started from ``cache`` (moles + temperature); the outer KE root reuses it on
+    every inner evaluation so the bracketed solve stays cheap.
+    """
+    return _ke_solve(0, tf, ti, xi, mdot, p, ht, area, cache)
+
+
+@njit(cache=True)
+def eq_frozen_state_ke(tf, ti, xi, mdot, p, ht, area, cache):
+    """Unburnt (frozen) state with the kinetic-energy coupling ``h = h_t - u^2/2``.
+
+    ``cache`` is accepted for signature parity with the burnt leg and ignored (the
+    frozen solve needs no warm start).
+    """
+    return _ke_solve(1, tf, ti, xi, mdot, p, ht, area, cache)
+
+
+@njit(cache=True)
+def eq_marker_state_ke_warm(tf, ti, xi, marker, mdot, p, ht, area, cache):
+    """Marker-gated blend of the KE-coupled frozen and equilibrium states.
+
+    Each leg solves its **own** kinetic-energy root (its own density, hence its own
+    ``u`` and static enthalpy), so the weighted-out leg always sits at a physical
+    state -- the frozen leg never inherits the burnt edge's large kinetic energy.
+    """
+    Tf, rf, cf, Wf = _ke_solve(1, tf, ti, xi, mdot, p, ht, area, cache)
+    Te, re, ce, We = _ke_solve(0, tf, ti, xi, mdot, p, ht, area, cache)
+    g = marker_gate(marker, MARKER_GATE_WIDTH)
+    return (1.0 - g) * Tf + g * Te, (1.0 - g) * rf + g * re, (1.0 - g) * cf + g * ce, (1.0 - g) * Wf + g * We

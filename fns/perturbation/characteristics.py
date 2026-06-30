@@ -105,13 +105,13 @@ def edge_transforms(est, K, cals=None):
 def edge_caloric(prob, x_bar):
     """Per-edge caloric row ``(a, m, b)`` of :func:`dq_to_dx` (``dh_t = a*d_rho + m*d_u + b*d_p``).
 
-    A calorically perfect edge keeps the kinetic-energy term (``m = u``) with the
-    constant ``K = cp/R`` of the gas; the reacting closures drop it (``m = 0``, the
-    MVP ``h ~ h_t``) and take the caloric derivatives ``(dh/drho)_p`` and
-    ``(dh/dp)_rho`` from a complex step of the equilibrium/frozen state at the frozen
-    mean -- the *same* closure the converged Jacobian ``J_alg`` was built from, so the
-    perturbation characteristic maps stay consistent with the mean-flow operator
-    (theory.md s12.2).
+    Every edge keeps the kinetic-energy term (``m = u``): ``h_t = h + u^2/2`` so
+    ``dh_t`` carries ``u du`` regardless of gas model.  A calorically perfect edge
+    uses the constant ``K = cp/R`` for its caloric derivatives; the reacting closures
+    take ``(dh/drho)_p`` and ``(dh/dp)_rho`` from a complex step of the
+    equilibrium/frozen state at the frozen mean -- the *same* closure the converged
+    Jacobian ``J_alg`` was built from (now KE-coupled), so the perturbation
+    characteristic maps stay consistent with the mean-flow operator (theory.md s12.2).
 
     Parameters
     ----------
@@ -149,15 +149,16 @@ def edge_caloric(prob, x_bar):
         if mid == EQ_MARKER:
             b_mark = float(x_bar[marker_row, e]) if marker_row >= 0 else 0.0
             eff = EQ_KERNEL if b_mark >= 0.5 else EQ_FROZEN
-        # reacting: rho = rho(xi, h_t, p) (KE dropped); invert by complex step.
+        # reacting: rho = rho(xi, h, p) at the *static* enthalpy h = h_t - u^2/2 (the
+        # KE-coupled mean state); invert (dh/drho)_p, (dh/dp)_rho there by complex step.
         xi = np.ascontiguousarray(x_bar[3 : 3 + n_elem, e]).astype(np.complex128)
-        ht = complex(x_bar[2, e])
+        h_static = complex(float(x_bar[2, e]) - 0.5 * u * u)
         d = 1e-30
-        drho_dh = thermo_state(eff, prob.tf, prob.ti, xi, ht + 1j * d, complex(p))[1].imag / d
-        drho_dp = thermo_state(eff, prob.tf, prob.ti, xi, ht + 0j, p + 1j * d)[1].imag / d
+        drho_dh = thermo_state(eff, prob.tf, prob.ti, xi, h_static + 1j * d, complex(p))[1].imag / d
+        drho_dp = thermo_state(eff, prob.tf, prob.ti, xi, h_static + 0j, p + 1j * d)[1].imag / d
         a = 1.0 / drho_dh  # (dh/drho)_p
         b = -drho_dp / drho_dh  # (dh/dp)_rho
-        rows.append((a, 0.0, b))
+        rows.append((a, u, b))  # m = u: the KE term, now carried by the reacting closure too
     return rows
 
 

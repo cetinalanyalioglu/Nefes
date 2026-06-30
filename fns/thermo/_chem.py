@@ -197,8 +197,18 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
         ntot += nj[j]
     T = T_init
 
+    # Uniform cold guess (the robust, always-conditioned start: gram-atoms spread
+    # evenly over the product species).  ``nj`` may arrive warm-started from a cache
+    # at a different operating point; if that seed drives the reduced Newton matrix
+    # singular, the solve below falls back to this guess (graceful warm -> cold).
+    sb0 = 0.0
+    for i in range(Ne):
+        sb0 += b0[i]
+    uniform = sb0 / (2.0 * Ns)
+
     flag = 0
     nit = 0
+    n_reset = 0
     for it in range(MAX_ITER):
         nit = it + 1
         species_thermo9(coeffs, Tint, T, cpR, hRT, gRT)
@@ -261,7 +271,24 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
         M[Ne + 1, Ne + 1] = ccoef
         rhs[Ne + 1] = hhat_target - sum_nh + sum_nhf
 
-        x = np.linalg.solve(M, rhs)
+        singular = False
+        try:
+            x = np.linalg.solve(M, rhs)
+        except Exception:
+            singular = True
+        if singular:
+            # The warm seed made this iterate's reduced matrix singular.  Re-seed to
+            # the uniform cold guess (well-conditioned for any present element) and
+            # retry; capped so a genuinely rank-deficient system (a truly absent
+            # element) still terminates rather than looping.
+            if n_reset >= 2:
+                break
+            n_reset += 1
+            for j in range(Ns):
+                nj[j] = uniform
+            ntot = Ns * uniform
+            T = T_init
+            continue
         dln_n = x[Ne]
         dln_T = x[Ne + 1]
 

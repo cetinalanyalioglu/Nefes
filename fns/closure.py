@@ -9,15 +9,17 @@ internally); it is unused by the perfect gas.
 
 For a perfect gas this collapses to the single density root (the kinetic-energy
 term is already inside ``F(rho)``), so there is one root-find, not a nested fixed
-point.  A future opaque-thermo backend (equilibrium/table) implements the same
-interface with an outer fixed point; both return ``(rho, h)`` with the
-IFT-spliced complex-step seed, keeping the boundary backend-agnostic.
+point.  The reacting backends carry the same ``h = h_t - u^2/2`` coupling through an
+outer bracketed root on the static enthalpy (``eq_*_state_ke_*``); both return
+``(rho, h)`` with the IFT-spliced complex-step seed, keeping the boundary
+backend-agnostic.
 """
 
+import numpy as np
 from numba import njit
 
 from .thermo.api import PERFECT_GAS, EQ_KERNEL, EQ_FROZEN
-from .thermo.equilibrium import eq_frozen_state, eq_kernel_state
+from .thermo.equilibrium import eq_frozen_state_ke, eq_kernel_state_ke_warm
 from .thermo.perfect_gas import pg_solve_density
 
 
@@ -37,11 +39,12 @@ def closure_solve(model_id, tf, ti, mdot, p, h_t, comp, area):
         h = h_t - 0.5 * u * u
         return rho, h
     if model_id == EQ_KERNEL:
-        # MVP: drop the kinetic-energy coupling (h ~ h_t); O(M^2) at low Mach.
-        # The static density is the equilibrium density at the transported h_t.
-        _T, rho, _c, _W = eq_kernel_state(tf, ti, comp, h_t, p)
-        return rho, h_t
+        # equilibrium density at the KE-coupled static enthalpy (cold-start, no warm cache here)
+        _T, rho, _c, _W = eq_kernel_state_ke_warm(tf, ti, comp, mdot, p, h_t, area, np.zeros(0))
+        u = mdot / (rho * area)
+        return rho, h_t - 0.5 * u * u
     if model_id == EQ_FROZEN:
-        _T, rho, _c, _W = eq_frozen_state(tf, ti, comp, h_t, p)
-        return rho, h_t
+        _T, rho, _c, _W = eq_frozen_state_ke(tf, ti, comp, mdot, p, h_t, area, np.zeros(0))
+        u = mdot / (rho * area)
+        return rho, h_t - 0.5 * u * u
     raise ValueError("unknown thermo model_id")

@@ -16,7 +16,7 @@ import yaml
 from fns.io import load_case, save_case
 from fns.io.yaml_in import _parse_composition
 from fns.solver.control import states_table
-from fns.derive import ES_T, ES_RHO, ES_MDOT, ES_HT
+from fns.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
 from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
@@ -250,8 +250,10 @@ def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
     lib = SpeciesLibrary.from_native(MECH).subset(["H2", "O2", "N2", "H2O", "OH", "H", "O", "HO2"])
     gas = Thermo(lib)
     Y, Z = resolve_composition(lib, {"H2": 1.0, "O2": 0.5, "N2": 1.88}, basis="mole")
-    h = enthalpy_mass(lib, Y, 300.0)
-    ref = gas.equilibrate_HP(Z, h, float(est[1, 1]))  # at the burnt static pressure (ES_P row 1)
+    # the recovered burnt T is the *static* temperature, so compare against the HP
+    # solve at the *static* enthalpy h = h_t - u^2/2 (the KE-coupled closure).
+    h_static = float(est[ES_HT, 1]) - 0.5 * float(est[ES_U, 1]) ** 2
+    ref = gas.equilibrate_HP(Z, h_static, float(est[1, 1]))  # at the burnt static pressure (ES_P row 1)
     assert float(est[ES_T, 1]) == pytest.approx(ref.T, rel=1e-3)
 
 

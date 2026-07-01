@@ -1026,55 +1026,91 @@ def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> Co
 
 
 def _taper_stations(area, length, n_segments):
-    """Resolve a taper's ``[A0 .. AN]`` station areas + station x-coordinates.
+    """Resolve a taper's station areas ``[A0 .. AN]`` and axial coordinates ``[x0 .. xN]``.
 
-    ``area`` is either a sequence of station areas (``n_segments = len - 1``) or a callable
-    ``A(x)`` sampled at ``n_segments + 1`` equispaced stations over ``[0, length]``.
+    Two input forms:
+
+    * an ``(x, A)`` table -- a sequence of ``(position, area)`` pairs, the axial positions
+      ``x`` in metres and strictly increasing.  The stations (hence the per-segment lengths)
+      may be **non-uniform**, and the total length is *inferred* as ``xN - x0``; the segment
+      count is ``len(table) - 1``.  A ``length`` may be passed only as a consistency check
+      (it must match the inferred span); ``n_segments`` likewise.
+    * a callable ``A(x)`` -- sampled at ``n_segments + 1`` equispaced stations over
+      ``[0, length]`` (both ``length`` and ``n_segments`` required).
     """
     if callable(area):
+        if length is None:
+            raise ValueError("tapered_duct: pass length when area is a callable A(x)")
+        L = float(length)
+        if not L > 0.0:
+            raise ValueError(f"tapered_duct: length must be positive; got {length}")
         if n_segments is None or int(n_segments) < 1:
             raise ValueError("tapered_duct: pass n_segments >= 1 when area is a callable A(x)")
         N = int(n_segments)
-        xs = [length * k / N for k in range(N + 1)]
+        xs = [L * k / N for k in range(N + 1)]
         areas = [float(area(x)) for x in xs]
     else:
-        areas = [float(a) for a in area]
-        if len(areas) < 2:
-            raise ValueError("tapered_duct: the area table needs >= 2 stations [A0 .. AN]")
-        if n_segments is not None and int(n_segments) != len(areas) - 1:
+        try:
+            pairs = [(float(x), float(a)) for (x, a) in area]
+        except (TypeError, ValueError):
             raise ValueError(
-                f"tapered_duct: n_segments ({n_segments}) must equal len(area) - 1 ({len(areas) - 1}) "
-                "when an explicit area table is given (omit n_segments to infer it)"
+                "tapered_duct: the area table must be a sequence of (x, area) pairs -- axial position "
+                "x [m] and area A [m^2], e.g. [(0.0, 3e-3), (0.15, 1.5e-3), (0.3, 3e-3)]"
             )
-        N = len(areas) - 1
-        xs = [length * k / N for k in range(N + 1)]
+        if len(pairs) < 2:
+            raise ValueError("tapered_duct: the (x, area) table needs >= 2 stations")
+        xs = [p[0] for p in pairs]
+        areas = [p[1] for p in pairs]
+        if any(xs[i + 1] <= xs[i] for i in range(len(xs) - 1)):
+            raise ValueError(f"tapered_duct: station positions x must be strictly increasing; got {xs}")
+        span = xs[-1] - xs[0]
+        if length is not None and abs(float(length) - span) > 1e-9 * max(span, 1.0):
+            raise ValueError(
+                f"tapered_duct: passed length {length} does not match the (x, area) table span {span:g} "
+                "(length is inferred from x -- omit it, or make it match the span)"
+            )
+        if n_segments is not None and int(n_segments) != len(pairs) - 1:
+            raise ValueError(
+                f"tapered_duct: n_segments ({n_segments}) must equal len(table) - 1 ({len(pairs) - 1}) "
+                "for an (x, area) table (the stations set the segment count)"
+            )
     if any(a <= 0.0 for a in areas):
         raise ValueError("tapered_duct: every station area must be positive")
     return areas, xs
 
 
-def tapered_duct(area, length, n_segments=None, name="taper") -> CompositeElementSpec:
-    """Tapered duct / horn / con-di nozzle resolved from an area profile ``A(x)``.
+def tapered_duct(area, length=None, n_segments=None, name="taper") -> CompositeElementSpec:
+    """Tapered duct / horn / con-di nozzle resolved from an ``(x, A)`` profile.
 
     Discretizes a continuously area-varying acoustic passage into ``N`` segments, each a
-    compact area change ``A_i -> A_{i+1}`` followed by a length-``L/N`` duct at the segment's
-    downstream area (the catalog has no length-bearing area-change atom, so a segment is two
-    atoms).  As ``N`` grows the chain converges to the true horn, and a con-di profile
-    **chokes at its true throat** -- the min-area edge -- with the isentropic-area-change
-    complementarity engaging on exactly that segment.
+    compact area change ``A_i -> A_{i+1}`` followed by a length-``(x_{i+1} - x_i)`` duct at
+    the segment's downstream area (the catalog has no length-bearing area-change atom, so a
+    segment is two atoms).  As ``N`` grows the chain converges to the true horn, and a con-di
+    profile **chokes at its true throat** -- the min-area edge -- with the
+    isentropic-area-change complementarity engaging on exactly that segment.
+
+    The standard input is a table of ``(x, A)`` pairs: the axial positions ``x`` [m] set the
+    station spacing (which **may be non-uniform** -- cluster stations where the area varies
+    fastest, e.g. near a throat) and the total length is *inferred* from them.  A callable
+    ``A(x)`` is also accepted; it is sampled at ``n_segments + 1`` equispaced stations.
+
+    Because each segment carries a real :func:`duct`, the taper **propagates acoustic waves**
+    through its interior (each duct spans its own station interval); the area-change atoms are
+    compact.
 
     Parameters
     ----------
-    area : sequence of float, or callable
-        The station areas ``[A0 .. AN]`` (``n_segments`` is then ``len(area) - 1``), or a
-        callable ``A(x)`` [m^2] over ``x in [0, length]`` sampled at ``n_segments + 1``
-        stations.  The two external edges must carry ``A0`` (upstream) and ``AN``
-        (downstream).
-    length : float
-        Total axial length ``L`` [m].
+    area : sequence of (float, float), or callable
+        A table of ``(x, A)`` station pairs -- axial position ``x`` [m] (strictly increasing)
+        and area ``A`` [m^2] -- or a callable ``A(x)`` [m^2] sampled at ``n_segments + 1``
+        equispaced stations over ``[0, length]``.  The two external edges must carry ``A0``
+        (upstream) and ``AN`` (downstream).
+    length : float, optional
+        Total axial length ``L`` [m].  **Required** for a callable ``area``; for an
+        ``(x, A)`` table it is inferred as ``xN - x0`` and, if given, checked against that span.
     n_segments : int, optional
-        Segment count ``N`` -- required when ``area`` is a callable, inferred from the table
-        length otherwise.
+        Segment count ``N`` -- **required** when ``area`` is a callable; for an ``(x, A)``
+        table it is ``len(table) - 1`` (and, if given, checked against it).
     name : str, optional
         Display name.
 
@@ -1082,17 +1118,14 @@ def tapered_duct(area, length, n_segments=None, name="taper") -> CompositeElemen
     -------
     CompositeElementSpec
     """
-    L = float(length)
-    if not L > 0.0:
-        raise ValueError(f"tapered_duct {name!r}: length must be positive; got {length}")
-    areas, _xs = _taper_stations(area, L, n_segments)
+    areas, xs = _taper_stations(area, length, n_segments)
     N = len(areas) - 1
-    dL = L / N
-    # segment i: iac (A_i -> A_{i+1}) at sub-index 2i, then a duct (length dL) at A_{i+1} at 2i+1
+    # segment i: iac (A_i -> A_{i+1}) at sub-index 2i, then a duct spanning this station's own
+    # interval (x_{i+1} - x_i) at A_{i+1} at 2i+1 -- non-uniform stations give non-uniform ducts
     subs = []
     for i in range(N):
         subs.append(isentropic_area_change(name=f"{name}.iac{i}"))
-        subs.append(duct(length=dL, name=f"{name}.duct{i}"))
+        subs.append(duct(length=xs[i + 1] - xs[i], name=f"{name}.duct{i}"))
     internal = []
     for i in range(N):
         internal.append((2 * i, 2 * i + 1, areas[i + 1]))  # iac_i -> duct_i at the segment's downstream area

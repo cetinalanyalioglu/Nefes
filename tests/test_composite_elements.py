@@ -303,9 +303,10 @@ def test_fanno_pipe_resolves_the_mach_rise():
 def _condi(n, pt_in, length=0.4, a_in=3.0e-3, a_th=1.5e-3, a_out=3.0e-3):
     half = n // 2
     areas = list(np.linspace(a_in, a_th, half + 1)) + list(np.linspace(a_th, a_out, n - half + 1))[1:]
+    table = list(zip(np.linspace(0.0, length, len(areas)), areas))  # (x, A) pairs; length inferred
     net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
     i = net.add(cat.total_pressure_inlet(pt_in, T0))
-    td = net.add(cat.tapered_duct(areas, length=length, name="nozzle"))
+    td = net.add(cat.tapered_duct(table, name="nozzle"))
     o = net.add(cat.pressure_outlet(P0, T0))
     net.connect(i, td, a_in)
     net.connect(td, o, a_out)
@@ -334,8 +335,8 @@ def test_tapered_duct_from_callable_matches_table():
     def A(x):
         return 3.0e-3 - 1.5e-3 * _np.sin(_np.pi * x / L)  # a smooth contraction-expansion
 
-    table = [A(L * k / N) for k in range(N + 1)]
-    a0, aN = table[0], table[-1]
+    table = [(L * k / N, A(L * k / N)) for k in range(N + 1)]  # (x, A) at the same stations
+    a0, aN = table[0][1], table[-1][1]
 
     def build(spec):
         net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
@@ -349,13 +350,36 @@ def test_tapered_duct_from_callable_matches_table():
         return sol.table()
 
     e_call = build(cat.tapered_duct(A, length=L, n_segments=N))
-    e_tab = build(cat.tapered_duct(table, length=L))
+    e_tab = build(cat.tapered_duct(table))  # length inferred from x
     assert np.allclose(e_call, e_tab, rtol=1e-9, atol=1e-9)
 
 
+def test_tapered_duct_nonuniform_stations_give_nonuniform_ducts():
+    # (x, A) with non-uniform spacing -> each segment's duct spans its own x-interval, and the
+    # total propagation length is the inferred x-span (not a uniform L/N tiling)
+    table = [(0.0, 3.0e-3), (0.05, 1.5e-3), (0.30, 3.0e-3)]  # a station clustered near the throat
+    spec = cat.tapered_duct(table, name="nozzle")
+    duct_lengths = [spec.sub_elements[2 * i + 1].fparams[0] for i in range(spec.n_sub // 2)]
+    assert duct_lengths == pytest.approx([0.05, 0.25])  # the two station intervals, non-uniform
+    assert sum(duct_lengths) == pytest.approx(0.30)  # total length inferred from x-span
+
+
 def test_tapered_duct_rejects_inconsistent_n_segments():
+    table = [(0.0, 3e-3), (0.15, 2e-3), (0.3, 3e-3)]
     with pytest.raises(ValueError, match="n_segments"):
-        cat.tapered_duct([3e-3, 2e-3, 3e-3], length=0.3, n_segments=5)
+        cat.tapered_duct(table, n_segments=5)
+
+
+def test_tapered_duct_rejects_flat_area_list():
+    # the old area-only list is no longer accepted -- the message points at the (x, A) form
+    with pytest.raises(ValueError, match=r"\(x, area\) pairs"):
+        cat.tapered_duct([3e-3, 2e-3, 3e-3], length=0.3)
+
+
+def test_tapered_duct_length_must_match_x_span():
+    table = [(0.0, 3e-3), (0.15, 2e-3), (0.3, 3e-3)]
+    with pytest.raises(ValueError, match="does not match"):
+        cat.tapered_duct(table, length=0.9)
 
 
 def test_grid_refine_reports_convergence():

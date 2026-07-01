@@ -57,10 +57,10 @@ from fns.elements.ids import (
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
 )
-from fns.assemble import residual, jacobian
+from fns.assembly.assemble import residual, jacobian
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_M
+from fns.assembly.derive import ES_M
 from fns.solver.linear import scaled_system, col_scale
 
 R_AIR, GAMMA = 287.0, 1.4

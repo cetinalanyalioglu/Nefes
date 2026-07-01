@@ -24,9 +24,9 @@ from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_RHO, ES_U, ES_P, ES_C, ES_M, ES_PT
+from fns.assembly.derive import ES_RHO, ES_U, ES_P, ES_C, ES_M, ES_PT
 from fns.perturbation import perturbation_response
-from fns.perturbation.characteristics import char_to_dq, basis_matrix
+from fns.perturbation.operator.characteristics import char_to_dq, basis_matrix
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

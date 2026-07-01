@@ -25,13 +25,13 @@ from fns.elements.dynamic_source import (
     heat_release_response,
     mass_flow_response,
 )
-from fns.perturbation.boundary_bc import PerturbationBC
-from fns.perturbation.characteristics import dq_to_dx
-from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+from fns.perturbation.operator.boundary_bc import PerturbationBC
+from fns.perturbation.operator.characteristics import dq_to_dx
+from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
 from fns.perturbation import eigenmodes
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_MDOT, ES_U, ES_RHO, ES_P, ES_AREA
+from fns.assembly.derive import ES_MDOT, ES_U, ES_RHO, ES_P, ES_AREA
 from fns.thermo.configure import perfect_gas
 
 R, GAMMA = 287.0, 1.4

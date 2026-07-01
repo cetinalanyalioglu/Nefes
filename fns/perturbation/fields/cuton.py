@@ -28,7 +28,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from ..derive import ES_C, ES_M, ES_AREA
+from ...assembly.derive import ES_C, ES_M, ES_AREA
 
 # First non-trivial root of J1'(x): the (m=1, n=0) mode of a hard-walled circular
 # duct -- the lowest higher-order mode, hence the one that cuts on first.
@@ -161,7 +161,7 @@ def duct_cuton_frequencies(prob, x, *, section="circular", names=None):
     """
     if section not in _SECTIONS:
         raise ValueError(f"section must be one of {_SECTIONS}; got {section!r}")
-    from ..solver.control import states_table
+    from ...solver.control import states_table
 
     est = states_table(prob, x)
     ducts = []

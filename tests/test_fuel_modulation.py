@@ -29,7 +29,7 @@ import pytest
 
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import mass_flow_response, n_tau, n_tau_lowpass
-from fns.perturbation.boundary_bc import PerturbationBC
+from fns.perturbation.operator.boundary_bc import PerturbationBC
 from fns.perturbation import (
     open_loop_response,
     forced_response,
@@ -37,15 +37,15 @@ from fns.perturbation import (
     excite_perturbation,
     CompositionalNoiseWarning,
 )
-from fns.perturbation.stamps import build_source_stamps
-from fns.perturbation.characteristics import edge_caloric, char_to_dx
-from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic
-from fns.assemble import residual
+from fns.perturbation.operator.stamps import build_source_stamps
+from fns.perturbation.operator.characteristics import edge_caloric, char_to_dx
+from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
+from fns.assembly.assemble import residual
 from fns.solver import solve
 from fns.solver.control import states_table
 from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
 from fns.thermo.configure import equilibrium
-from fns.derive import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
+from fns.assembly.derive import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
 
 AREA = 0.02
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")

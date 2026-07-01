@@ -23,14 +23,14 @@ import pytest
 
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import heat_release_response, n_tau_lowpass, tabulated
-from fns.perturbation.boundary_bc import PerturbationBC
+from fns.perturbation.operator.boundary_bc import PerturbationBC
 from fns.perturbation import open_loop_response, nyquist_stability, eigenmodes
-from fns.perturbation.nyquist import _rank1_terms, _passive_blocks
-from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic
+from fns.perturbation.stability.nyquist import _rank1_terms, _passive_blocks
+from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
 from fns.solver import solve
 from fns.solver.control import states_table
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_M
+from fns.assembly.derive import ES_M
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

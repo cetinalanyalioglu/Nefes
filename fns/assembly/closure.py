@@ -18,9 +18,9 @@ backend-agnostic.
 import numpy as np
 from numba import njit
 
-from .thermo.api import PERFECT_GAS, EQ_KERNEL, EQ_FROZEN
-from .thermo.equilibrium import eq_frozen_state_ke, eq_kernel_state_ke_warm
-from .thermo.perfect_gas import pg_solve_density
+from ..thermo.api import PERFECT_GAS, EQ_KERNEL, EQ_FROZEN
+from ..thermo.equilibrium import eq_frozen_state_ke, eq_kernel_state_ke_warm
+from ..thermo.perfect_gas import pg_solve_density
 
 
 @njit(cache=True)

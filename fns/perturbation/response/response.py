@@ -46,14 +46,14 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from .operator import build_acoustic_blocks, assemble_acoustic
-from .stamps import _terminal_closure, _set_row
-from .characteristics import dx_to_char, basis_block_from_state
-from .modeshape import build_geometry, reconstruct_field, NetworkGeometry
-from .terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (re-exported)
-from . import matrices as mat
-from ..solver.control import states_table
-from ..derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT  # noqa: F401
+from ..operator.operator import build_acoustic_blocks, assemble_acoustic
+from ..operator.stamps import _terminal_closure, _set_row
+from ..operator.characteristics import dx_to_char, basis_block_from_state
+from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry
+from ..operator.terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (re-exported)
+from ..operator import matrices as mat
+from ...solver.control import states_table
+from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT  # noqa: F401
 
 
 class TransferMatrixWarning(UserWarning):
@@ -1072,7 +1072,7 @@ class PerturbationResponse:
 
     def _basis_labels(self, basis):
         """Per-variable symbols for ``basis``, trimmed to this response's dimension."""
-        from .characteristics import BASIS_LABELS
+        from ..operator.characteristics import BASIS_LABELS
 
         syms = BASIS_LABELS.get(basis)
         return tuple(syms[: self.n]) if syms else None
@@ -1116,7 +1116,7 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import plot_transfer_matrix as _plot
+        from ...plotting import plot_transfer_matrix as _plot
 
         T = self.transfer_matrix(a, b, basis=basis)
         x = self.freqs if freqs is None else freqs
@@ -1148,7 +1148,7 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import plot_scattering_matrix as _plot
+        from ...plotting import plot_scattering_matrix as _plot
 
         S = self.scattering_matrix(a, b, basis=basis)
         x = self.freqs if freqs is None else freqs
@@ -1182,7 +1182,7 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import plot_scattering_matrix as _plot
+        from ...plotting import plot_scattering_matrix as _plot
 
         S = self.multiport_scattering_matrix()
         incoming, outgoing = self.multiport_scattering_labels()
@@ -1222,7 +1222,7 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import plot_complex_matrix as _plot
+        from ...plotting import plot_complex_matrix as _plot
 
         C = self.contributions(edge, incoming=incoming)  # (n_omega, n, n_source)
         outputs, sources = self.contribution_labels(edge)
@@ -1238,7 +1238,7 @@ class PerturbationResponse:
         title = kwargs.pop("title", None) or f"Edge {edge}: wave contribution by source{suffix}"
         # one overlaid series per source -> a curve per source in each output-wave panel;
         # source labels are LaTeX fragments, rendered through the global LaTeX toggle
-        from ..plotting import mathify
+        from ...plotting import mathify
 
         legend = [mathify(s) for s in sources]
         mats = [C[:, :, k, None] for k in range(C.shape[2])]
@@ -1283,7 +1283,7 @@ class PerturbationResponse:
 
         Picks the stored frequency nearest ``freq`` and superposes the driven sources by
         ``incoming``, then reconstructs the continuous perturbation field inside every duct
-        (theory.md s12.3); see :func:`fns.perturbation.modeshape.reconstruct_field`.
+        (theory.md s12.3); see :func:`fns.perturbation.fields.modeshape.reconstruct_field`.
 
         Parameters
         ----------
@@ -1297,7 +1297,7 @@ class PerturbationResponse:
             ``"h"``); default ``"p"``.  Ignored when ``spec`` is given.
         spec : tuple, optional
             A ``(basis_flavor, component)`` pair (e.g. from
-            :func:`fns.perturbation.modeshape.resolve_specs`) selecting any basis
+            :func:`fns.perturbation.fields.modeshape.resolve_specs`) selecting any basis
             component directly; overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
@@ -1306,7 +1306,7 @@ class PerturbationResponse:
 
         Returns
         -------
-        list of fns.perturbation.modeshape.PathField
+        list of fns.perturbation.fields.modeshape.PathField
 
         Raises
         ------
@@ -1363,10 +1363,10 @@ class PerturbationResponse:
 
         Returns
         -------
-        list of fns.perturbation.modeshape.PathField
+        list of fns.perturbation.fields.modeshape.PathField
             ``values`` is the real intensity (or energy density).
         """
-        from .power import intensity_along_network as _intensity
+        from ..fields.power import intensity_along_network as _intensity
 
         if self.geometry is None:
             raise ValueError("no network geometry stored; rebuild via perturbation_response() for spatial fields")
@@ -1421,7 +1421,7 @@ class PerturbationResponse:
             Plotted quantity, or several to overlay (see :meth:`field_along_network`);
             default ``"p"``.  Ignored when ``basis`` is given.
         basis : str, optional
-            A flavor from :data:`fns.perturbation.characteristics.BASIS_LABELS`; overlays its
+            A flavor from :data:`fns.perturbation.operator.characteristics.BASIS_LABELS`; overlays its
             three components and overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
@@ -1438,8 +1438,8 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import animate_mode_shape as _animate, AnimSeries, mathify
-        from .modeshape import resolve_specs
+        from ...plotting import animate_mode_shape as _animate, AnimSeries, mathify
+        from ..fields.modeshape import resolve_specs
 
         fi = int(np.argmin(np.abs(self.freqs - float(freq))))
         used = float(self.freqs[fi])

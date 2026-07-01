@@ -1,6 +1,6 @@
 """Animated spatial mode shapes along the developed length of a duct network.
 
-Given the reconstructed per-path fields (:func:`fns.perturbation.modeshape.reconstruct_field`)
+Given the reconstructed per-path fields (:func:`fns.perturbation.fields.modeshape.reconstruct_field`)
 this draws the instantaneous physical perturbation ``Re{psi(x) e^{i theta}}`` against
 developed length and sweeps the phase ``theta`` with a slider + play button, so the
 standing/travelling wave animates.  A static envelope ``+/- |psi(x)|`` frames the
@@ -54,7 +54,7 @@ class AnimSeries:
     ----------
     path_fields : list of PathField
         Reconstructed root->leaf fields for this quantity (one mode, one variable);
-        see :func:`fns.perturbation.modeshape.reconstruct_field`.
+        see :func:`fns.perturbation.fields.modeshape.reconstruct_field`.
     label : str
         Legend/title fragment identifying the quantity (LaTeX, e.g. ``"p'"`` or
         ``"mode 2 \\cdot u'"``); empty for the lone-series case.

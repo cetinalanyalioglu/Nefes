@@ -18,7 +18,7 @@ contour eigensolver.  Because it is a :class:`~fns.elements.dynamic_source.Trans
 with :attr:`analytic` ``True``, it drops straight into
 :func:`~fns.elements.dynamic_source.heat_release_response` /
 :func:`~fns.elements.dynamic_source.mass_flow_response`, and -- being a plain
-``freq -> complex`` callable -- into :meth:`~fns.perturbation.boundary_bc.PerturbationBC.reflection`.
+``freq -> complex`` callable -- into :meth:`~fns.perturbation.operator.boundary_bc.PerturbationBC.reflection`.
 
 Robustness
 ----------
@@ -79,7 +79,7 @@ class RationalFit(TransferFunction):
     :class:`~fns.elements.dynamic_source.Tabulated`, it is usable in the stability
     eigenproblem.  It is also a bare ``freq -> complex`` callable, so it serves equally as
     a boundary reflection coefficient
-    (:meth:`~fns.perturbation.boundary_bc.PerturbationBC.reflection`).
+    (:meth:`~fns.perturbation.operator.boundary_bc.PerturbationBC.reflection`).
 
     Parameters
     ----------

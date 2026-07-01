@@ -16,7 +16,7 @@ from fns.elements.ids import ACOUSTIC_DUCT, ACOUSTIC_DEFAULT, ACOUSTIC_FLAME
 from fns.thermo.configure import perfect_gas
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_C, ES_U, ES_RHO, ES_AREA
+from fns.assembly.derive import ES_C, ES_U, ES_RHO, ES_AREA
 from fns.perturbation import (
     perturbation_response,
     find_terminals,

@@ -21,7 +21,7 @@ from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
 from fns.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
 from fns.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
-from fns.derive import ES_C
+from fns.assembly.derive import ES_C
 from fns.perturbation import forced_response, eigenmodes, PerturbationBC
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")

@@ -16,7 +16,7 @@ import yaml
 from fns.io import load_case, save_case
 from fns.io.yaml_in import _parse_composition
 from fns.solver.control import states_table
-from fns.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
+from fns.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
 from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
@@ -241,7 +241,7 @@ def test_reacting_no_flame_is_equilibrium_everywhere(tmp_path):
 
 def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
     from thermolib import SpeciesLibrary, Thermo
-    from fns.composition import resolve_composition, enthalpy_mass
+    from fns.chem.composition import resolve_composition, enthalpy_mass
 
     net = load_case(_series_reacting(tmp_path, name="ref.yaml"))
     sol = net.solve()

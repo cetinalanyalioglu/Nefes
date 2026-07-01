@@ -35,7 +35,7 @@ from fns.elements.dynamic_source import (
     heat_release_response,
     mass_flow_response,
 )
-from fns.perturbation.boundary_bc import PerturbationBC
+from fns.perturbation.operator.boundary_bc import PerturbationBC
 from fns.perturbation import eigenmodes, nyquist_stability
 from fns.solver import solve
 from fns.thermo.configure import perfect_gas

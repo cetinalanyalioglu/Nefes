@@ -108,7 +108,7 @@ def equilibrium(library, streams=None, basis: str = "mole", T_init: float = 3000
         stream_Y = np.zeros((0, library.n_species))
         labels: List[str] = []
     else:
-        from ..composition import species_mass_fractions
+        from ..chem.composition import species_mass_fractions
 
         labels = list(streams.keys())
         stream_Y = np.array([species_mass_fractions(library, streams[k], basis) for k in labels], dtype=np.float64)

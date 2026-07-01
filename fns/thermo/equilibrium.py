@@ -42,8 +42,8 @@ import numpy as np
 from numba import njit, types
 from numba.extending import overload
 
-from ..composition import stream_pack_arrays
-from ..smooth import marker_gate
+from ..chem.composition import stream_pack_arrays
+from ..assembly.smooth import marker_gate
 from ._chem import RU, equil_state_cs, equilibrate_hp_cs, equilibrium_sound_speed, frozen_state_from_moles_cs
 
 _OFF_BLOCKS = 3  # p_ref, T_init, T_init_frozen precede the flat data blocks

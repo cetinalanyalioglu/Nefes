@@ -14,7 +14,7 @@ from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
 from fns.shell.network import Network
 from fns.solver import solve
-from fns.scaling import compose_scales, measure_inflow_scales
+from fns.assembly.scaling import compose_scales, measure_inflow_scales
 
 CFG = perfect_gas(287.0, 1.4)
 CP = 1.4 * 287.0 / 0.4

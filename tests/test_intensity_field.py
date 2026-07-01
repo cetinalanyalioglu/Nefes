@@ -6,7 +6,7 @@ import pytest
 from fns.shell import Network
 from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_C, ES_RHO, ES_M
+from fns.assembly.derive import ES_C, ES_RHO, ES_M
 from fns.perturbation import (
     PerturbationBC,
     perturbation_response,

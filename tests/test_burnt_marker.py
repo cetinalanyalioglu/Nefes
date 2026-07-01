@@ -21,8 +21,8 @@ from fns.thermo.configure import equilibrium
 from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from fns.shell.network import Network
 from fns.solver.control import solve, states_table, auto_initial_guess
-from fns.derive import ES_T, ES_RHO, ES_MDOT, ES_P
-from fns.perturbation.response import perturbation_response
+from fns.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_P
+from fns.perturbation.response.response import perturbation_response
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}

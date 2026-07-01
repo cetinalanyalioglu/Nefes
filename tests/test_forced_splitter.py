@@ -18,7 +18,7 @@ from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_MDOT, ES_PT
+from fns.assembly.derive import ES_MDOT, ES_PT
 from fns.perturbation import perturbation_response
 
 R_AIR, GAMMA = 287.0, 1.4

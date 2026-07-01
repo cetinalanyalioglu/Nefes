@@ -10,9 +10,9 @@ so the definition lives here to keep them decoupled.
 from dataclasses import dataclass
 from typing import List
 
-from ..solver.control import states_table
-from ..derive import ES_MDOT
-from ..elements.ids import (
+from ...solver.control import states_table
+from ...assembly.derive import ES_MDOT
+from ...elements.ids import (
     MASS_FLOW_INLET,
     PT_INLET,
     P_OUTLET,

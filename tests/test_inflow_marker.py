@@ -20,7 +20,7 @@ from fns.thermo.configure import equilibrium, perfect_gas
 from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
 from fns.shell.network import Network
 from fns.solver.control import solve, states_table
-from fns.derive import ES_T
+from fns.assembly.derive import ES_T
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 # stoichiometric H2-air premix (2 H2 + O2 + 3.76 N2, by mole)

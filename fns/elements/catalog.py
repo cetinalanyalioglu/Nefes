@@ -12,9 +12,9 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from ..composition import build_streams, enthalpy_mass, species_mass_fractions
-from ..connectivity import connectivity_from_directed_edges, build_jacobian_pattern, Connectivity
-from ..problem import CompiledProblem
+from ..chem.composition import build_streams, enthalpy_mass, species_mass_fractions
+from ..graph.connectivity import connectivity_from_directed_edges, build_jacobian_pattern, Connectivity
+from ..graph.problem import CompiledProblem
 from .composite import CompositeElementSpec, expand_composites
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from ..thermo.configure import ThermoConfig
@@ -54,7 +54,7 @@ def _storage_block(name, l_up, l_down, end_correction):
     series inertance ``L_eff = l_up + l_down + end_correction``; ``end_correction`` is the
     added-mass length the geometric extent omits (it contributes to the inertance only).
     All are lengths in metres, default zero (no storage -> the element is the lengthless
-    jump it was before).  Read by :func:`fns.perturbation.stamps._inline_storage`.
+    jump it was before).  Read by :func:`fns.perturbation.operator.stamps._inline_storage`.
     """
     lu, ld, ec = float(l_up), float(l_down), float(end_correction)
     for label, v in (("l_up", lu), ("l_down", ld), ("end_correction", ec)):
@@ -198,7 +198,7 @@ def mass_flow_outlet(mdot, name="outlet", perturbation_bc=None):
     critical mass flow is known.  Left at ``perturbation_bc=None`` the acoustic
     termination is the *inherited* linearization of this row, ``mdot' = 0`` -- the
     constant-mass-flow acoustic boundary condition (also available standalone as
-    :meth:`~fns.perturbation.boundary_bc.PerturbationBC.constant_mass_flow`).
+    :meth:`~fns.perturbation.operator.boundary_bc.PerturbationBC.constant_mass_flow`).
 
     This is an **outflow-only** boundary: ``mdot`` must be positive and the element does
     not model ingestion (use a :func:`pressure_outlet`, which models backflow, for a
@@ -272,7 +272,7 @@ def wall(name="wall", perturbation_bc=None):
     identical to the inherited ``mdot' = 0`` row.  Pass ``perturbation_bc`` to model
     a non-rigid termination (e.g. a liner impedance) instead.
     """
-    from ..perturbation.boundary_bc import PerturbationBC
+    from ..perturbation.operator.boundary_bc import PerturbationBC
 
     bc = perturbation_bc if perturbation_bc is not None else PerturbationBC.hard_wall()
     return ElementSpec(WALL, [], name, perturbation_bc=bc)
@@ -589,7 +589,7 @@ def _manifold_block(name, volume, neck_length):
     either a **scalar** broadcast to every branch, or a **sequence** of one length per
     branch port (ports ``1 .. deg-1``, in attachment order), validated against the wired
     degree at build (:func:`build_problem`).  Default 0 -> no inertance, the pure-compliance
-    manifold of before.  Read by :func:`fns.perturbation.stamps._manifold_storage`.
+    manifold of before.  Read by :func:`fns.perturbation.operator.stamps._manifold_storage`.
     """
     V = float(volume)
     if V < 0.0:

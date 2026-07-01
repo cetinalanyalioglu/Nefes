@@ -24,12 +24,12 @@ import numpy as np
 
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation.boundary_bc import PerturbationBC
+from fns.perturbation.operator.boundary_bc import PerturbationBC
 from fns.perturbation import forced_response
 from fns.solver import solve
 from fns.solver.control import states_table
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_U, ES_C, ES_M, ES_RHO
+from fns.assembly.derive import ES_U, ES_C, ES_M, ES_RHO
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

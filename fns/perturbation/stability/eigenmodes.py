@@ -40,14 +40,14 @@ from typing import List, Optional
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from .operator import build_acoustic_blocks, assemble_acoustic
-from .stamps import storage_stamps_from_est
-from .characteristics import edge_transforms, basis_block_from_state, edge_caloric
+from ..operator.operator import build_acoustic_blocks, assemble_acoustic
+from ..operator.stamps import storage_stamps_from_est
+from ..operator.characteristics import edge_transforms, basis_block_from_state, edge_caloric
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
-from .terminals import find_terminals
-from .modeshape import build_geometry, reconstruct_field, NetworkGeometry
-from ..solver.control import states_table
-from ..derive import ES_C
+from ..operator.terminals import find_terminals
+from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry
+from ...solver.control import states_table
+from ...assembly.derive import ES_C
 
 # Below this Mach number a duct's entropy wave is treated as decoupled (stationary)
 # in the stability assembly: its transit time tau_0 = L/u diverges as u -> 0, so for a
@@ -874,7 +874,7 @@ class EigenmodeResult:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import plot_spectrum as _plot
+        from ...plotting import plot_spectrum as _plot
 
         kwargs.setdefault("contour", self.contour)
         return _plot(self.freqs, self.growth_rates, residuals=self.residuals, **kwargs)
@@ -895,8 +895,8 @@ class EigenmodeResult:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import plot_mode_shape as _plot
-        from .characteristics import BASIS_LABELS
+        from ...plotting import plot_mode_shape as _plot
+        from ..operator.characteristics import BASIS_LABELS
 
         shape = self.mode_shape(i, basis=basis)
         labels = BASIS_LABELS.get(basis)
@@ -910,7 +910,7 @@ class EigenmodeResult:
 
         The continuous perturbation field *inside* every duct, recovered analytically
         from the mode's face wave-amplitudes (theory.md s12.3); see
-        :func:`fns.perturbation.modeshape.reconstruct_field`.
+        :func:`fns.perturbation.fields.modeshape.reconstruct_field`.
 
         Parameters
         ----------
@@ -921,7 +921,7 @@ class EigenmodeResult:
             ``"g"``, ``"h"``); default ``"p"``.  Ignored when ``spec`` is given.
         spec : tuple, optional
             A ``(basis_flavor, component)`` pair (e.g. from
-            :func:`fns.perturbation.modeshape.resolve_specs`) selecting any basis
+            :func:`fns.perturbation.fields.modeshape.resolve_specs`) selecting any basis
             component directly; overrides ``variable``.
         root : int, optional
             Developed-length origin element (default: a mean-flow inlet).
@@ -930,7 +930,7 @@ class EigenmodeResult:
 
         Returns
         -------
-        list of fns.perturbation.modeshape.PathField
+        list of fns.perturbation.fields.modeshape.PathField
 
         Raises
         ------
@@ -973,9 +973,9 @@ class EigenmodeResult:
 
         Returns
         -------
-        list of fns.perturbation.modeshape.PathField
+        list of fns.perturbation.fields.modeshape.PathField
         """
-        from .power import intensity_along_network as _intensity
+        from ..fields.power import intensity_along_network as _intensity
 
         if self.geometry is None:
             raise ValueError("no network geometry stored; rebuild via eigenmodes() to enable spatial reconstruction")
@@ -1026,7 +1026,7 @@ class EigenmodeResult:
             Plotted quantity, or several to overlay (see :meth:`field_along_network`);
             default ``"p"``.  Ignored when ``basis`` is given.
         basis : str, optional
-            A flavor from :data:`fns.perturbation.characteristics.BASIS_LABELS` (``"char"``,
+            A flavor from :data:`fns.perturbation.operator.characteristics.BASIS_LABELS` (``"char"``,
             ``"primitive"``, ``"network"``, ``"riemann"``, ``"pu_entropy"``, ``"pu_rho"``);
             overlays its three components and overrides ``variable``.
         root : int, optional
@@ -1048,8 +1048,8 @@ class EigenmodeResult:
         -------
         plotly.graph_objects.Figure
         """
-        from ..plotting import animate_mode_shape as _animate, AnimSeries
-        from .modeshape import resolve_specs
+        from ...plotting import animate_mode_shape as _animate, AnimSeries
+        from ..fields.modeshape import resolve_specs
 
         modes = [int(i)] if np.isscalar(i) else [int(m) for m in i]
         specs = resolve_specs(variable, basis)
@@ -1109,11 +1109,11 @@ class EigenmodeResult:
 
         Returns
         -------
-        fns.perturbation.power.BoundaryPower
+        fns.perturbation.fields.power.BoundaryPower
             Per-terminal signed power shares; ``.net`` is the energy growth ``dE/dt``
             and ``.sign_consistent`` cross-checks it against the growth rate.
         """
-        from .power import boundary_power as _bp
+        from ..fields.power import boundary_power as _bp
 
         return _bp(self, i, terminals=self.terminals)
 
@@ -1131,9 +1131,9 @@ class EigenmodeResult:
 
         Returns
         -------
-        fns.perturbation.power.ModalEnergyBalance
+        fns.perturbation.fields.power.ModalEnergyBalance
         """
-        from .power import modal_energy_balance as _meb
+        from ..fields.power import modal_energy_balance as _meb
 
         return _meb(self, i)
 

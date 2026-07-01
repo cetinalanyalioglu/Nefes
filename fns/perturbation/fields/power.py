@@ -43,9 +43,9 @@ from typing import List
 
 import numpy as np
 
-from ..derive import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
-from ..elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
-from .stamps import storage_stamps_from_est
+from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
+from ...elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
+from ..operator.stamps import storage_stamps_from_est
 
 _INLET_RIDS = (MASS_FLOW_INLET, PT_INLET)
 
@@ -551,7 +551,7 @@ def intensity_along_network(geometry, chars_of_edge, est, omega, *, energy_densi
     Reconstructs the interior field inside every duct (``f`` riding downstream at
     ``u + c``, ``g`` upstream at ``c - u``; theory.md s12.3) and evaluates the Myers
     energy flux per unit area :func:`acoustic_intensity` (downstream positive) at each
-    station, returning one developed-length :class:`~fns.perturbation.modeshape.PathField`
+    station, returning one developed-length :class:`~fns.perturbation.fields.modeshape.PathField`
     per root->leaf path.  The companion to the mode-shape field reconstruction, but the
     value is a **real** time-averaged power density (its ``values`` carry no imaginary
     part), so it reads where acoustic power flows and where it is produced or absorbed.
@@ -577,7 +577,7 @@ def intensity_along_network(geometry, chars_of_edge, est, omega, *, energy_densi
 
     Returns
     -------
-    list of fns.perturbation.modeshape.PathField
+    list of fns.perturbation.fields.modeshape.PathField
         One per root->leaf path; ``values`` is the real intensity (or energy density).
     """
     from .modeshape import walk_paths, _duct_chars, PathField
@@ -711,7 +711,7 @@ def forced_power_balance(fr, prob, *, n_x: int = 120) -> ForcedPowerBalance:
     ForcedPowerBalance
     """
     from .modeshape import build_geometry
-    from .terminals import find_terminals
+    from ..operator.terminals import find_terminals
 
     geo = build_geometry(prob)
     terms = find_terminals(prob)

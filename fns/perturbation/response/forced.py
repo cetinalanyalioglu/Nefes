@@ -23,10 +23,10 @@ from typing import List, Optional
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from .operator import build_acoustic_blocks, assemble_acoustic
-from .stamps import boundary_forcing
-from .characteristics import edge_transforms, basis_block_from_state
-from ..solver.control import states_table
+from ..operator.operator import build_acoustic_blocks, assemble_acoustic
+from ..operator.stamps import boundary_forcing
+from ..operator.characteristics import edge_transforms, basis_block_from_state
+from ...solver.control import states_table
 
 
 class CompositionalNoiseWarning(UserWarning):
@@ -37,8 +37,8 @@ class CompositionalNoiseWarning(UserWarning):
     full algebraic Jacobian carries it (a flame, an area change, a resolved nozzle, the compact
     ``choked_nozzle_outlet`` *element* -- whose critical-mass-flux row is complex-stepped through
     its composition dependence).  It is dropped only by the explicit analytic terminal closures
-    :meth:`~fns.perturbation.boundary_bc.PerturbationBC.choked_nozzle` /
-    :meth:`~fns.perturbation.boundary_bc.PerturbationBC.constant_mass_flow`, which overwrite that
+    :meth:`~fns.perturbation.operator.boundary_bc.PerturbationBC.choked_nozzle` /
+    :meth:`~fns.perturbation.operator.boundary_bc.PerturbationBC.constant_mass_flow`, which overwrite that
     row with a 3-wave ``(f, g, h)`` relation: they keep the entropy off-diagonal ``R_s`` but have
     no composition column ``R_xi``.  Use the inherited element (or resolve the nozzle) to capture
     it."""
@@ -120,7 +120,7 @@ def forced_response(prob, x_bar, freqs, *, eps=None, eps_fb=1e-6, u_floor=1e-8, 
         X[i] = spla.spsolve(A.tocsc(), b)
     # The length-bearing ducts are carried along so the stored-energy diagnostics
     # (ForcedResponse.stored_energy / .plot_response) need no second pass over prob.
-    from .modeshape import build_geometry
+    from ..fields.modeshape import build_geometry
 
     return ForcedResponse(
         freqs=freqs,
@@ -237,7 +237,7 @@ class ForcedResponse:
             Stored acoustic energy at each frequency, shape ``(n_freq,)``
             (arbitrary drive-scale units).
         """
-        from .power import duct_energy_spectrum
+        from ..fields.power import duct_energy_spectrum
 
         if not self.ducts:
             return np.zeros(np.asarray(self.freqs, dtype=float).size)
@@ -269,7 +269,7 @@ class ForcedResponse:
         """
         import plotly.graph_objects as go
 
-        from ..plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
+        from ...plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
 
         f = np.asarray(self.freqs, dtype=float)
         energy = self.stored_energy(n_x=n_x)

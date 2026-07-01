@@ -7,9 +7,9 @@ import numpy as np
 from fns.shell import Network
 from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_C
+from fns.assembly.derive import ES_C
 from fns.perturbation import PerturbationBC, eigenmodes
-from fns.perturbation.contour import ellipse_contour
+from fns.perturbation.stability.contour import ellipse_contour
 from fns.plotting import plot_spectrum
 from fns.plotting.spectrum import _contour_to_fg
 

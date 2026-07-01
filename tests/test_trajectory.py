@@ -1,4 +1,4 @@
-"""Eigenvalue-trajectory continuation of the perturbation spectrum (fns.perturbation.trajectory).
+"""Eigenvalue-trajectory continuation of the perturbation spectrum (fns.perturbation.stability.trajectory).
 
 The tool seeds the spectrum once with :func:`eigenmodes`, then continues each mode through a
 parameter sweep by a predictor-corrector march.  These tests pin the two things continuation
@@ -20,7 +20,7 @@ import pytest
 
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation.boundary_bc import PerturbationBC
+from fns.perturbation.operator.boundary_bc import PerturbationBC
 from fns.perturbation import eigenmodes, eigenvalue_trajectory, TrajectoryResult
 from fns.shell import Network
 from fns.thermo.configure import perfect_gas

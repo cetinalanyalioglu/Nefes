@@ -14,8 +14,8 @@ import os
 
 import pytest
 
-from fns.composition import enthalpy_mass, resolve_composition
-from fns.derive import ES_HT, ES_MDOT, ES_T, ES_U
+from fns.chem.composition import enthalpy_mass, resolve_composition
+from fns.assembly.derive import ES_HT, ES_MDOT, ES_T, ES_U
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table

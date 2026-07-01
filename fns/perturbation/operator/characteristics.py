@@ -31,7 +31,7 @@ and ``BASIS_LABELS`` gives its per-component symbols (for plot labelling):
 
 import numpy as np
 
-from ..derive import ES_RHO, ES_U, ES_P, ES_C, ES_AREA
+from ...assembly.derive import ES_RHO, ES_U, ES_P, ES_C, ES_AREA
 
 
 def char_to_dq(rho, c):
@@ -125,8 +125,8 @@ def edge_caloric(prob, x_bar):
     list of tuple
         ``E`` rows ``(a, m, b)``, one per edge.
     """
-    from ..solver.control import states_table
-    from ..thermo.api import thermo_state, PERFECT_GAS, EQ_MARKER, EQ_KERNEL, EQ_FROZEN
+    from ...solver.control import states_table
+    from ...thermo.api import thermo_state, PERFECT_GAS, EQ_MARKER, EQ_KERNEL, EQ_FROZEN
 
     est = states_table(prob, x_bar)
     K = float(prob.tf[0]) / float(prob.tf[1])

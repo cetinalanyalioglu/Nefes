@@ -25,7 +25,7 @@ def _contour_to_fg(c, n=181):
     """Map a search contour to ``(frequency [Hz], growth [1/s])`` points.
 
     A contour lives in the complex ``omega`` plane (rad/s); a node ``omega`` plots at
-    ``(Re(omega)/2*pi, -Im(omega))``.  A :class:`~fns.perturbation.contour.Contour` (with
+    ``(Re(omega)/2*pi, -Im(omega))``.  A :class:`~fns.perturbation.stability.contour.Contour` (with
     ``center``/``rx``/``ry``) is redrawn as a smooth ellipse; anything else is treated as an
     array of complex nodes and closed.
     """
@@ -57,7 +57,7 @@ def plot_spectrum(
         Per-mode validation residual, shown in the hover text.
     contour : Contour or sequence, optional
         The search contour(s) the modes were found in (a
-        :class:`~fns.perturbation.contour.Contour`, a list of them, or an array of complex
+        :class:`~fns.perturbation.stability.contour.Contour`, a list of them, or an array of complex
         ``omega`` nodes).  Drawn as a closed outline so one can see the searched region around
         the eigenvalues.
     freq_unit : str, optional

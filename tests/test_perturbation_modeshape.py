@@ -22,13 +22,13 @@ import pytest
 from fns.shell import Network
 from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_U, ES_C
+from fns.assembly.derive import ES_U, ES_C
 from fns.perturbation import (
     PerturbationBC,
     eigenmodes,
     perturbation_response,
 )
-from fns.perturbation.modeshape import VARIABLE_SPEC, build_geometry, resolve_specs, PathField
+from fns.perturbation.fields.modeshape import VARIABLE_SPEC, build_geometry, resolve_specs, PathField
 from fns.plotting import animate_mode_shape, AnimSeries
 
 CFG = perfect_gas(287.0, 1.4)
@@ -62,7 +62,7 @@ def test_endpoint_consistency_matches_face_waves():
     seg = res.geometry.ducts[0]
 
     # project the stored face waves to p' the same way the reconstruction does
-    from fns.perturbation.characteristics import basis_block_from_state
+    from fns.perturbation.operator.characteristics import basis_block_from_state
 
     basis, comp, _ = VARIABLE_SPEC["p"]
     p_tail = (basis_block_from_state(basis, res.est[:, seg.e_tail], res.K, None) @ res.mode_waves(i, seg.e_tail))[comp]

@@ -11,7 +11,7 @@ import os
 import numpy as np
 import pytest
 
-from fns.derive import ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
+from fns.assembly.derive import ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
@@ -99,7 +99,7 @@ def _fuel_injection_network(mdot_air=1.0, mdot_fuel=0.05, Tin=300.0, p=1.0e5):
     sits at ``h_t ~ +1.9e3`` J/kg and the CH4-laden / burnt edges at ``~ -2.2e5``
     J/kg (CH4's negative formation enthalpy).
     """
-    from fns.composition import enthalpy_mass, resolve_composition
+    from fns.chem.composition import enthalpy_mass, resolve_composition
     from thermolib import Thermo
 
     lib = _ch4_air_lib()
@@ -148,7 +148,7 @@ def test_fuel_injection_then_burn():
 
     # the burnt temperature matches a standalone HP-equilibrium solve at the
     # injected (air + CH4) mixture, the conserved h_t and the burnt-edge pressure
-    from fns.composition import resolve_composition
+    from fns.chem.composition import resolve_composition
 
     Yair, _ = resolve_composition(lib, {"O2": 0.21, "N2": 0.79}, basis="mole")
     Yfuel, _ = resolve_composition(lib, {"CH4": 1.0}, basis="mole")
@@ -162,7 +162,7 @@ def test_fuel_injection_then_burn():
 def test_fuel_injection_jacobian_pattern():
     """Sparse complex-step Jacobian == dense reference for a network with a mass
     source feeding a reacting flame (validates the source donor/residual fill)."""
-    from fns.assemble import jacobian, jacobian_dense
+    from fns.assembly.assemble import jacobian, jacobian_dense
 
     lib, gas, prob, h_mix = _fuel_injection_network()
     res = solve(prob)

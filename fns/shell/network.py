@@ -8,15 +8,15 @@ import numpy as np
 
 from ..thermo.configure import ThermoConfig, perfect_gas
 from ..thermo.api import PERFECT_GAS, EQ_KERNEL
-from ..connectivity import build_connectivity
+from ..graph.connectivity import build_connectivity
 from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
 from ..elements.composite import is_composite
 from ..elements.ids import RESIDUAL_NAMES
-from ..problem import CompiledProblem
+from ..graph.problem import CompiledProblem
 from ..solver import solve as _solve
 from ..solver.control import states_table, initial_guess, print_states, residual_breakdown, print_residuals
-from ..derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
+from ..assembly.derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
 
 # ES for "edge state"
 _EDGE_FIELDS = {
@@ -647,7 +647,7 @@ class Solution:
         -------
         fns.perturbation.CutOnReport
         """
-        from ..perturbation.cuton import duct_cuton_frequencies
+        from ..perturbation.fields.cuton import duct_cuton_frequencies
 
         return duct_cuton_frequencies(self.problem, self.result.x, section=section, names=self.network._edge_names)
 
@@ -744,7 +744,7 @@ class Solution:
     def _chemistry_caches(self):
         """Lazily build and cache the per-edge product moles and per-stream mass fractions."""
         if getattr(self, "_chem_cache", None) is None:
-            from ..chemistry import product_moles, stream_mass_fractions
+            from ..chem.chemistry import product_moles, stream_mass_fractions
 
             lib = self.network.gas.library
             moles = product_moles(self.problem, self.result.x)
@@ -771,7 +771,7 @@ class Solution:
         dict
             ``{species_name: fraction}`` for the species present on the edge.
         """
-        from ..chemistry import edge_species
+        from ..chem.chemistry import edge_species
 
         moles, stream_Y = self._chemistry_caches()
         lib = self.network.gas.library

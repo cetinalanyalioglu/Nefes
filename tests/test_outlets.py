@@ -17,10 +17,10 @@ from fns.thermo.configure import perfect_gas
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic
-from fns.perturbation.characteristics import char_to_dx
-from fns.perturbation.boundary_bc import PerturbationBC
-from fns.derive import ES_MDOT, ES_P, ES_M, ES_PT, ES_RHO, ES_C, ES_U, ES_AREA
+from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
+from fns.perturbation.operator.characteristics import char_to_dx
+from fns.perturbation.operator.boundary_bc import PerturbationBC
+from fns.assembly.derive import ES_MDOT, ES_P, ES_M, ES_PT, ES_RHO, ES_C, ES_U, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

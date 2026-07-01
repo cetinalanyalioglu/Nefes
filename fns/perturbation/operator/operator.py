@@ -19,8 +19,8 @@ from typing import List
 import numpy as np
 import scipy.sparse as sp
 
-from ..assemble import jacobian
-from ..solver.control import states_table
+from ...assembly.assemble import jacobian
+from ...solver.control import states_table
 from .characteristics import edge_caloric
 from .terminals import find_terminals
 from .stamps import (

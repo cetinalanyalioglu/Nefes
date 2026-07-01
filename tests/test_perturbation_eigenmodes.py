@@ -25,7 +25,7 @@ import pytest
 from fns.shell import Network
 from fns.elements import catalog as cat
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_U, ES_C
+from fns.assembly.derive import ES_U, ES_C
 from fns.perturbation import (
     PerturbationBC,
     eigenmodes,
@@ -34,7 +34,7 @@ from fns.perturbation import (
     forced_response,
     DuctAcoustics,
 )
-from fns.perturbation.contour import ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
+from fns.perturbation.stability.contour import ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 
 R_AIR, GAMMA = 287.0, 1.4
 CFG = perfect_gas(R_AIR, GAMMA)
@@ -312,7 +312,7 @@ def test_assembly_fast_path_matches_reference():
     # the cached fixed-pattern A(omega) must equal the LIL reference to round-off, across
     # a flowing duct (entropy phase live) and a quiescent one (entropy decoupled), with and
     # without terminal closures, at real and complex omega.
-    from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+    from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
 
     nets = [
         # flowing: reflecting ends, driven -> mean flow, so the entropy phase is omega-dependent
@@ -413,7 +413,7 @@ def test_certification_recovers_with_explicit_contour_and_tiny_probe():
 
 def test_isentropic_fast_path_matches_reference():
     # the fixed-pattern fast path must equal the reference assembly with isentropic on too.
-    from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+    from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
 
     _, sol = _duct_net(
         PerturbationBC.reflection(0.7),

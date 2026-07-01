@@ -26,11 +26,11 @@ import pytest
 
 from fns.elements import catalog as cat
 from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation.boundary_bc import PerturbationBC
+from fns.perturbation.operator.boundary_bc import PerturbationBC
 from fns.perturbation import eigenmodes
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_RHO, ES_C, ES_U, ES_P, ES_T
+from fns.assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_T
 from fns.thermo.api import thermo_state
 from fns.thermo.configure import perfect_gas, equilibrium
 
@@ -364,7 +364,7 @@ def test_composition_wave_convects_with_duct_phase():
     is decoupled under the isentropic stability mode, like the entropy wave, to keep the long
     transit time out of the acoustic spectrum.)
     """
-    from fns.perturbation.operator import build_acoustic_blocks, assemble_acoustic
+    from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
 
     prob, x = _reacting_rijke(0.0, 0.0)
     est = states_table(prob, x)

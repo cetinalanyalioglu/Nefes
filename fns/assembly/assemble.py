@@ -14,8 +14,8 @@ from numba import njit
 
 from .derive import recover_all, recover_edge, NS_EST, ES_MDOT
 from .smooth import smooth_step
-from .elements.kernels import node_residual, node_donor
-from .thermo.api import PERFECT_GAS
+from ..elements.kernels import node_residual, node_donor
+from ..thermo.api import PERFECT_GAS
 
 CS_H = 1e-30
 

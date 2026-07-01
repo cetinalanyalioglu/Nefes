@@ -13,8 +13,8 @@ import os
 import numpy as np
 import pytest
 
-from fns.assemble import jacobian, jacobian_dense
-from fns.derive import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
+from fns.assembly.assemble import jacobian, jacobian_dense
+from fns.assembly.derive import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table

@@ -12,8 +12,8 @@ enthalpy scales off a state vector so the solve can *adapt* them to the realized
 
 import numpy as np
 
-from .elements.ids import KIND_MASS, row_kind_tags
-from .elements.ids import MASS_FLOW_INLET, PT_INLET
+from ..elements.ids import KIND_MASS, row_kind_tags
+from ..elements.ids import MASS_FLOW_INLET, PT_INLET
 
 # row layout: the node band-1 rows (mass / pressure), then the h_t transport rows
 # (one per edge), then the composition transport rows (n_elem per edge).

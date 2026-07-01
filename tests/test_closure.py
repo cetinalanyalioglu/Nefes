@@ -8,7 +8,7 @@ the analytic implicit-function-theorem block (chained through area).
 import numpy as np
 import pytest
 
-from fns.closure import closure_solve
+from fns.assembly.closure import closure_solve
 from fns.thermo import perfect_gas, PERFECT_GAS
 
 CS_H = 1e-30

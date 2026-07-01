@@ -26,9 +26,9 @@ from fns.elements import catalog as cat
 from fns.elements.ids import WALL
 from fns.io import load_case
 from fns.thermo.configure import perfect_gas, perfect_gas_passive_scalars
-from fns.derive import ES_U, ES_C, ES_RHO, ES_P
+from fns.assembly.derive import ES_U, ES_C, ES_RHO, ES_P
 from fns.perturbation import PerturbationBC, forced_response, CompositionalNoiseWarning
-from fns.perturbation.characteristics import char_to_dq
+from fns.perturbation.operator.characteristics import char_to_dq
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 

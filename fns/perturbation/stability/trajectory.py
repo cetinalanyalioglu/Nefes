@@ -588,7 +588,7 @@ class TrajectoryResult:
         """
         import plotly.graph_objects as go
 
-        from ..plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
+        from ...plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
 
         fig = go.Figure()
         for b in self.branches:
@@ -652,7 +652,7 @@ class TrajectoryResult:
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
 
-        from ..plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
+        from ...plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
 
         fig = make_subplots(
             rows=2,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from fns.connectivity import (
+from fns.graph.connectivity import (
     build_connectivity,
     connectivity_from_directed_edges,
     build_jacobian_pattern,

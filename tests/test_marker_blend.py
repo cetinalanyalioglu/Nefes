@@ -12,7 +12,7 @@ import os
 import numpy as np
 import pytest
 
-from fns.smooth import marker_gate
+from fns.assembly.smooth import marker_gate
 from fns.thermo.equilibrium import (
     pack_equilibrium,
     eq_frozen_state,
@@ -21,7 +21,7 @@ from fns.thermo.equilibrium import (
     eq_marker_state_warm,
     MARKER_GATE_WIDTH,
 )
-from fns.composition import species_mass_fractions, enthalpy_mass
+from fns.chem.composition import species_mass_fractions, enthalpy_mass
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 

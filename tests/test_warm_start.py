@@ -18,8 +18,8 @@ from fns.shell import Network
 from fns.elements import catalog as cat
 from fns.thermo.configure import equilibrium
 from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
-from fns.composition import equivalence_ratio_mixture
-from fns import assemble
+from fns.chem.composition import equivalence_ratio_mixture
+from fns.assembly import assemble
 
 thermolib = pytest.importorskip("thermolib")
 

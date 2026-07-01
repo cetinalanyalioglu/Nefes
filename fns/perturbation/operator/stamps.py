@@ -22,7 +22,7 @@ inline pressure elements their per-port compliance + series inertance, and the
 manifolds their chamber compliance + per-branch neck inertance -- all from
 length/volume inputs read off the same per-port machinery.  ``M`` enters the
 operator as ``i*omega*M``, and its stored energy enters the acoustic-power
-ledger (:func:`fns.perturbation.power._lumped_storage_energy`).
+ledger (:func:`fns.perturbation.fields.power._lumped_storage_energy`).
 
 These run **above the @njit line** -- plain Python / SciPy.
 """
@@ -36,9 +36,9 @@ from .characteristics import dx_to_char, dq_to_dx
 from .matrices import partition
 from .verify import duct_nodes, verify_acoustic
 from .terminals import find_terminals
-from ..solver.control import states_table
-from ..derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
-from ..elements.ids import (
+from ...solver.control import states_table
+from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
+from ...elements.ids import (
     CAVITY,
     FLAME_HEAT_RELEASE,
     ISEN_AREA_CHANGE,

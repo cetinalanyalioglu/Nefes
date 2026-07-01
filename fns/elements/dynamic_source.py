@@ -21,7 +21,7 @@ reference edge.  Most flames are modelled with a single velocity term.
 
 This module owns only the **specification** (the descriptor + the transfer-function
 objects); the mean flow ignores it entirely (a constant mean source is acoustically
-passive), and the perturbation layer (:mod:`fns.perturbation.stamps`) consumes it to
+passive), and the perturbation layer (:mod:`fns.perturbation.operator.stamps`) consumes it to
 stamp the ``S(omega)`` face of the operator.  Nothing here depends on the
 perturbation layer, so the descriptor rides end-to-end on the element with no import
 cycle.

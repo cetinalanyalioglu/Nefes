@@ -13,9 +13,9 @@ The recovered state is packed into a fixed-width "edge-state table" column
 from numba import njit
 
 from .closure import closure_solve
-from .thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER
-from .thermo.equilibrium import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
-from .thermo._chem import RU
+from ..thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER
+from ..thermo.equilibrium import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
+from ..thermo._chem import RU
 
 # edge-state table (est) slot layout
 ES_MDOT = 0

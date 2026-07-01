@@ -26,14 +26,14 @@ from fns.perturbation import (
     modal_energy_balance,
     find_terminals,
 )
-from fns.perturbation.boundary_bc import PerturbationBC
-from fns.perturbation.modeshape import build_geometry
-from fns.perturbation.power import _lumped_storage_energy, _stored_energy
+from fns.perturbation.operator.boundary_bc import PerturbationBC
+from fns.perturbation.fields.modeshape import build_geometry
+from fns.perturbation.fields.power import _lumped_storage_energy, _stored_energy
 from fns.shell import Network
 from fns.solver import solve
 from fns.solver.control import states_table
 from fns.thermo.configure import perfect_gas
-from fns.derive import ES_RHO, ES_C, ES_U, ES_AREA
+from fns.assembly.derive import ES_RHO, ES_C, ES_U, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

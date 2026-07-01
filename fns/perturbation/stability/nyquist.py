@@ -34,7 +34,7 @@ fluctuating fuel feed):
 where ``A_0`` is the network with the source switched off, ``F_k`` is term ``k``'s
 transfer function, ``a_k`` its injection vector (the rows it feeds) and ``b_k`` its
 sensing vector (the reference-edge fluctuation it reads).  ``S`` is **low rank**
-(one rank-1 term per source term -- :mod:`fns.perturbation.stamps`).  The
+(one rank-1 term per source term -- :mod:`fns.perturbation.operator.stamps`).  The
 matrix-determinant lemma then factors the stability determinant exactly,
 
     det A = det A_0 * det(I_r + M(omega)),    M(omega) = diag(F) B^T A_0^{-1} A,
@@ -70,7 +70,7 @@ from typing import List, Optional
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from .operator import build_acoustic_blocks, assemble_acoustic
+from ..operator.operator import build_acoustic_blocks, assemble_acoustic
 
 
 class NyquistWarning(UserWarning):
@@ -97,9 +97,9 @@ class _SourceTermRank1:
 def _rank1_terms(blocks) -> List[_SourceTermRank1]:
     """Decompose the dynamic source ``S(omega)`` into rank-1 terms ``F_k a_k b_k^T``.
 
-    Mirrors :func:`stamps.stamp_sources`: each :class:`~fns.perturbation.stamps.SourceStamp`
+    Mirrors :func:`stamps.stamp_sources`: each :class:`~fns.perturbation.operator.stamps.SourceStamp`
     contributes its ``factors`` on ``rows`` as the injection vector, and each of its
-    :class:`~fns.perturbation.stamps.SourceTerm` contributes its ``coeff`` on ``cols`` as
+    :class:`~fns.perturbation.operator.stamps.SourceTerm` contributes its ``coeff`` on ``cols`` as
     the sensing vector, with the term's transfer function.
     """
     n = int(blocks.n)
@@ -838,7 +838,7 @@ class NyquistStabilityMap:
         import plotly.graph_objects as go
         from plotly.subplots import make_subplots
 
-        from ..plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
+        from ...plotting.theme import COLORWAY, FNS_TEMPLATE_NAME
 
         fig = make_subplots(
             rows=3,

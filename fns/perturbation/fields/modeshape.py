@@ -3,7 +3,7 @@
 A ``DUCT`` is the only length-bearing element, and it is **uniform and lossless**:
 its two faces share one mean state ``(c, u)``, so the perturbation field *inside* it
 is known in closed form -- the very phase relations the duct stamp imposes
-(:func:`fns.perturbation.stamps.stamp_propagation`), now evaluated at every interior
+(:func:`fns.perturbation.operator.stamps.stamp_propagation`), now evaluated at every interior
 station instead of only at the head face::
 
     f(s) = f_tail * exp(-i w s / (u + c))          downstream wave, from the tail
@@ -28,10 +28,10 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
-from .characteristics import basis_block_from_state, BASIS_LABELS
-from .verify import duct_nodes
-from ..derive import ES_C, ES_U
-from ..elements.ids import MASS_FLOW_INLET, PT_INLET
+from ..operator.characteristics import basis_block_from_state, BASIS_LABELS
+from ..operator.verify import duct_nodes
+from ...assembly.derive import ES_C, ES_U
+from ...elements.ids import MASS_FLOW_INLET, PT_INLET
 
 # Below this |speed| a duct is treated as quiescent: the entropy wave does not
 # convect (tau_0 -> inf), so it carries no interior spatial structure.
@@ -55,7 +55,7 @@ def resolve_specs(variable=None, basis=None):
 
     Two ways to ask for one or more quantities to reconstruct:
 
-    * ``basis`` -- a flavor from :data:`fns.perturbation.characteristics.BASIS_LABELS`
+    * ``basis`` -- a flavor from :data:`fns.perturbation.operator.characteristics.BASIS_LABELS`
       (``"char"``, ``"primitive"``, ``"network"``, ...).  Expands to that flavor's three
       components, labelled by ``BASIS_LABELS``.
     * ``variable`` -- a single :data:`VARIABLE_SPEC` name or a sequence of them, resolved

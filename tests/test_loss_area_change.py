@@ -15,7 +15,7 @@ from fns.thermo.configure import perfect_gas
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import states_table
-from fns.derive import ES_MDOT, ES_RHO, ES_PT, ES_AREA
+from fns.assembly.derive import ES_MDOT, ES_RHO, ES_PT, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

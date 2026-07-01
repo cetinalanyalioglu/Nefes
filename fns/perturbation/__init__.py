@@ -22,7 +22,7 @@ stability analysis (s12.7 (ii), :func:`eigenmodes` -- the nonlinear eigenproblem
 element is present.
 """
 
-from .characteristics import (
+from .operator.characteristics import (
     char_to_dx,
     dx_to_char,
     edge_transforms,
@@ -30,11 +30,11 @@ from .characteristics import (
     basis_block_from_state,
     BASIS_LABELS,
 )
-from .operator import build_acoustic_blocks, assemble_acoustic, AcousticBlocks
-from .verify import verify_acoustic
-from .boundary_bc import PerturbationBC
-from .terminals import Terminal, find_terminals
-from .response import (
+from .operator.operator import build_acoustic_blocks, assemble_acoustic, AcousticBlocks
+from .operator.verify import verify_acoustic
+from .operator.boundary_bc import PerturbationBC
+from .operator.terminals import Terminal, find_terminals
+from .response.response import (
     perturbation_response,
     PerturbationResponse,
     excite_perturbation,
@@ -43,10 +43,10 @@ from .response import (
     acoustic_response,
     AcousticResponse,
 )
-from .forced import forced_response, ForcedResponse, CompositionalNoiseWarning
-from .stamps import boundary_forcing
-from . import matrices
-from .matrices import (
+from .response.forced import forced_response, ForcedResponse, CompositionalNoiseWarning
+from .operator.stamps import boundary_forcing
+from .operator import matrices
+from .operator.matrices import (
     tm_in_basis,
     tm_to_sm,
     sm_to_tm,
@@ -55,15 +55,15 @@ from .matrices import (
     wave_speeds,
     wave_signs,
 )
-from .duct import duct_modes, DuctAcoustics
-from .cuton import (
+from .fields.duct import duct_modes, DuctAcoustics
+from .fields.cuton import (
     cuton_frequency,
     duct_cuton_frequencies,
     CutOnReport,
     DuctCutOn,
     ALPHA_CIRCULAR,
 )
-from .power import (
+from .fields.power import (
     acoustic_intensity,
     acoustic_energy_density,
     passive_reflection_bound,
@@ -78,13 +78,13 @@ from .power import (
     modal_energy_balance,
     ModalEnergyBalance,
 )
-from .drivers import modes_from_det, scattering_2port
+from .fields.drivers import modes_from_det, scattering_2port
 from ..elements.continuation import RationalFit, rational_fit, continuation_warning
-from .contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
-from .eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
-from .trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning
-from .modeshape import build_geometry, reconstruct_field, NetworkGeometry, PathField, DuctSegment
-from .nyquist import (
+from .stability.contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
+from .stability.eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
+from .stability.trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning
+from .fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry, PathField, DuctSegment
+from .stability.nyquist import (
     open_loop_response,
     nyquist_stability,
     nyquist_stability_map,

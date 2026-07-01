@@ -135,7 +135,7 @@ def _gamma_minus_one(K=None, rho=None, c=None, p=None):
     rho c^2 / p - 1``) whenever the state ``(rho, c, p)`` is supplied: this is exact for a perfect
     gas *and* is the effective ``gamma`` consistent with the sound speed the acoustics already use
     for a reacting / variable-composition gas -- the same convention as
-    :func:`~fns.perturbation.stamps._cp_from_state`.  Falls back to the perfect-gas ratio
+    :func:`~fns.perturbation.operator.stamps._cp_from_state`.  Falls back to the perfect-gas ratio
     ``K = cp/R`` (``gamma - 1 = 1/(K-1)``) only when no state is given (direct/legacy callers); on
     the reacting backend ``K = tf[0]/tf[1]`` is *not* ``cp/R``, so the state form is the correct one.
     """
@@ -184,7 +184,7 @@ class PerturbationBC:
         wherever the linearization is inherited (a flame, an area change, a resolved or inherited
         compact nozzle -- the full Jacobian carries composition -> acoustic).  The one place that
         coupling is dropped is a hand-written compact-nozzle closure (see
-        :class:`~fns.perturbation.forced.CompositionalNoiseWarning`).
+        :class:`~fns.perturbation.response.forced.CompositionalNoiseWarning`).
     amplitudes : dict, optional
         Per-family complex amplitude (constant, table, or callable), keyed by a family in
         ``driven``.  Families in ``driven`` but absent here drive a unit wave.

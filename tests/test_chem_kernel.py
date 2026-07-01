@@ -118,7 +118,7 @@ def test_kernel_masks_condensed_feed_from_products():
     from the burnt products in the compiled kernel -- matching thermolib's masked solve, not
     the spurious low temperature you get if the liquid is (wrongly) allowed as a product."""
     from thermolib import ThermoInp, equilibrate_HP
-    from fns.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from fns.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -151,7 +151,7 @@ def test_kernel_drops_absent_element():
     species (keep_el / keep_sp), exactly as thermolib's masked solve does -- so the
     burnt state matches and the complex-step Jacobian stays finite."""
     from thermolib import equilibrate_HP, ThermoInp
-    from fns.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from fns.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -206,7 +206,7 @@ def _mixed_feed_lib():
 
 def _blend(lib, streams, xi):
     """Mass-weighted species mass fractions of a feed-stream blend ``Y = sum xi_k Y_k``."""
-    from fns.composition import species_mass_fractions
+    from fns.chem.composition import species_mass_fractions
 
     Y = np.zeros(lib.n_species)
     for w, spec in zip(xi, streams.values()):
@@ -218,7 +218,7 @@ def test_frozen_from_xi_matches_thermolib():
     """The frozen closure recovers a *varying* unburnt mixture (air + 2 fuels) by the
     forward blend of feed-stream mixture fractions -- matching a thermolib frozen
     evaluation of the same mixture, with no element inversion."""
-    from fns.composition import enthalpy_mass
+    from fns.chem.composition import enthalpy_mass
     from fns.thermo.equilibrium import eq_frozen_state
     from thermolib import Thermo
 
@@ -241,7 +241,7 @@ def test_frozen_from_xi_matches_thermolib():
 def test_frozen_from_xi_complex_step():
     """Complex-step == FD for the frozen edge through both xi (forward blend) and h
     (temperature inversion)."""
-    from fns.composition import enthalpy_mass
+    from fns.chem.composition import enthalpy_mass
     from fns.thermo.equilibrium import eq_frozen_state
 
     lib, heavy = _mixed_feed_lib()
@@ -274,7 +274,7 @@ def test_comixed_fuels_are_resolvable():
     """Co-mixed multi-fuel that the old elemental basis could NOT resolve (CH4 +
     C8H18 + H2 in air, indistinguishable from C,H,O,N) is now recovered exactly:
     each fuel is its own feed stream, so the forward blend is unambiguous."""
-    from fns.composition import enthalpy_mass
+    from fns.chem.composition import enthalpy_mass
     from fns.thermo.equilibrium import eq_frozen_state
     from thermolib import Thermo
 

@@ -10,7 +10,7 @@ complex-step reference once a second advected scalar is present.
 import numpy as np
 import pytest
 
-from fns.assemble import jacobian, jacobian_dense
+from fns.assembly.assemble import jacobian, jacobian_dense
 from fns.elements import catalog as cat
 from fns.solver import solve
 from fns.solver.control import initial_guess

@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 import yaml
 
-from ..connectivity import build_connectivity, Connectivity
+from ..graph.connectivity import build_connectivity, Connectivity
 from ..elements import catalog as cat
 from ..elements.ids import FLAME_EQUILIBRIUM, MASS_FLOW_INLET, MASS_SOURCE, PT_INLET, P_OUTLET
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL
@@ -224,7 +224,7 @@ def _feed_sample_states(feed_lib, specs, g):
 
     from thermolib import SampleState
 
-    from ..composition import elemental_Z, species_mass_fractions
+    from ..chem.composition import elemental_Z, species_mass_fractions
 
     p = float(g["referencePressure"])
     T_hi = float(g["equilibriumTInit"])
@@ -336,7 +336,7 @@ def _reacting_h_ref(gas, specs) -> float:
     temperature, floored at ``1e4`` J/kg.  The reacting closures need this absolute datum (the
     perfect-gas ``cp * T_ref`` fallback is meaningless for a variable-composition gas).
     """
-    from ..composition import enthalpy_mass, species_mass_fractions
+    from ..chem.composition import enthalpy_mass, species_mass_fractions
 
     lib = gas.library
     h_max = 0.0
@@ -437,7 +437,7 @@ def _parse_perturbation_bc(attrs: dict):
     specific impedance from ``impedanceMagnitude`` (|Z|/rho c) and ``impedancePhase`` (degrees). Returns ``None``
     for ``"inherit"`` or when ``boundaryType`` is absent, leaving the element's default closure.
     """
-    from ..perturbation.boundary_bc import PerturbationBC
+    from ..perturbation.operator.boundary_bc import PerturbationBC
 
     btype = attrs.get("boundaryType")
     if btype == "inherit":

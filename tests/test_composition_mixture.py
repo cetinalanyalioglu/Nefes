@@ -3,7 +3,7 @@
 import pytest
 
 from thermolib import SpeciesLibrary
-from fns.composition import (
+from fns.chem.composition import (
     equivalence_ratio_mixture,
     species_mole_fractions,
     _o2_demand,

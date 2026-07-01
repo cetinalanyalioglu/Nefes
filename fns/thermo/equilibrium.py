@@ -20,9 +20,13 @@ Two per-edge models share one library + stream set:
 * ``EQ_KERNEL`` -- the burnt side: HP chemical equilibrium of the elemental
   composition ``Z = xi @ Zfeed`` over the full library.
 
-MVP simplification: the kinetic-energy coupling ``h = h_t - u^2/2`` is dropped
-(``h ~ h_t``), ``O(M^2)`` for a low-Mach combustor; the closure returns the static
-density at ``h_t`` (R-B2.2 restores the exact KE fixed point later).
+The kinetic-energy coupling is exact: the closures recover the static state at
+``h = h_t - u^2/2``.  Because static ``p`` is the band-1 unknown, ``G(h) = h_t -
+1/2 (mdot / (rho(h) A))^2 - h`` is strictly monotone in ``h``, so the ``ke``
+wrappers (:func:`eq_kernel_state_ke_warm` and friends) take a safeguarded
+bracketed root of ``G`` on the real part and splice the imaginary part by the
+implicit-function theorem -- the same shape as the perfect-gas density root, no
+caps or floors.
 
 ``tf`` layout (all float64, ``mol`` units to match thermolib)::
 

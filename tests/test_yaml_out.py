@@ -1,7 +1,7 @@
-"""Verification of the UI-case writer (:mod:`fns.io.yaml_out`).
+"""Verification of the UI-case writer (:mod:`nefes.io.yaml_out`).
 
 The writer is the symmetric counterpart of the reader: it must emit a document
-the UI (and our own :func:`fns.io.load_case`) reads back into the *same* network.
+the UI (and our own :func:`nefes.io.load_case`) reads back into the *same* network.
 The strongest check is therefore a round-trip -- dump, reload, re-solve, and
 compare the converged fields -- exercised for both a network built in Python (a
 synthesized layout, no provenance) and a network loaded from the UI export (ids,
@@ -16,13 +16,13 @@ import numpy as np
 import pytest
 import yaml
 
-from fns.shell import Network
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
-from fns.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
-from fns.assembly.derive import ES_C
-from fns.perturbation import forced_response, eigenmodes, PerturbationBC
+from nefes.shell import Network
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
+from nefes.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
+from nefes.assembly.derive import ES_C
+from nefes.perturbation import forced_response, eigenmodes, PerturbationBC
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 _HANDLE_RE = re.compile(r"^.+-port-\d+$")
@@ -128,13 +128,13 @@ def test_outlet_elements_roundtrip(tmp_path, outlet, ui_type):
 def test_storage_elements_roundtrip(tmp_path):
     """Cavity, LinearResistance, and the storage lengths / manifold volume survive the
     UI round-trip: the elements re-build and their storage block M is reproduced."""
-    from fns.perturbation import build_acoustic_blocks
+    from nefes.perturbation import build_acoustic_blocks
 
     net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=1.0)
     net.add(cat.total_pressure_inlet(101325.0, 300.0, name="src"))
     net.add(cat.isentropic_area_change(name="diffuser", l_up=0.03, l_down=0.02, end_correction=0.005))
     net.add(cat.linear_resistance(40.0, name="screen", l_up=0.01, end_correction=0.004))
-    net.add(cat.junction(name="plenum", volume=2.0e-3, neck_length=0.015))
+    net.add(cat.junction(name="plenum", volume=2.0e-3))
     net.add(cat.duct(0.02, name="neck"))
     net.add(cat.cavity(1.0e-3, name="cav"))
     net.add(cat.pressure_outlet(101325.0, 300.0, name="back"))
@@ -153,7 +153,6 @@ def test_storage_elements_roundtrip(tmp_path):
     by_type = {n["type"]: n["attributes"] for n in doc["model"]["nodes"]}
     assert by_type["Cavity"]["volume"] == pytest.approx(1.0e-3)
     assert by_type["JunctionStaticP"]["volume"] == pytest.approx(2.0e-3)
-    assert by_type["JunctionStaticP"]["neck_length"] == pytest.approx(0.015)
     assert by_type["IsentropicAreaChange"]["lengthUpstream"] == pytest.approx(0.03)
     assert by_type["IsentropicAreaChange"]["endCorrection"] == pytest.approx(0.005)
     assert by_type["LinearResistance"]["resistance"] == pytest.approx(40.0)

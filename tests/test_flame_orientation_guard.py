@@ -9,9 +9,9 @@ flow-aligned is still warned about there.
 
 import warnings
 
-from fns.io.yaml_in import _resolve_edge_models
-from fns.elements.ids import FLAME_EQUILIBRIUM
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.io.yaml_in import _resolve_edge_models
+from nefes.elements.ids import FLAME_EQUILIBRIUM
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 
 
 class _Spec:

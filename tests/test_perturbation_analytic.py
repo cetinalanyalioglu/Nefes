@@ -26,13 +26,13 @@ element by element:
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_RHO, ES_U, ES_P, ES_C, ES_M
-from fns.perturbation import perturbation_response
-from fns.perturbation.operator.characteristics import char_to_dq, basis_block_from_state
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_RHO, ES_U, ES_P, ES_C, ES_M
+from nefes.perturbation import perturbation_response
+from nefes.perturbation.operator.characteristics import char_to_dq, basis_block_from_state
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -261,7 +261,7 @@ def test_mass_and_nodal_energy_continuity(mid, A0, A1):
 
 
 def test_basis_and_scattering_roundtrips():
-    from fns.perturbation import matrices as mat
+    from nefes.perturbation import matrices as mat
 
     prob, res = _two_port(cat.isentropic_area_change(), 0.10, 0.06, pt_in=130000.0)
     est = states_table(prob, res.x)

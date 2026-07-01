@@ -12,9 +12,9 @@ import os
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.shell.network import Network
-from fns.thermo.configure import equilibrium, perfect_gas
+from nefes.elements import catalog as cat
+from nefes.shell.network import Network
+from nefes.thermo.configure import equilibrium, perfect_gas
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}

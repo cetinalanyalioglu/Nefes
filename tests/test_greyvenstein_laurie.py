@@ -6,12 +6,12 @@ paper's only compressible case: a 29-pipe compressed-air distribution network, c
 friction factor ``f = 0.03``, isothermal ``T = 288.15 K`` (15 C), two 6-bar supplies and
 thirteen 3-bar demands (a pure Dirichlet pressure problem; the mass flows are the answer).
 
-It is the natural FNS match because the ``pipe`` element *is* the Darcy-Weisbach ``DUCT (+)
+It is the natural Nefes match because the ``pipe`` element *is* the Darcy-Weisbach ``DUCT (+)
 LOSS`` unification the paper motivates: one length-bearing element dropping total pressure by
 ``K = f L / D`` on the mean flow.  We build the network from Table III, solve it, and check the
 published Table IV mass flows and node pressures.
 
-The agreement is ~0.1 %; the small residual is physical and in FNS's favour -- FNS resolves the
+The agreement is ~0.1 %; the small residual is physical and in Nefes's favour -- Nefes resolves the
 dynamic pressure and the full compressible closure the paper's low-Mach (static ~ total,
 frozen-temperature) model drops.  At the operating point the flow is firmly low-Mach
 (M <~ 0.04), so those differences are O(M^2) and land in the 3rd-4th significant figure.
@@ -25,9 +25,9 @@ density ``rho = p / R T`` differs (e.g. element 1: table 8.56 = V, whereas rho =
 import numpy as np
 import pytest
 
-from fns.thermo.configure import perfect_gas
-from fns.elements import catalog as cat
-from fns.shell.network import Network
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.shell.network import Network
 
 R_AIR, GAMMA, T_ISO = 287.0, 1.4, 288.15
 FRICTION = 0.03
@@ -171,12 +171,12 @@ _INTERIOR = [n for n in _PAPER_NODES if n not in _LEAVES]
 
 
 def build_network():
-    """Assemble Example 3 as an FNS ``Network``.
+    """Assemble Example 3 as an Nefes ``Network``.
 
-    Each paper *pipe* is a two-port :func:`~fns.elements.catalog.pipe` (Darcy-Weisbach,
+    Each paper *pipe* is a two-port :func:`~nefes.elements.catalog.pipe` (Darcy-Weisbach,
     ``K = f L / D``, circular area ``pi D^2 / 4``); each interior paper *node* is a
-    static-pressure :func:`~fns.elements.catalog.junction`; each supply/demand leaf is a
-    :func:`~fns.elements.catalog.total_pressure_inlet` / :func:`~fns.elements.catalog.pressure_outlet`.
+    static-pressure :func:`~nefes.elements.catalog.junction`; each supply/demand leaf is a
+    :func:`~nefes.elements.catalog.total_pressure_inlet` / :func:`~nefes.elements.catalog.pressure_outlet`.
 
     Returns
     -------
@@ -256,7 +256,7 @@ def test_node_pressures_match_table_iv(solved):
 
 def test_low_mach_regime(solved):
     # Example 3 sits at M <~ 0.05 (local per-edge peak ~0.046 at the low-density pipe exits), so
-    # FNS's compressible closure and the paper's low-Mach model agree to O(M^2); confirm the
+    # Nefes's compressible closure and the paper's low-Mach model agree to O(M^2); confirm the
     # operating point is where that argument holds.
     sol, _ = solved
     mach = sol.field("M")
@@ -265,7 +265,7 @@ def test_low_mach_regime(solved):
 
 def test_reported_density_column_is_velocity(solved):
     # Table IV's "Density (kg/m^3)" column is really the element velocity (m/s): the paper's
-    # V = mdot / (rho_bar A) at the mean density (the pipe's reference velocity), which FNS
+    # V = mdot / (rho_bar A) at the mean density (the pipe's reference velocity), which Nefes
     # reproduces, while the true density rho = p/RT does not match the column.
     sol, pipe_edges = solved
     mdot, rho, area = sol.field("mdot"), sol.field("rho"), sol.field("area")

@@ -15,12 +15,12 @@ import os
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import equilibrium, perfect_gas
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
-from fns.shell.network import Network
-from fns.solver.control import solve, states_table
-from fns.assembly.derive import ES_T
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import equilibrium, perfect_gas
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.shell.network import Network
+from nefes.solver.control import solve, states_table
+from nefes.assembly.derive import ES_T
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 # stoichiometric H2-air premix (2 H2 + O2 + 3.76 N2, by mole)
@@ -103,7 +103,7 @@ def test_marker_out_of_range_rejected_at_factory(bad):
 def test_marker_written_to_yaml():
     # yaml_out emits the marker attribute (reacting-only, only when non-zero)
     import yaml as _yaml
-    from fns.io import dump_case
+    from nefes.io import dump_case
 
     gas, h_ref = _premix_datum()
     net = Network(
@@ -127,7 +127,7 @@ def test_marker_written_to_yaml():
 
 def test_marker_read_from_yaml():
     # yaml_in parses the marker attribute back onto the ElementSpec
-    from fns.io.yaml_in import _UI_NODE_BUILDERS
+    from nefes.io.yaml_in import _UI_NODE_BUILDERS
 
     attrs = {"totalPressure": 1.2e5, "totalTemperature": 300.0, "composition": "H2:1.0", "marker": 1.0}
     spec = _UI_NODE_BUILDERS["TotalPressureInlet"](attrs)

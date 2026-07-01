@@ -4,7 +4,7 @@ An **atomic element** is a single, irreducible network element with its own resi
 kernel — as opposed to a [composite](composite-elements.md), which expands to a graph of
 atomics at build time. (The codebase calls them *atomic*; *base* / *primitive* would be
 synonyms.) Every element maps to one integer `residual_id` — the `@njit` dispatch key in
-`fns.elements.ids` — and is constructed from `fns.elements.catalog`.
+`nefes.elements.ids` — and is constructed from `nefes.elements.catalog`.
 
 ## How an element is defined
 
@@ -17,7 +17,7 @@ contributes:
 - **1-port boundary/termination** — a single row: either a mass-flux row ($\dot m$ pinned) or
   an absolute-pressure row ($p$ or $p_t$ pinned).
 - **interior element** ($d \ge 2$) — one **mass-balance** row plus $d-1$ **pressure-coupling**
-  rows (the row-kind map is `fns.elements.ids.row_kind_tags`, the single source of truth).
+  rows (the row-kind map is `nefes.elements.ids.row_kind_tags`, the single source of truth).
 
 The **flow area** is a property of each *edge*, not the element: edges are wired as
 `(tail_node, head_node, area)`, so an area-change element simply reads the differing areas of
@@ -296,21 +296,20 @@ with a fuel `composition`; it performs no reaction (ignition is the flame's job)
 
 ## Manifolds (variable port count)
 
-### `junction(volume=0.0, neck_length=0.0)`
+### `junction(volume=0.0)`
 Ties all incident ports to a **common static pressure**: a mass balance $\sum_i \dot m_i = 0$
-plus $d-1$ rows $p_i = p_0$. A plenum `volume` adds the compliance $C = V/(\rho c^2)$ to $M$;
-a `neck_length` adds a per-branch inertive neck (storage term $-l_{\text{eff},i}/A_i$ on the
-$p_0 - p_i$ row). Both inert in the mean flow — together, a lumped Helmholtz network.
+plus $d-1$ rows $p_i = p_0$. A plenum `volume` adds the compliance $C = V/(\rho c^2)$ to $M$
+(inert in the mean flow) — a junction with a volume is a cavity with through-flow. A branch's
+neck inertance is **not** a manifold parameter; model it as an explicit neck `duct` on that
+branch (exactly what `helmholtz_resonator` assembles).
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
 | `volume` | $V$ | chamber volume (plenum compliance) | m³ | `0.0`, $\ge 0$ |
-| `neck_length` | $l_\text{eff}$ | per-branch neck inertance (scalar or per-branch list) | m | `0.0`, $\ge 0$ |
 
-### `splitter(volume=0.0, neck_length=0.0)`
+### `splitter(volume=0.0)`
 As `junction`, but ties the ports to a **common total pressure** ($p_{t,i} = p_{t,0}$,
-lossless) — the idealization when the manifold recovers dynamic head. Same optional storage
-parameters.
+lossless) — the idealization when the manifold recovers dynamic head. Same optional `volume`.
 
 ### `forced_splitter(fractions)`
 One inflow (port 0) split into $N$ outflows at **prescribed mass fractions**:

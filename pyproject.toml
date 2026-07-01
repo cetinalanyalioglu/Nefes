@@ -3,9 +3,9 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fns"
+name = "nefes"
 version = "0.1.0"
-description = "Flow Network Solver - compressible-flow network analysis (mean flow + acoustics)"
+description = "Network solver for reacting compressible flows and thermoacoustics"
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
@@ -19,7 +19,7 @@ dev = ["pytest", "flake8", "black"]
 jupyter = ["jupyterlab", "notebook", "ipykernel", "nbformat>=4.2.0", "plotly>=5.0"]
 
 [tool.setuptools.packages.find]
-include = ["fns*", "thermolib*"]
+include = ["nefes*", "thermolib*"]
 
 [tool.setuptools.package-data]
 # ship the vendored NASA Glenn / CEA thermo database and the native species YAMLs

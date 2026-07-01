@@ -16,13 +16,13 @@ import os
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import equilibrium
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
-from fns.shell.network import Network
-from fns.solver.control import solve, states_table, auto_initial_guess
-from fns.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_P
-from fns.perturbation.response.response import perturbation_response
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import equilibrium
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
+from nefes.shell.network import Network
+from nefes.solver.control import solve, states_table, auto_initial_guess
+from nefes.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_P
+from nefes.perturbation.response.response import perturbation_response
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}
@@ -87,7 +87,7 @@ def test_explicit_models_carry_no_marker():
 
 
 def test_perfect_gas_has_no_marker():
-    from fns.thermo.configure import perfect_gas
+    from nefes.thermo.configure import perfect_gas
 
     net = Network(gas=perfect_gas(287.0, 1.4))
     net.add(cat.total_pressure_inlet(1.2e5, 300.0))

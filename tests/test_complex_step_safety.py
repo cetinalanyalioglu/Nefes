@@ -31,9 +31,9 @@ Two layers of coverage:
 import numpy as np
 import pytest
 
-from fns.thermo.configure import perfect_gas
-from fns.elements import catalog as cat
-from fns.elements.ids import (
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.elements.ids import (
     MASS_FLOW_INLET,
     PT_INLET,
     P_OUTLET,
@@ -57,11 +57,11 @@ from fns.elements.ids import (
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
 )
-from fns.assembly.assemble import residual, jacobian
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_M
-from fns.solver.linear import scaled_system, col_scale
+from nefes.assembly.assemble import residual, jacobian
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_M
+from nefes.solver.linear import scaled_system, col_scale
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

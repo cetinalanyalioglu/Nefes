@@ -15,21 +15,21 @@ entropy wave is retained):
    The ``R_s h`` term is the indirect noise.
 
 The default isentropic acoustic analysis pins ``h = 0`` away from the flame, so it
-*misses* this entirely -- shown explicitly. Run in the ``fns`` env (numba).
+*misses* this entirely -- shown explicitly. Run in the ``nefes`` env (numba).
 """
 
 import warnings
 
 import numpy as np
 
-from fns.elements import catalog as cat
-from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation import forced_response
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.thermo.configure import perfect_gas
-from fns.assembly.derive import ES_U, ES_C, ES_M, ES_RHO
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import n_tau_flame
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation import forced_response
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.thermo.configure import perfect_gas
+from nefes.assembly.derive import ES_U, ES_C, ES_M, ES_RHO
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

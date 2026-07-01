@@ -1,6 +1,6 @@
-# FNS documentation
+# Nefes documentation
 
-User-facing reference for the FNS flow-network solver. (The authoritative theory spec lives in
+User-facing reference for the Nefes flow-network solver. (The authoritative theory spec lives in
 [`preliminary-study/docs/`](../preliminary-study/docs/); these pages document the shipped tool.)
 
 ## Element reference

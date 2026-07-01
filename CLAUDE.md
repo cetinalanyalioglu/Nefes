@@ -1,6 +1,6 @@
-# FNS — Flow Network Solver
+# Nefes — Network solver for reacting compressible flows and thermoacoustics
 
-FNS is a compressible-flow **network** analysis tool: it models a fluid system as a
+Nefes is a compressible-flow **network** analysis tool: it models a fluid system as a
 directed graph and solves for the steady mean flow (and, by design, the acoustic
 behavior around it) without resolving the full 3-D field.
 
@@ -62,6 +62,11 @@ As project matures, these documents should serve more as a guideline than of a r
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
 - Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
+
+## Markdown files
+
+- Let all sentences appear in a single line, no matter how many columns it takes. The 120 column rule does not apply here.
+- The documents marked as *internal documents* stay local, you do not push them to the repository.
 
 ## TODO.md management
 - Do NOT remove the titles

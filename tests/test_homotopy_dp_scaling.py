@@ -12,10 +12,10 @@ untouched.
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.solver import solve
-from fns.solver.control import domain_max_dp
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.solver import solve
+from nefes.solver.control import domain_max_dp
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

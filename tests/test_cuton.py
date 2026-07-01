@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.solver import solve
-from fns.thermo.configure import perfect_gas
-from fns.perturbation import cuton_frequency, duct_cuton_frequencies, ALPHA_CIRCULAR
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.thermo.configure import perfect_gas
+from nefes.perturbation import cuton_frequency, duct_cuton_frequencies, ALPHA_CIRCULAR
 
 CFG = perfect_gas(R=287.0, gamma=1.4)
 CP = 1.4 * 287.0 / 0.4
@@ -85,7 +85,7 @@ def test_report_over_a_solved_network():
 
 
 def test_solution_convenience_method():
-    from fns.shell import Network
+    from nefes.shell import Network
 
     net = Network(gas=CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=2.0, h_ref=CP * 300.0)
     i = net.add(cat.mass_flow_inlet(2.0, 300.0))

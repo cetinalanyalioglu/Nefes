@@ -14,13 +14,13 @@ import os
 
 import pytest
 
-from fns.chem.composition import enthalpy_mass, resolve_composition
-from fns.assembly.derive import ES_HT, ES_MDOT, ES_T, ES_U
-from fns.elements import catalog as cat
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
-from fns.thermo.configure import equilibrium
+from nefes.chem.composition import enthalpy_mass, resolve_composition
+from nefes.assembly.derive import ES_HT, ES_MDOT, ES_T, ES_U
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.thermo.configure import equilibrium
 
 A = 0.1
 AIR = {"O2": 0.21, "N2": 0.79}

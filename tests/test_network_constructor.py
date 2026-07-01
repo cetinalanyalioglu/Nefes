@@ -11,11 +11,11 @@ import os
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas, equilibrium
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
-from fns.shell.network import Network
-from fns.solver import solve
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas, equilibrium
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.shell.network import Network
+from nefes.solver import solve
 
 CFG = perfect_gas(287.0, 1.4)
 CP = 1.4 * 287.0 / 0.4

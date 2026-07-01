@@ -9,9 +9,9 @@ the sparse matrix disagree with the dense one).
 import numpy as np
 import pytest
 
-from fns.thermo.configure import perfect_gas
-from fns.elements import catalog as cat
-from fns.assembly.assemble import residual, jacobian, jacobian_dense
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.assembly.assemble import residual, jacobian, jacobian_dense
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

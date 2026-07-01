@@ -2,7 +2,7 @@
 
 A measured / tabulated transfer function or reflection coefficient lives on a real
 frequency grid; the stability eigenproblem searches the *complex* plane.  ``rational_fit``
-(AAA barycentric rational, :mod:`fns.elements.continuation`) bridges the two: the fit
+(AAA barycentric rational, :mod:`nefes.elements.continuation`) bridges the two: the fit
 reproduces the data on the grid yet continues off the real axis, so the same object drives
 both the real-axis Nyquist sweep and the contour eigensolver.
 
@@ -18,7 +18,7 @@ These tests anchor the framework four ways:
 4. **Guard rails** -- a raw table refuses a complex frequency with a pointed error, and the
    pole-region diagnostics flag an untrustworthy fit.
 
-Run in the ``fns`` env (numba).
+Run in the ``nefes`` env (numba).
 """
 
 import warnings
@@ -26,19 +26,19 @@ import warnings
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.continuation import rational_fit, continuation_warning
-from fns.elements.dynamic_source import (
+from nefes.elements import catalog as cat
+from nefes.elements.continuation import rational_fit, continuation_warning
+from nefes.elements.dynamic_source import (
     NTau,
     NTauLowpass,
     tabulated,
     heat_release_response,
     mass_flow_response,
 )
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation import eigenmodes, nyquist_stability
-from fns.solver import solve
-from fns.thermo.configure import perfect_gas
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation import eigenmodes, nyquist_stability
+from nefes.solver import solve
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -381,7 +381,7 @@ def test_input_validation():
 
 def test_plot_helpers_build_figures():
     """The plotting helpers return figures and focus the pole map on the data band."""
-    from fns.plotting import plot_fit, plot_pole_map
+    from nefes.plotting import plot_fit, plot_pole_map
 
     fg = np.linspace(0.0, 4000.0, 90)
     fit = rational_fit(fg, NTauLowpass(1.2, 4e-3, 400.0)(fg), delay="auto")

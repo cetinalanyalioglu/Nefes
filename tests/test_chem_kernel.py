@@ -1,7 +1,7 @@
-"""Part-A/Part-B agreement: the compiled FNS chemistry kernel vs ``thermolib``.
+"""Part-A/Part-B agreement: the compiled Nefes chemistry kernel vs ``thermolib``.
 
 ``thermolib`` (Part A) is the standalone, Cantera-validated authority but is
-pure-numpy.  :mod:`fns.thermo._chem` (Part B) re-implements the same
+pure-numpy.  :mod:`nefes.thermo._chem` (Part B) re-implements the same
 element-potential equilibrium in numba so it runs inside the ``@njit`` residual
 path.  The two MUST agree -- this test pins that, on both NASA-7 (Cantera YAML)
 and NASA-9 (NASA Glenn / CEA ``thermo.inp``) data, and re-checks the complex-step
@@ -13,8 +13,8 @@ import os
 import numpy as np
 import pytest
 
-from fns.thermo.configure import equilibrium
-from fns.thermo.equilibrium import eq_kernel_state_from_Z
+from nefes.thermo.configure import equilibrium
+from nefes.thermo.equilibrium import eq_kernel_state_from_Z
 
 DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data")
 H2O2 = os.path.join(DATA, "h2o2.yaml")
@@ -118,7 +118,7 @@ def test_kernel_masks_condensed_feed_from_products():
     from the burnt products in the compiled kernel -- matching thermolib's masked solve, not
     the spurious low temperature you get if the liquid is (wrongly) allowed as a product."""
     from thermolib import ThermoInp, equilibrate_HP
-    from fns.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -151,7 +151,7 @@ def test_kernel_drops_absent_element():
     species (keep_el / keep_sp), exactly as thermolib's masked solve does -- so the
     burnt state matches and the complex-step Jacobian stays finite."""
     from thermolib import equilibrate_HP, ThermoInp
-    from fns.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -206,7 +206,7 @@ def _mixed_feed_lib():
 
 def _blend(lib, streams, xi):
     """Mass-weighted species mass fractions of a feed-stream blend ``Y = sum xi_k Y_k``."""
-    from fns.chem.composition import species_mass_fractions
+    from nefes.chem.composition import species_mass_fractions
 
     Y = np.zeros(lib.n_species)
     for w, spec in zip(xi, streams.values()):
@@ -218,8 +218,8 @@ def test_frozen_from_xi_matches_thermolib():
     """The frozen closure recovers a *varying* unburnt mixture (air + 2 fuels) by the
     forward blend of feed-stream mixture fractions -- matching a thermolib frozen
     evaluation of the same mixture, with no element inversion."""
-    from fns.chem.composition import enthalpy_mass
-    from fns.thermo.equilibrium import eq_frozen_state
+    from nefes.chem.composition import enthalpy_mass
+    from nefes.thermo.equilibrium import eq_frozen_state
     from thermolib import Thermo
 
     lib, heavy = _mixed_feed_lib()
@@ -241,8 +241,8 @@ def test_frozen_from_xi_matches_thermolib():
 def test_frozen_from_xi_complex_step():
     """Complex-step == FD for the frozen edge through both xi (forward blend) and h
     (temperature inversion)."""
-    from fns.chem.composition import enthalpy_mass
-    from fns.thermo.equilibrium import eq_frozen_state
+    from nefes.chem.composition import enthalpy_mass
+    from nefes.thermo.equilibrium import eq_frozen_state
 
     lib, heavy = _mixed_feed_lib()
     streams = {"air": {"O2": 0.21, "N2": 0.79}, "oct": {heavy: 1.0}, "h2": {"H2": 1.0}}
@@ -274,8 +274,8 @@ def test_comixed_fuels_are_resolvable():
     """Co-mixed multi-fuel that the old elemental basis could NOT resolve (CH4 +
     C8H18 + H2 in air, indistinguishable from C,H,O,N) is now recovered exactly:
     each fuel is its own feed stream, so the forward blend is unambiguous."""
-    from fns.chem.composition import enthalpy_mass
-    from fns.thermo.equilibrium import eq_frozen_state
+    from nefes.chem.composition import enthalpy_mass
+    from nefes.thermo.equilibrium import eq_frozen_state
     from thermolib import Thermo
 
     lib, heavy = _mixed_feed_lib()

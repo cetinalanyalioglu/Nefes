@@ -14,12 +14,12 @@ compatible with the perturbation network (a finite multiport scattering matrix).
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_MDOT, ES_PT
-from fns.perturbation import perturbation_response
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_MDOT, ES_PT
+from nefes.perturbation import perturbation_response
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -150,7 +150,7 @@ def test_perturbation_inherits_forced_fraction_constraint():
     # The mean fraction row  si*mdot_i' - beta*(-s0*mdot_0') = 0  is inherited verbatim
     # by the zero-frequency operator J_alg, so the controlled branch's mass-flow
     # perturbation is locked to beta times the inflow's.  Read it straight off J_alg.
-    from fns.perturbation import build_acoustic_blocks
+    from nefes.perturbation import build_acoustic_blocks
 
     prob, res = _forced_tree()  # forced_splitter([0.6]) is node 2; edges: 1 (inflow), 2/3 (outflows)
     blocks = build_acoustic_blocks(prob, res.x)

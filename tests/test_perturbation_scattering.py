@@ -11,13 +11,13 @@ acoustic 2x2 sub-block, and internal consistency (cascade composition, unitarity
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.ids import ACOUSTIC_DUCT, ACOUSTIC_DEFAULT, ACOUSTIC_FLAME
-from fns.thermo.configure import perfect_gas
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_C, ES_U, ES_RHO, ES_AREA
-from fns.perturbation import (
+from nefes.elements import catalog as cat
+from nefes.elements.ids import ACOUSTIC_DUCT, ACOUSTIC_DEFAULT, ACOUSTIC_FLAME
+from nefes.thermo.configure import perfect_gas
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_C, ES_U, ES_RHO, ES_AREA
+from nefes.perturbation import (
     perturbation_response,
     find_terminals,
     build_acoustic_blocks,

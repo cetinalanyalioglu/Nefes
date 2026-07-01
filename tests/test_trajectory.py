@@ -1,4 +1,4 @@
-"""Eigenvalue-trajectory continuation of the perturbation spectrum (fns.perturbation.stability.trajectory).
+"""Eigenvalue-trajectory continuation of the perturbation spectrum (nefes.perturbation.stability.trajectory).
 
 The tool seeds the spectrum once with :func:`eigenmodes`, then continues each mode through a
 parameter sweep by a predictor-corrector march.  These tests pin the two things continuation
@@ -10,7 +10,7 @@ must get right on a Rijke tube:
 * the FTF-gain continuation ``n: 1 -> 0`` separates an **ITA** mode (growth dives as the flame
   is turned off) from a **cavity/acoustic** mode (parks on the passive duct resonance).
 
-Run in the ``fns`` env (numba).
+Run in the ``nefes`` env (numba).
 """
 
 import warnings
@@ -18,12 +18,12 @@ import warnings
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation import eigenmodes, eigenvalue_trajectory, TrajectoryResult
-from fns.shell import Network
-from fns.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import n_tau_flame
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation import eigenmodes, eigenvalue_trajectory, TrajectoryResult
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 R, GAMMA = 287.0, 1.4
 CP = GAMMA * R / (GAMMA - 1.0)

@@ -1,6 +1,6 @@
 """UI-export (YAML) loader: thermo-model selection, new elements, reacting wiring.
 
-The loader (:mod:`fns.io.yaml_in`) is the contract between the FNetLibUI tool and the
+The loader (:mod:`nefes.io.yaml_in`) is the contract between the FNetLibUI tool and the
 solver.  These tests cover the additions that bring it in step with the catalog: the
 ``thermoModel`` selector (perfect gas vs equilibrium), the string-encoded compositions,
 the per-edge frozen/equilibrium closure (auto-from-flames + explicit override), the
@@ -13,11 +13,11 @@ import os
 import pytest
 import yaml
 
-from fns.io import load_case, save_case
-from fns.io.yaml_in import _parse_composition
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
+from nefes.io import load_case, save_case
+from nefes.io.yaml_in import _parse_composition
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 # Stoichiometric H2/air as a single premixed feed (mole basis).
@@ -241,7 +241,7 @@ def test_reacting_no_flame_is_equilibrium_everywhere(tmp_path):
 
 def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
     from thermolib import SpeciesLibrary, Thermo
-    from fns.chem.composition import resolve_composition, enthalpy_mass
+    from nefes.chem.composition import resolve_composition, enthalpy_mass
 
     net = load_case(_series_reacting(tmp_path, name="ref.yaml"))
     sol = net.solve()

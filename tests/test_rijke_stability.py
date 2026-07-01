@@ -12,10 +12,10 @@ The reference is the **analytical compact-flame dispersion relation**: a two-reg
     Q' = Q_bar * n e^{-i omega tau} * u_1'(x_f)/u_bar_1,
 
 whose ``det = 0`` gives the complex modal frequencies.  At low mean Mach (where the
-analytic model is exact) FNS reproduces the analytic frequencies and growth rates,
+analytic model is exact) Nefes reproduces the analytic frequencies and growth rates,
 including the sign of the heat-release coupling -- the instability itself.
 
-Run in the ``fns`` env (numba); the reacting case also needs the thermolib data.
+Run in the ``nefes`` env (numba); the reacting case also needs the thermolib data.
 """
 
 import os
@@ -24,15 +24,15 @@ import warnings
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation import eigenmodes
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_T
-from fns.thermo.api import thermo_state
-from fns.thermo.configure import perfect_gas, equilibrium
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import n_tau_flame
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation import eigenmodes
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_T
+from nefes.thermo.api import thermo_state
+from nefes.thermo.configure import perfect_gas, equilibrium
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -134,7 +134,7 @@ def test_passive_flame_matches_analytic_frequencies():
 
 
 def test_n_tau_flame_drives_self_excited_instability():
-    """A destabilizing time lag makes the fundamental grow; FNS matches the analytic root."""
+    """A destabilizing time lag makes the fundamental grow; Nefes matches the analytic root."""
     prob, x, Qdot = _pg_rijke(0.8, 4.0e-3)
     means = _means(prob, x)
     modes = _modes(prob, x)
@@ -184,7 +184,7 @@ def _h2_air():
 
 
 def _reacting_rijke(n, tau, mdot=0.02, Tin=300.0, p=1.0e5):
-    from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
+    from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 
     gas, Y, Z = _h2_air()
     h_react = gas.enthalpy_mass(Y, Tin)
@@ -210,14 +210,14 @@ def _reacting_rijke(n, tau, mdot=0.02, Tin=300.0, p=1.0e5):
 
 
 # --------------------------------------------------------------------------
-# First-principles analytic for the *equilibrium* flame (independent of the FNS operator)
+# First-principles analytic for the *equilibrium* flame (independent of the Nefes operator)
 #
 # The equilibrium flame conserves absolute total enthalpy, so its compact jump is NOT
 # the perfect-gas contact discontinuity: it is mass-flux continuous (p' continuous,
 # rho u' continuous), and the density responds to the (source-driven) total-enthalpy
 # fluctuation through the *actual* equilibrium EOS derivatives -- not the perfect-gas
 # caloric.  The dispersion relation below carries five waves (f1, g1 cold/isentropic;
-# f2, g2, h2 hot with an entropy spot at the flame) and the same source coupling FNS
+# f2, g2, h2 hot with an entropy spot at the flame) and the same source coupling Nefes
 # stamps (h_t2' = h_t1' + delta * n e^{-i w tau} * u1'/u1).  The caloric derivatives
 # come from a complex step of the closure (thermo_state) and delta from the mean
 # sensible heat release -- both physical inputs, so the match below validates the
@@ -337,7 +337,7 @@ def test_reacting_flame_ignites_and_matches_analytic():
 
 
 def test_reacting_n_tau_flame_matches_analytic_instability():
-    """A destabilizing lag drives the reacting flame unstable; FNS matches the analytic root."""
+    """A destabilizing lag drives the reacting flame unstable; Nefes matches the analytic root."""
     # passive reference: damped
     prob0, x0 = _reacting_rijke(0.0, 0.0)
     assert max(g for _f, g in _modes(prob0, x0, band=(50.0, 200.0))) < 0.0
@@ -364,7 +364,7 @@ def test_composition_wave_convects_with_duct_phase():
     is decoupled under the isentropic stability mode, like the entropy wave, to keep the long
     transit time out of the acoustic spectrum.)
     """
-    from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
+    from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
 
     prob, x = _reacting_rijke(0.0, 0.0)
     est = states_table(prob, x)

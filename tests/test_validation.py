@@ -11,8 +11,8 @@ area-agnostic and may straddle an area change.
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)
 CP = 1.4 * 287.0 / 0.4

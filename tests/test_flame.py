@@ -13,13 +13,13 @@ import os
 import numpy as np
 import pytest
 
-from fns.assembly.assemble import jacobian, jacobian_dense
-from fns.assembly.derive import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
-from fns.elements import catalog as cat
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
-from fns.thermo.configure import equilibrium, perfect_gas
+from nefes.assembly.assemble import jacobian, jacobian_dense
+from nefes.assembly.derive import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.thermo.configure import equilibrium, perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

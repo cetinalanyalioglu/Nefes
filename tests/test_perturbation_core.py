@@ -3,12 +3,12 @@
 import numpy as np
 import pytest
 
-from fns.thermo.configure import perfect_gas
-from fns.elements import catalog as cat
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_MDOT
-from fns.perturbation import (
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_MDOT
+from nefes.perturbation import (
     char_to_dx,
     dx_to_char,
     build_acoustic_blocks,
@@ -16,7 +16,7 @@ from fns.perturbation import (
     duct_modes,
     scattering_2port,
 )
-from fns.perturbation.operator.characteristics import char_to_dq, basis_matrix
+from nefes.perturbation.operator.characteristics import char_to_dq, basis_matrix
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

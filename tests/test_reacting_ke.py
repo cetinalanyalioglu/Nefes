@@ -18,8 +18,8 @@ import os
 import numpy as np
 import pytest
 
-from fns.thermo.configure import equilibrium
-from fns.thermo.equilibrium import eq_kernel_state_ke_warm, eq_frozen_state_ke, eq_marker_state_ke_warm
+from nefes.thermo.configure import equilibrium
+from nefes.thermo.equilibrium import eq_kernel_state_ke_warm, eq_frozen_state_ke, eq_marker_state_ke_warm
 
 DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data")
 H2O2 = os.path.join(DATA, "h2o2.yaml")

@@ -2,7 +2,7 @@
 
 A **composite element** presents to the user as a single element but expands, at
 build time, into a small graph of [atomic elements](atomic-elements.md) joined by internal
-edges. The expansion (`fns.elements.composite.expand_composites`) is a pure graph
+edges. The expansion (`nefes.elements.composite.expand_composites`) is a pure graph
 transformation run once at the top of `build_problem`, so the solver, the Jacobian
 assembly and the perturbation layer never see a composite — at solve time an expanded graph
 is indistinguishable from a hand-built one (no new kernels, no solver changes). See
@@ -168,7 +168,7 @@ equispaced stations over $[0, L]$ (then `length` and `n_segments` are required).
 - `grid_refine(build, N, probe)` solves at $N$ and $2N$ and reports the relative change in the
   quantities of interest — a converged refinement *is* the verification of the discretization.
 
-## How composites interact with the rest of FNS
+## How composites interact with the rest of Nefes
 
 **Centralized, element-agnostic machinery.** One expander (`expand_composites`) serves every
 composite; it knows only their connectivity, never what the sub-elements are. Adding a new

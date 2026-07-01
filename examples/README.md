@@ -11,20 +11,20 @@
   termination; the `excitation` source term `b` (with `base_R` and acoustic/entropy
   `family`); the entropy→acoustic coupling `R_s` of the `choked_nozzle` /
   `constant_mass_flow` outlets (indirect noise, vs Marble–Candel); and the default
-  `inherit`. All via `fns.perturbation.boundary_response`; Plotly, FNS theme.
+  `inherit`. All via `nefes.perturbation.boundary_response`; Plotly, Nefes theme.
 - **`helmholtz_resonator.ipynb`** — demonstrates the **storage block `M`** and its first
   producing element, the **`cavity`**. Shows the cavity is a wall to the mean flow
   (`mdot = 0`) and a compliance `V/c²` to acoustics (its single `M` entry), then composes
   a **Helmholtz resonator** from primitives (tee + neck `duct` + `cavity`) and reproduces
   the analytic side-branch transmission-loss peak at `f₀ = c√(Aₙ/(V·l))/2π`, with the
-  resonance tuned across a 16:1 cavity-volume sweep. Plotly, FNS theme.
+  resonance tuned across a 16:1 cavity-volume sweep. Plotly, Nefes theme.
 - **`inertance_storage.ipynb`** — generalizes the storage block `M` to the **jump
   elements**: the **inertance** (`l_up`/`l_down`/`end_correction` on area changes, `loss`,
   `linear_resistance`) and the **manifold compliance** (`volume` on `junction`/`splitter`).
   Shows a neck modeled as an inline inertance (`iωM`) resonates at the same `f₀` as a neck
   `duct` (carried in `P(ω)`); that an `end_correction` lengthens `L_eff` and lowers `f₀`
   (≈20 % for a flanged `δ ≈ 0.85a`); and that a `junction(volume=V)` reproduces the
-  `cavity(V)` compliance. Plotly, FNS theme.
+  `cavity(V)` compliance. Plotly, Nefes theme.
 - **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
   **secondary-air / cooling** distribution), adapted from the preliminary-study
   prototype. Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`
@@ -44,7 +44,7 @@
   choking (mass-flow saturation at `M = 1`), and runs the full `3 x 3`
   **perturbation** transfer / scattering analysis (two acoustic waves **plus the
   entropy wave**) on top of the converged mean flow. All figures are Plotly,
-  styled with the shared FNS theme (`fns.plotting`).
+  styled with the shared Nefes theme (`nefes.plotting`).
 - **`compositional_noise.ipynb`** — **compositional (indirect) noise** at a choked
   nozzle. Validates the inert acoustic limit (the inherited `choked_nozzle_outlet`
   element, the hand-written Marble–Candel closure, and a **resolved** convergent
@@ -71,7 +71,7 @@
   matrix is non-physical across the splitter/junctions (the `TransferMatrixWarning`)
   and instead uses the rigorous whole-network descriptors — the **multiport
   scattering matrix** and per-terminal **source attribution** at a chosen sink. All
-  figures are Plotly, styled with the shared FNS theme (`fns.plotting`).
+  figures are Plotly, styled with the shared Nefes theme (`nefes.plotting`).
 
 - **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The standalone
   `thermolib` HP-equilibrium solver (adiabatic flame temperature vs equivalence ratio
@@ -109,20 +109,20 @@
 
 ## Running the notebook
 
-The notebook adds the repo root to `sys.path`, so no install of `fns` is needed —
+The notebook adds the repo root to `sys.path`, so no install of `nefes` is needed —
 just run it with a Python that has the project dependencies (`numpy`, `scipy`,
 `numba`, `pyyaml`) plus the notebook stack and Plotly. Install those with the
 `jupyter` extra (`pip install -e ".[jupyter]"`) or use the conda env, then:
 
 ```bash
-conda activate fns
+conda activate nefes
 jupyter lab examples/converging_nozzle.ipynb
 ```
 
 Or solve a UI case in two lines:
 
 ```python
-from fns.io import load_case
+from nefes.io import load_case
 sol = load_case("examples/converging_nozzle.yaml").solve()
 print(sol.edge(1))   # throat state: mdot, M, p, p_t, T, ...
 ```
@@ -158,7 +158,7 @@ model:
 ends in `-port-<ordinal>`; the loader keeps those ordinals and densifies each
 element's incident ports to `0..d-1`, so port-0 conventions (the LossElement
 reference area, the junction/splitter reference port) match the canvas. Element
-`type` names map to the FNS catalog: `MassFlowInlet`, `TotalPressureInlet`,
+`type` names map to the Nefes catalog: `MassFlowInlet`, `TotalPressureInlet`,
 `PressureOutlet`, `Wall`, `IsentropicAreaChange`, `SuddenAreaChange`, `LossElement`,
 `Duct`, `JunctionStaticP`, `LosslessSplitter`. Supersonic boundaries are deferred
 in v1 and raise a clear error.
@@ -205,10 +205,10 @@ Python-only closure) and solve:
 
 ```python
 import numpy as np
-from fns.elements import catalog as cat
-from fns.perturbation import PerturbationBC, boundary_response
-from fns.solver import solve
-from fns.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.perturbation import PerturbationBC, boundary_response
+from nefes.solver import solve
+from nefes.thermo.configure import perfect_gas
 
 els = [
     cat.total_pressure_inlet(108000.0, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)),  # drive

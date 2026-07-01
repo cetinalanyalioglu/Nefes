@@ -3,11 +3,11 @@
 import numpy as np
 import pytest
 
-from fns.shell import Network
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.assembly.derive import ES_C, ES_RHO, ES_M
-from fns.perturbation import (
+from nefes.shell import Network
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.assembly.derive import ES_C, ES_RHO, ES_M
+from nefes.perturbation import (
     PerturbationBC,
     perturbation_response,
     eigenmodes,

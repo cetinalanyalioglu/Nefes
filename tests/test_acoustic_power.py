@@ -10,9 +10,9 @@ import warnings
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.dynamic_source import n_tau_flame
-from fns.perturbation import (
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import n_tau_flame
+from nefes.perturbation import (
     eigenmodes,
     forced_response,
     acoustic_intensity,
@@ -26,14 +26,14 @@ from fns.perturbation import (
     modal_energy_balance,
     find_terminals,
 )
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation.fields.modeshape import build_geometry
-from fns.perturbation.fields.power import _lumped_storage_energy, _stored_energy
-from fns.shell import Network
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.thermo.configure import perfect_gas
-from fns.assembly.derive import ES_RHO, ES_C, ES_U, ES_AREA
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation.fields.modeshape import build_geometry
+from nefes.perturbation.fields.power import _lumped_storage_energy, _stored_energy
+from nefes.shell import Network
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.thermo.configure import perfect_gas
+from nefes.assembly.derive import ES_RHO, ES_C, ES_U, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

@@ -11,8 +11,8 @@ analytical Rijke tube in ``test_rijke_stability.py``.
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.dynamic_source import (
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import (
     NTau,
     Constant,
     n_tau,
@@ -25,14 +25,14 @@ from fns.elements.dynamic_source import (
     heat_release_response,
     mass_flow_response,
 )
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation.operator.characteristics import dq_to_dx
-from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
-from fns.perturbation import eigenmodes
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_MDOT, ES_U, ES_RHO, ES_P, ES_AREA
-from fns.thermo.configure import perfect_gas
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation.operator.characteristics import dq_to_dx
+from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+from nefes.perturbation import eigenmodes
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_MDOT, ES_U, ES_RHO, ES_P, ES_AREA
+from nefes.thermo.configure import perfect_gas
 
 R, GAMMA = 287.0, 1.4
 CP = GAMMA * R / (GAMMA - 1.0)

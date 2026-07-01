@@ -1,4 +1,4 @@
-name: fns
+name: nefes
 channels:
   - conda-forge
 dependencies:

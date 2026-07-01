@@ -12,11 +12,11 @@ quiescent (zero-flow) cold start.
 import numpy as np
 import pytest
 
-from fns.thermo.configure import perfect_gas
-from fns.elements import catalog as cat
-from fns.solver import solve
-from fns.solver.control import states_table, initial_guess
-from fns.assembly.derive import ES_MDOT, ES_P, ES_M, ES_T
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.solver.control import states_table, initial_guess
+from nefes.assembly.derive import ES_MDOT, ES_P, ES_M, ES_T
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

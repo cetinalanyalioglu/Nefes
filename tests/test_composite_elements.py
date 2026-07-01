@@ -12,14 +12,14 @@ import warnings
 import numpy as np
 import pytest
 
-from fns.thermo.configure import perfect_gas
-from fns.elements import catalog as cat
-from fns.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.assembly.derive import ES_M, ES_P, ES_RHO, ES_U, ES_AREA, ES_PT
-from fns.perturbation import perturbation_response
-from fns.shell import Network
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_M, ES_P, ES_RHO, ES_U, ES_AREA, ES_PT
+from nefes.perturbation import perturbation_response
+from nefes.shell import Network
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -119,7 +119,7 @@ def test_lossy_nozzle_lossless_limit_conserves_total_pressure():
     # beta = 1 -> the lossless (isentropic) nozzle: total pressure is conserved across it
     # (the Borda re-expansion is A2 -> A2, its loss term vanishes), unlike the lossy orifice.
     # Use a mild throat (PT 110 kPa, AT = 2/3 A2) so the con-di flow stays comfortably subsonic.
-    from fns.assembly.derive import ES_PT
+    from nefes.assembly.derive import ES_PT
 
     pti, at = 110000.0, 2.0e-3
 
@@ -383,7 +383,7 @@ def test_tapered_duct_length_must_match_x_span():
 
 
 def test_grid_refine_reports_convergence():
-    from fns.elements.composite import grid_refine
+    from nefes.elements.composite import grid_refine
 
     def build(n):
         prob, x = _fanno(n)

@@ -9,11 +9,11 @@ loss vanishes.
 import numpy as np
 import pytest
 
-from fns.shell import Network
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.assembly.derive import ES_MDOT, ES_PT
-from fns.perturbation import perturbation_response, PerturbationBC
+from nefes.shell import Network
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.assembly.derive import ES_MDOT, ES_PT
+from nefes.perturbation import perturbation_response, PerturbationBC
 
 CFG = perfect_gas(287.0, 1.4)
 

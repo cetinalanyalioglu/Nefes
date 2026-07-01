@@ -1,6 +1,6 @@
 """Fuel-flow modulation: the dynamic mass source and the equivalence-ratio instability.
 
-A fuel injector (:func:`~fns.elements.catalog.mass_source`) carrying a dynamic ``S(omega)``
+A fuel injector (:func:`~nefes.elements.catalog.mass_source`) carrying a dynamic ``S(omega)``
 on its injected mass flow models a fluctuating fuel feed.  The perturbation stamp must
 modulate every source term the element carries -- mass, momentum (via the injection
 velocity), the injected enthalpy, **and** the injected composition -- so the fuel pulse
@@ -18,7 +18,7 @@ The tests anchor it:
    coupling destabilizes a mode -- and only because the convected composition wave is
    retained (``isentropic`` freezes it -> stable).
 
-Run in the ``fns`` env (numba); needs the thermolib H2/air data.
+Run in the ``nefes`` env (numba); needs the thermolib H2/air data.
 """
 
 import os
@@ -27,25 +27,25 @@ import warnings
 import numpy as np
 import pytest
 
-from fns.elements import catalog as cat
-from fns.elements.dynamic_source import mass_flow_response, n_tau, n_tau_lowpass
-from fns.perturbation.operator.boundary_bc import PerturbationBC
-from fns.perturbation import (
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import mass_flow_response, n_tau, n_tau_lowpass
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation import (
     open_loop_response,
     forced_response,
     perturbation_response,
     excite_perturbation,
     CompositionalNoiseWarning,
 )
-from fns.perturbation.operator.stamps import build_source_stamps
-from fns.perturbation.operator.characteristics import edge_caloric, char_to_dx
-from fns.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
-from fns.assembly.assemble import residual
-from fns.solver import solve
-from fns.solver.control import states_table
-from fns.thermo.api import EQ_FROZEN, EQ_KERNEL
-from fns.thermo.configure import equilibrium
-from fns.assembly.derive import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
+from nefes.perturbation.operator.stamps import build_source_stamps
+from nefes.perturbation.operator.characteristics import edge_caloric, char_to_dx
+from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
+from nefes.assembly.assemble import residual
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.thermo.configure import equilibrium
+from nefes.assembly.derive import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
 
 AREA = 0.02
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")

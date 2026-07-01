@@ -1,12 +1,12 @@
-"""The central LaTeX-label toggle (`fns.plotting.use_latex`) and its `detex` fallback."""
+"""The central LaTeX-label toggle (`nefes.plotting.use_latex`) and its `detex` fallback."""
 
 import numpy as np
 import pytest
 
-from fns.plotting import use_latex, latex_enabled, mathify, tex, detex
-from fns.plotting.labels import _SUB
-import fns.plotting.complex_matrix as cm
-import fns.plotting.transfer_function as tf
+from nefes.plotting import use_latex, latex_enabled, mathify, tex, detex
+from nefes.plotting.labels import _SUB
+import nefes.plotting.complex_matrix as cm
+import nefes.plotting.transfer_function as tf
 
 
 @pytest.fixture(autouse=True)

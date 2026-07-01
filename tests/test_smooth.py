@@ -10,7 +10,7 @@ and that Fischer-Burmeister encodes the complementarity ``a,b>=0, a*b=0``.
 import numpy as np
 import pytest
 
-from fns.assembly.smooth import (
+from nefes.assembly.smooth import (
     smooth_abs,
     smooth_pos,
     smooth_step,

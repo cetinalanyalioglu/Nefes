@@ -10,11 +10,11 @@ complex-step reference once a second advected scalar is present.
 import numpy as np
 import pytest
 
-from fns.assembly.assemble import jacobian, jacobian_dense
-from fns.elements import catalog as cat
-from fns.solver import solve
-from fns.solver.control import initial_guess
-from fns.thermo.configure import perfect_gas_passive_scalars
+from nefes.assembly.assemble import jacobian, jacobian_dense
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.solver.control import initial_guess
+from nefes.thermo.configure import perfect_gas_passive_scalars
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -60,7 +60,7 @@ def test_passive_tracer_does_not_perturb_mean_flow():
     prob_tr = _mixing_network(0.7, 0.2)
     res_tr = solve(prob_tr)
     # same network without the scalar
-    from fns.thermo.configure import perfect_gas
+    from nefes.thermo.configure import perfect_gas
 
     Tt = 300.0
     elements = [

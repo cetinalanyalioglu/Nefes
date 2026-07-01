@@ -5,10 +5,10 @@ import os
 import numpy as np
 import pytest
 
-from fns.shell import Network
-from fns.elements import catalog as cat
-from fns.thermo.configure import perfect_gas
-from fns.io import load_connectivity, load_case
+from nefes.shell import Network
+from nefes.elements import catalog as cat
+from nefes.thermo.configure import perfect_gas
+from nefes.io import load_connectivity, load_case
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -112,7 +112,7 @@ def test_edge_model_per_edge_override_threads_and_fills_default():
 
 
 def test_format_states_tabulates_every_edge():
-    from fns.solver import format_states
+    from nefes.solver import format_states
 
     net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
     net.add(cat.total_pressure_inlet(120000.0, 300.0))
@@ -134,7 +134,7 @@ def test_format_states_tabulates_every_edge():
 
 
 def test_print_states_subset_and_precision():
-    from fns.solver import format_states
+    from nefes.solver import format_states
 
     net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
     net.add(cat.total_pressure_inlet(120000.0, 300.0))
@@ -167,7 +167,7 @@ def _nozzle_solution():
 
 
 def test_format_residuals_labels_every_equation():
-    from fns.solver import format_residuals, residual_labels
+    from nefes.solver import format_residuals, residual_labels
 
     sol = _nozzle_solution()
     prob = sol.problem
@@ -200,7 +200,7 @@ def test_residuals_dict_matches_global_norm():
 
 
 def test_format_residuals_sort_and_top():
-    from fns.solver import format_residuals, residual_breakdown
+    from nefes.solver import format_residuals, residual_breakdown
 
     sol = _nozzle_solution()
     _labels, _R, R_hat = residual_breakdown(sol.problem, sol.x)
@@ -215,8 +215,8 @@ def test_format_residuals_sort_and_top():
 
 
 def test_residuals_label_composition_scalars():
-    from fns.solver import residual_labels
-    from fns.thermo.configure import perfect_gas_passive_scalars
+    from nefes.solver import residual_labels
+    from nefes.thermo.configure import perfect_gas_passive_scalars
 
     gas = perfect_gas_passive_scalars(2, names=["soot", "co2"])
     net = Network(gas, p_ref=101325.0, T_ref=300.0)
@@ -234,7 +234,7 @@ def test_residuals_label_composition_scalars():
 
 
 def test_residual_groups_partition_and_quadrature():
-    from fns.solver import residual_groups, residual_breakdown
+    from nefes.solver import residual_groups, residual_breakdown
 
     sol = _nozzle_solution()
     labels, ids = residual_groups(sol.problem)
@@ -251,8 +251,8 @@ def test_residual_groups_partition_and_quadrature():
 
 
 def test_residual_groups_name_composition_columns():
-    from fns.solver import residual_groups
-    from fns.thermo.configure import perfect_gas_passive_scalars
+    from nefes.solver import residual_groups
+    from nefes.thermo.configure import perfect_gas_passive_scalars
 
     gas = perfect_gas_passive_scalars(2, names=["CH4", "O2"])
     net = Network(gas, p_ref=101325.0, T_ref=300.0)
@@ -352,7 +352,7 @@ def test_edge_between_rejects_ambiguous_pair():
 def test_set_dynamic_source_deferred_attach():
     # Wire the network first, take the flame's reference edge from connect()'s return, then attach
     # the dynamic source -- no edge index is guessed before the topology exists.
-    from fns.elements.dynamic_source import n_tau_flame
+    from nefes.elements.dynamic_source import n_tau_flame
 
     net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1e5, T_ref=300.0, mdot_ref=0.006)
     inlet = net.add(cat.mass_flow_inlet(0.006, 300.0))
@@ -525,7 +525,7 @@ def test_deferred_supersonic_raises():
 
 
 def test_network_repr_summarizes_topology_and_thermo():
-    from fns.elements.dynamic_source import n_tau_flame
+    from nefes.elements.dynamic_source import n_tau_flame
 
     net = Network(perfect_gas(R_AIR, GAMMA), p_ref=101325.0, T_ref=300.0)
     inlet = net.add(cat.mass_flow_inlet(0.5, 300.0, name="air-in"))

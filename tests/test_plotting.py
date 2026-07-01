@@ -1,16 +1,16 @@
-"""The FNS Plotly theme + complex-matrix viewers: structure and integrity."""
+"""The Nefes Plotly theme + complex-matrix viewers: structure and integrity."""
 
 import numpy as np
 import plotly.graph_objects as go
 import plotly.io as pio
 import pytest
 
-from fns.plotting import (
+from nefes.plotting import (
     COLORWAY,
     FONT_FAMILY,
-    FNS_TEMPLATE_NAME,
-    fns_template,
-    use_fns_theme,
+    NEFES_TEMPLATE_NAME,
+    nefes_template,
+    use_nefes_theme,
     plot_complex_matrix,
     plot_transfer_matrix,
     plot_scattering_matrix,
@@ -24,12 +24,12 @@ def _rand_matrix(n_freq=16, n=3, seed=0):
 
 
 def test_template_registered_on_import():
-    # importing fns.plotting must register the template without touching default
-    assert FNS_TEMPLATE_NAME in pio.templates
+    # importing nefes.plotting must register the template without touching default
+    assert NEFES_TEMPLATE_NAME in pio.templates
 
 
-def test_fns_template_is_well_formed():
-    tmpl = fns_template()
+def test_nefes_template_is_well_formed():
+    tmpl = nefes_template()
     assert isinstance(tmpl, go.layout.Template)
     assert tuple(tmpl.layout.colorway) == tuple(COLORWAY)
     assert tmpl.layout.paper_bgcolor == "#ffffff"
@@ -48,12 +48,12 @@ def test_fns_template_is_well_formed():
     assert tmpl.layout.xaxis.title.standoff == 6
 
 
-def test_use_fns_theme_sets_default():
+def test_use_nefes_theme_sets_default():
     prev = pio.templates.default
     try:
-        name = use_fns_theme()
-        assert name == FNS_TEMPLATE_NAME
-        assert pio.templates.default == FNS_TEMPLATE_NAME
+        name = use_nefes_theme()
+        assert name == NEFES_TEMPLATE_NAME
+        assert pio.templates.default == NEFES_TEMPLATE_NAME
     finally:
         pio.templates.default = prev
 
@@ -196,7 +196,7 @@ def test_scattering_preset_partition_labels_entries():
 
 
 def test_preset_mag_range_rule():
-    from fns.plotting.complex_matrix import _preset_mag_range
+    from nefes.plotting.complex_matrix import _preset_mag_range
 
     assert _preset_mag_range(0.4 * np.ones((4, 2, 2), dtype=complex)) == pytest.approx((0.0, 1.05))
     assert _preset_mag_range(3.0 * np.ones((4, 2, 2), dtype=complex)) == pytest.approx((0.0, 3.15))

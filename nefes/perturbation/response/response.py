@@ -329,7 +329,7 @@ class _ExcitationContext:
 
 
 def _build_excitation_context(
-    prob, x_bar, freqs, forcing, *, eps, eps_fb, u_floor, frozen=frozenset()
+    prob, x_bar, freqs, forcing, *, eps, eps_fb, u_floor, frozen=frozenset(), isentropic=False
 ) -> _ExcitationContext:
     """Assemble and factorize the prescribed operator over the whole frequency array.
 
@@ -340,10 +340,15 @@ def _build_excitation_context(
     ``J_alg`` (a plain ``wall`` -> ``mdot' = 0`` -> ``R = +1``).  This folds an
     interior branch terminated by a wall (a closed stub / side resonator) into the
     operator, so the network reduces to its genuine open ports.
+
+    ``isentropic`` (default False) pins the entropy characteristic to zero on every edge
+    (``rho' = p'/c^2``), reducing the operator to the two acoustic waves -- the standard
+    acoustics-only assumption, so a purely acoustic transfer / scattering matrix and a
+    purely acoustic identification see no entropy contamination (theory.md s9.1).
     """
     freqs = np.asarray(freqs, dtype=float)
     omegas = 2.0 * np.pi * freqs  # operator assembly works in angular frequency (rad/s)
-    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     K = float(prob.tf[0]) / float(prob.tf[1])
     est = states_table(prob, x_bar)
     cals = blocks.cals
@@ -496,7 +501,18 @@ class PerturbationField:
 
 
 def excite_perturbation(
-    prob, x_bar, freqs, node, modes=("acoustic",), *, forcing=None, eps=None, eps_fb=1e-6, u_floor=1e-8, _context=None
+    prob,
+    x_bar,
+    freqs,
+    node,
+    modes=("acoustic",),
+    *,
+    forcing=None,
+    isentropic=False,
+    eps=None,
+    eps_fb=1e-6,
+    u_floor=1e-8,
+    _context=None,
 ):
     """Solve the perturbation field for incoming waves driven at one boundary node.
 
@@ -543,7 +559,9 @@ def excite_perturbation(
     """
     modes = tuple(modes)
     _validate_modes(modes, getattr(prob, "scalar_names", ()))
-    ctx = _context or _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor)
+    ctx = _context or _build_excitation_context(
+        prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic
+    )
     driven = _driven_prescriptions(ctx, node, modes)
     n_driven = len(driven)
 
@@ -567,7 +585,17 @@ def excite_perturbation(
 
 
 def perturbation_response(
-    prob, x_bar, freqs, forcing=None, *, excite=("acoustic",), freeze=(), eps=None, eps_fb=1e-6, u_floor=1e-8
+    prob,
+    x_bar,
+    freqs,
+    forcing=None,
+    *,
+    excite=("acoustic",),
+    freeze=(),
+    isentropic=False,
+    eps=None,
+    eps_fb=1e-6,
+    u_floor=1e-8,
 ):
     """Drive every forced incoming wave and store the perturbation fields.
 
@@ -627,8 +655,15 @@ def perturbation_response(
     """
     excite = tuple(excite)
     _validate_excite(excite, getattr(prob, "scalar_names", ()))
+    if isentropic and any(f != "acoustic" for f in excite):
+        raise ValueError(
+            "isentropic (acoustics-only) mode pins the entropy and convected waves to zero, so only "
+            "'acoustic' can be driven; pass excite=('acoustic',) or drop isentropic for the full response"
+        )
     frozen = _resolve_frozen(prob, freeze)
-    ctx = _build_excitation_context(prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, frozen=frozen)
+    ctx = _build_excitation_context(
+        prob, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, frozen=frozen, isentropic=isentropic
+    )
 
     # One driven excitation per (terminal, family) in canonical family order: all acoustic
     # first, then each convected family (entropy, then every scalar) at its genuine-inflow

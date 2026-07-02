@@ -25,6 +25,7 @@ LINEAR_RESISTANCE = 17  # 2-port linear flow resistance: Pt drop proportional to
 CAVITY = 18  # 1-port finite-volume cavity: mean flow is a wall (mdot = 0); acoustically a compliance (storage M)
 FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (N-1) outflow rates forced to fractions
 PIPE = 20  # 2-port length-bearing pipe: Darcy-Weisbach friction (Pt drop K = f*L/D) + the duct acoustic phase
+TRANSFER_MATRIX = 21  # 2-port element: mean flow == isentropic area change; perturbation uses a user transfer matrix
 
 # Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
 # element overrides its default CSD face with.  DUCT (P), VOLUME (storage M) and
@@ -93,6 +94,7 @@ FIXED_NPORTS = {
     MASS_SOURCE: 2,
     LINEAR_RESISTANCE: 2,
     PIPE: 2,
+    TRANSFER_MATRIX: 2,
 }
 
 # Whether an element permits an area change across it (its incident edges may
@@ -127,6 +129,7 @@ ALLOWS_AREA_CHANGE = {
     FLAME_EQUILIBRIUM: False,  # constant-area compact reacting flame (static-p continuity)
     MASS_SOURCE: False,  # constant-area inline injection (momentum balance with a source)
     LINEAR_RESISTANCE: True,  # area-agnostic: the Pt drop is set by mass flow, not area
+    TRANSFER_MATRIX: True,  # mean flow is an isentropic area change (contraction/diffuser allowed)
 }
 
 # Human-readable element-type names, for validation / reporting messages.
@@ -152,4 +155,5 @@ RESIDUAL_NAMES = {
     CHOKED_NOZZLE_OUTLET: "ChokedNozzleOutlet",
     LINEAR_RESISTANCE: "LinearResistance",
     PIPE: "Pipe",
+    TRANSFER_MATRIX: "TransferMatrixElement",
 }

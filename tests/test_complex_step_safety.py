@@ -53,6 +53,7 @@ from nefes.elements.ids import (
     CHOKED_NOZZLE_OUTLET,
     LINEAR_RESISTANCE,
     PIPE,
+    TRANSFER_MATRIX,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
     RESIDUAL_NAMES,
@@ -262,6 +263,14 @@ def _probe_isen_area_change():
     return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
 
 
+def _probe_transfer_matrix():
+    # the TRANSFER_MATRIX element shares the isentropic-area-change mean-flow residual
+    # (its transfer matrix acts only in the perturbation layer, above the @njit line), so
+    # the same gentle contraction sweep exercises its kernel through near-choke flow.
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.transfer_matrix_element(), cat.pressure_outlet(P_OUT)]
+    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
+
+
 def _probe_sudden_area_change():
     # forward flow expands (Borda), reverse flow contracts (vena-contracta) --
     # the sweep's sign flip exercises BOTH branches of the momentum<->loss switch
@@ -386,6 +395,7 @@ PROBES = {
     PT_INLET: _probe_pt_inlet,
     P_OUTLET: _probe_p_outlet,
     ISEN_AREA_CHANGE: _probe_isen_area_change,
+    TRANSFER_MATRIX: _probe_transfer_matrix,
     SUDDEN_AREA_CHANGE: _probe_sudden_area_change,
     LOSS: _probe_loss,
     LINEAR_RESISTANCE: _probe_linear_resistance,

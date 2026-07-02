@@ -27,9 +27,12 @@ from .stamps import (
     DuctStamp,
     build_duct_stamps,
     build_source_stamps,
+    build_tm_stamps,
     build_storage,
     stamp_propagation,
     stamp_sources,
+    stamp_transfer_matrix,
+    _tm_block,
     stamp_boundaries,
     stamp_isentropic,
     _terminal_closure,
@@ -55,6 +58,9 @@ class AcousticBlocks:
     # edges kept physical under isentropic assembly (theory.md s12.4).  Empty -> no source.
     source_stamps: list = field(default_factory=list)
     flame_edges: frozenset = field(default_factory=frozenset)
+    # transfer-matrix TRANSFER_MATRIX element stamps: each overwrites its acoustic rows
+    # with a user w_down = TM(omega) w_up relation (stamps.build_tm_stamps).  Empty -> none.
+    tm_stamps: list = field(default_factory=list)
     # force isentropic perturbations (rho' = p'/c^2): the entropy wave is pinned to zero
     # on every edge (stamps.stamp_isentropic).  Reduces the 3-wave system to the two
     # acoustic waves -- standard acoustic analysis -- with no change in operator size.
@@ -103,6 +109,7 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
     M = build_storage(prob, x_bar, K, cals)
     duct_stamps = build_duct_stamps(prob, x_bar, K, u_floor, cals)
     source_stamps, flame_edges = build_source_stamps(prob, x_bar, K, u_floor, cals)
+    tm_stamps = build_tm_stamps(prob, x_bar, K, u_floor, cals)
     return AcousticBlocks(
         J_alg=J.tocsc(),
         M=M,
@@ -114,6 +121,7 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
         isentropic=bool(isentropic),
         source_stamps=source_stamps,
         flame_edges=flame_edges,
+        tm_stamps=tm_stamps,
         cals=cals,
     )
 
@@ -149,6 +157,9 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, wit
     storage = with_storage and blocks.M.nnz
     A = (blocks.J_alg + 1j * omega * blocks.M).tolil() if storage else blocks.J_alg.tolil()
     stamp_propagation(A, omega, blocks.duct_stamps, blocks.u_floor, skip_entropy=blocks.isentropic)
+    # transfer-matrix elements overwrite their own acoustic rows (like the duct phase); a
+    # different row set than the source, so it commutes with the source stamp below.
+    stamp_transfer_matrix(A, omega, blocks.tm_stamps, blocks.u_floor, skip_entropy=blocks.isentropic)
     # dynamic-source feedback S(omega): *adds* onto the J_alg rows (node rows for a mass
     # source, the downstream energy row for a flame), so it runs before the isentropic pin,
     # which then leaves the active-flame energy rows physical (blocks.flame_edges).
@@ -221,6 +232,7 @@ class _AssemblyPlan:
         "src_slots",
         "m_slots",
         "m_coeff",
+        "tm_slots",
     )
 
     def __init__(
@@ -240,6 +252,7 @@ class _AssemblyPlan:
         src_slots,
         m_slots,
         m_coeff,
+        tm_slots,
     ):
         self.indptr = indptr
         self.indices = indices
@@ -263,6 +276,10 @@ class _AssemblyPlan:
         # into `base` by the reference assembly is removed in _build_plan), so a sourced row
         # is J_alg + S(omega) -- never overwritten, unlike the duct/boundary fills.
         self.src_slots = src_slots
+        # transfer-matrix entries: per element, (slotmatrix (n_written x 3), L_up, transfer,
+        # N, n_written).  Each fills data[slot[i,k]] = -(TM(omega) L_up)[i,k] (OVERWRITE, like
+        # the duct); the constant downstream L_down entries live in `base`.
+        self.tm_slots = tm_slots
 
     def assemble(self, omega):
         """Build ``A(omega)`` as a CSC matrix by the fast fill."""
@@ -283,6 +300,12 @@ class _AssemblyPlan:
             freq = omega / (2.0 * np.pi)  # transfer functions are in Hz (project convention)
             for s, coeff, transfer in self.src_slots:
                 data[s] += coeff * complex(np.asarray(transfer(freq)).reshape(-1)[0])
+        if self.tm_slots:
+            freq = omega / (2.0 * np.pi)  # transfer matrices are in Hz (project convention)
+            for slotm, L_up, transfer, N, n_written in self.tm_slots:
+                block = _tm_block(transfer, L_up, N, freq)  # -(TM(omega) L_up)[:N]  (N x 3)
+                for i in range(n_written):
+                    data[slotm[i]] = block[i, :]
         A = sp.csc_matrix((data, self.indices, self.indptr), shape=self.shape)
         A.has_sorted_indices = True  # indices/indptr come canonical and are reused unchanged
         return A
@@ -360,6 +383,17 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
         m_entries = [(int(r), int(c), complex(v)) for r, c, v in zip(Mco.row, Mco.col, Mco.data)]
         forced_rc.extend((r, c) for (r, c, _v) in m_entries)
 
+    # Transfer-matrix elements: the upstream block -(TM(omega) L_up) is omega-dependent, so
+    # force its (row, up-col) slots into the pattern (its constant downstream L_down entries
+    # are captured in `base` by the reference assembly).  n_written = 2 under isentropic (the
+    # entropy row is pinned by stamp_isentropic), else the matrix dimension.
+    tm_records = []
+    for st in blocks.tm_stamps:
+        n_written = 2 if blocks.isentropic else st.N
+        for i in range(n_written):
+            forced_rc.extend((int(st.rows[i]), int(c)) for c in st.up_cols)
+        tm_records.append((st, n_written))
+
     # Canonical pattern: the reference assembly (correct base values) unioned with the
     # forced boundary/source slots; sum_duplicates merges the forced zeros into existing
     # entries.  The source is assembled OUT of `base` (with_sources=False) -- its slots are
@@ -411,6 +445,18 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
     m_slots = np.array([slot(r, c) for (r, c, _v) in m_entries], dtype=np.intp)
     m_coeff = np.array([v for (_r, _c, v) in m_entries], dtype=np.complex128)
 
+    # Transfer-matrix slots: `base` holds the (constant) downstream L_down entries; the
+    # upstream slots are zeroed here and overwritten per frequency with -(TM(omega) L_up).
+    tm_slots = []
+    for st, n_written in tm_records:
+        slotm = np.empty((n_written, 3), dtype=np.intp)
+        for i in range(n_written):
+            for k, c in enumerate(st.up_cols):
+                s = slot(int(st.rows[i]), int(c))
+                slotm[i, k] = s
+                base[s] = 0.0
+        tm_slots.append((slotm, st.L_up.astype(np.complex128), st.transfer, st.N, n_written))
+
     return _AssemblyPlan(
         indptr,
         indices,
@@ -427,6 +473,7 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
         src_slots,
         m_slots,
         m_coeff,
+        tm_slots,
     )
 
 

@@ -97,6 +97,11 @@ class ElementSpec:
     # a forward-compatibility provision for the S(omega) perturbation phase -- the
     # mean flow ignores it.
     dynamic_source: object = None
+    # optional transfer-matrix descriptor for a TRANSFER_MATRIX element: a
+    # nefes.perturbation.matrix.TransferMatrix (or an UnknownTransferMatrix marker for
+    # identification).  Read only by the perturbation layer; the mean flow (an
+    # isentropic area change) ignores it.
+    transfer_matrix: object = None
     # burnt-marker value injected at an inflow/source boundary (the last advected
     # scalar of the marker-gated reacting closure).  ``0.0`` is fresh reactant
     # (default); ``1.0`` is fully burnt gas (e.g. exhaust-gas recirculation as a feed),
@@ -340,6 +345,40 @@ def isentropic_area_change(name="iac", l_up=0.0, l_down=0.0, end_correction=0.0)
     from .ids import ISEN_AREA_CHANGE
 
     return ElementSpec(ISEN_AREA_CHANGE, _storage_block("isentropic_area_change", l_up, l_down, end_correction), name)
+
+
+def transfer_matrix_element(tm=None, name="tm"):
+    """A 2-port whose acoustics are a **user-supplied transfer matrix**.
+
+    In the mean flow this element is an :func:`isentropic_area_change` -- it conserves
+    mass and energy, is isentropic, and permits an area change across it -- so it seats a
+    well-defined mean state on both faces.  In the perturbation network it does **not**
+    inherit the linearized area-change jump: its acoustic rows are overwritten with the
+    relation ``w_down = TM(omega) . w_up`` carried by ``tm`` (theory.md s12.7), letting a
+    measured / prescribed 2-port response stand in for an element that has no closed-form
+    model.
+
+    Parameters
+    ----------
+    tm : TransferMatrix or UnknownTransferMatrix, optional
+        The frequency-domain 2-port descriptor
+        (:class:`nefes.perturbation.matrix.TransferMatrix`) stamped in the perturbation
+        layer.  Pass an :class:`~nefes.perturbation.identify.UnknownTransferMatrix` marker
+        to leave it to be identified from a measured network response.  ``None`` (default)
+        leaves the element acoustically an isentropic area change until a descriptor is
+        attached (``spec.transfer_matrix = ...``).
+    name : str, optional
+        Element label.
+
+    Returns
+    -------
+    ElementSpec
+    """
+    from .ids import TRANSFER_MATRIX
+
+    # No mean-flow parameters and no lumped storage: the element's entire acoustic
+    # identity is the transfer matrix stamped in the perturbation layer.
+    return ElementSpec(TRANSFER_MATRIX, [], name, transfer_matrix=tm)
 
 
 def sudden_area_change(name="sac", cc=1.0, eps=None, l_up=0.0, l_down=0.0, end_correction=0.0):
@@ -1584,6 +1623,9 @@ def build_problem_from_connectivity(
     # per-node dynamic-source descriptor (S(omega) provision; mean flow ignores it)
     node_dynamic_source = tuple(getattr(el, "dynamic_source", None) for el in elements)
 
+    # per-node transfer-matrix descriptor (TRANSFER_MATRIX element; mean flow ignores it)
+    node_transfer_matrix = tuple(getattr(el, "transfer_matrix", None) for el in elements)
+
     n_scalars = thermo.n_elem + n_marker  # composition mixture fractions + the optional burnt marker
     n_solve = 3 + n_scalars
     marker_row = (3 + thermo.n_elem) if marker_gated else -1  # the marker is the last band-1 row
@@ -1660,6 +1702,7 @@ def build_problem_from_connectivity(
         node_bc=node_bc,
         node_names=node_names,
         node_dynamic_source=node_dynamic_source,
+        node_transfer_matrix=node_transfer_matrix,
         scalar_names=tuple(thermo.element_names),
         marker_row=marker_row,
         marker_seed=marker_seed,

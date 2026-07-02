@@ -452,6 +452,131 @@ def stamp_sources(A, omega, source_stamps):
                     A[r, int(c)] = A[r, int(c)] + v
 
 
+@dataclass
+class TMStamp:
+    """Precomputed transfer-matrix stamp for one ``TRANSFER_MATRIX`` element (theory.md s12.7).
+
+    The element's acoustic rows are **overwritten** (like a duct's phase relations) with
+    ``w_down = TM(omega) . w_up`` -- the user 2-port response replacing the linearized
+    area-change jump.  ``w = (f, g, h)`` are the characteristic amplitudes read along each
+    edge's own arrow: port ``e_up`` (the first incident edge) is the input, ``e_down`` the
+    output.  Row ``i`` of the relation lands on ``rows[i]``; the ``h`` (entropy) relation of
+    a 3x3 matrix sits on the flow-downstream edge's transport row, exactly like the duct.
+    """
+
+    rows: tuple  # residual rows overwritten: (node row 0, node row 1[, downstream transport])
+    e_up: int  # arrow port 0 -- the transfer-matrix input edge
+    e_down: int  # arrow port 1 -- the transfer-matrix output edge
+    up_cols: tuple  # the 3 acoustic columns of e_up
+    down_cols: tuple  # the 3 acoustic columns of e_down
+    L_up: np.ndarray  # 3x3 dx_to_char at e_up (w_up = L_up . dx_up)
+    L_down: np.ndarray  # 3x3 dx_to_char at e_down
+    transfer: object  # nefes.perturbation.matrix.TransferMatrix (evaluated at f = omega/2pi)
+    N: int  # matrix dimension: 2 (acoustic) or 3 (with entropy)
+    node: int  # the element (for diagnostics)
+    analytic: bool  # whether TM(omega) continues to complex frequency (stability)
+    max_delay: float  # longest pure delay [s] carried by the continuation (contour clamp)
+
+
+def build_tm_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
+    """Precompute the transfer-matrix stamps for every ``TRANSFER_MATRIX`` element.
+
+    Reads ``prob.node_transfer_matrix`` (the
+    :class:`~nefes.perturbation.matrix.TransferMatrix` descriptors) and resolves, at the
+    frozen mean state, each element's overwritten rows, the two faces' characteristic maps
+    ``L_e`` and the arrow port ordering.  Returns the list of :class:`TMStamp`.
+    """
+    tms = getattr(prob, "node_transfer_matrix", ()) or ()
+    if not any(t is not None for t in tms):
+        return []
+    est = states_table(prob, x_bar)
+    ns = int(prob.n_solve)
+    tr0 = int(prob.transport_row0)
+    stamps = []
+    for n in range(int(prob.n_nodes)):
+        tm = tms[n]
+        if tm is None or getattr(tm, "is_unknown", False):
+            # an unknown-marker element stays acoustically an isentropic area change (its J_alg
+            # rows) until identification resolves the matrix; nothing to stamp.
+            continue
+        base = int(prob.row_ptr[n])
+        deg = int(prob.row_ptr[n + 1]) - base
+        if deg != 2:
+            raise ValueError(f"a transfer-matrix element at node {n} must be a 2-port; got degree {deg}")
+        N = int(getattr(tm, "n", 0))
+        if N not in (2, 3):
+            raise ValueError(
+                f"element transfer matrix at node {n} must be 2x2 (acoustic) or 3x3 (with entropy); got N={N}"
+            )
+        e0 = int(prob.col_edge[base])
+        s0 = int(prob.orient[base])
+        e1 = int(prob.col_edge[base + 1])
+        s1 = int(prob.orient[base + 1])
+        r0 = int(prob.node_row_ptr[n])
+
+        def _L(e):
+            return dx_to_char(
+                float(est[ES_RHO, e]),
+                float(est[ES_C, e]),
+                float(est[ES_U, e]),
+                float(est[ES_P, e]),
+                float(est[ES_AREA, e]),
+                K,
+                None if cals is None else cals[e],
+            )
+
+        # flow-downstream edge (oriented mdot leaving the node): where the h-relation sits,
+        # matching the duct convention (leaves the inflow edge's transport row free).
+        mdot1 = s1 * float(est[ES_MDOT, e1])
+        mdot0 = s0 * float(est[ES_MDOT, e0])
+        e_down_flow = e1 if mdot1 > 0.0 else (e0 if mdot0 > 0.0 else e1)
+
+        rows = (r0, r0 + 1, tr0 + e_down_flow) if N == 3 else (r0, r0 + 1)
+        stamps.append(
+            TMStamp(
+                rows=rows,
+                e_up=e0,
+                e_down=e1,
+                up_cols=tuple(ns * e0 + v for v in range(3)),
+                down_cols=tuple(ns * e1 + v for v in range(3)),
+                L_up=_L(e0),
+                L_down=_L(e1),
+                transfer=tm,
+                N=N,
+                node=n,
+                analytic=bool(getattr(tm, "analytic", False)),
+                max_delay=float(getattr(tm, "max_delay", 0.0)),
+            )
+        )
+    return stamps
+
+
+def _tm_block(transfer, L_up, N, freq):
+    """The upstream coefficient block ``-(TM(freq) . L_up[:N])`` (shape ``N x 3``)."""
+    T = np.asarray(transfer(freq), dtype=np.complex128)
+    T = T.reshape(N, N) if T.size == N * N else T[0]
+    return -(T @ L_up[:N, :])
+
+
+def stamp_transfer_matrix(A, omega, tm_stamps, u_floor=1e-8, skip_entropy=False):
+    """Apply the transfer-matrix relations to LIL matrix ``A`` in place (overwrite).
+
+    For each element, evaluates ``TM(omega/2pi)`` and overwrites its rows with
+    ``L_down . dx_down - TM . L_up . dx_up = 0`` (one row per characteristic).  Under
+    ``skip_entropy`` (isentropic assembly) the entropy (``h``, row 2) relation is omitted --
+    :func:`stamp_isentropic` pins that row to ``h = 0`` instead, so the element is treated as
+    a 2-wave acoustic 2-port regardless of the matrix dimension.
+    """
+    if not tm_stamps:
+        return
+    freq = omega / (2.0 * np.pi)  # transfer matrices are in Hz (project convention)
+    for st in tm_stamps:
+        n_written = 2 if skip_entropy else st.N
+        block_up = _tm_block(st.transfer, st.L_up, st.N, freq)  # (N, 3)
+        for i in range(n_written):
+            _set_row(A, st.rows[i], st.up_cols, block_up[i, :], st.down_cols, st.L_down[i, :].astype(np.complex128))
+
+
 def _terminal_scalar_seats(prob, t, bc, e, specify, freq):
     """Driven reacting-scalar waves seated at a genuine-inflow terminal: ``(row, cols, coeff, rhs)``.
 

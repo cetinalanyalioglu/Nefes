@@ -31,6 +31,15 @@ from .operator.characteristics import (
     BASIS_LABELS,
 )
 from .operator.operator import build_acoustic_blocks, assemble_acoustic, AcousticBlocks
+from .matrix import TransferMatrix, ScatteringMatrix, PortState, FreqMatrix
+from .identify import (
+    identify_transfer_matrix,
+    identify_transfer_function,
+    TransferMatrixIdentification,
+    TransferFunctionIdentification,
+    UnknownTransferMatrix,
+    unknown_dynamic_source,
+)
 from .operator.verify import verify_acoustic
 from .operator.boundary_bc import PerturbationBC
 from .operator.terminals import Terminal, find_terminals
@@ -140,6 +149,18 @@ __all__ = [
     "scattering_labels",
     "wave_speeds",
     "wave_signs",
+    # frequency-domain complex-matrix descriptors
+    "TransferMatrix",
+    "ScatteringMatrix",
+    "PortState",
+    "FreqMatrix",
+    # identification (recover an element's response from a measured transfer matrix)
+    "identify_transfer_matrix",
+    "identify_transfer_function",
+    "TransferMatrixIdentification",
+    "TransferFunctionIdentification",
+    "UnknownTransferMatrix",
+    "unknown_dynamic_source",
     # ducts / drivers
     "duct_modes",
     "DuctAcoustics",

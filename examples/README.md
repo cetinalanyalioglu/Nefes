@@ -98,6 +98,15 @@
   (flame jump then dilution cooling), and sweeps fuel flow (equivalence ratio) and
   dilution air against the flame / turbine-inlet temperatures. Tweak `mdot_fuel`,
   `mdot_dilution`, `Tair`, `p`.
+- **`flame_identification.ipynb`** — **identifying a flame's dynamic response** from a
+  network-wide measurement. A **branched** combustor (single air inlet → plenum split into
+  swirler / liner-cooling / dilution passages → **equilibrium flame** on the swirler branch →
+  merges → turbine-inlet) is characterized by its inlet→outlet **transfer matrix**, and the
+  flame — buried inside the branches — is de-embedded two ways with `nefes.perturbation.identify`:
+  as a **transfer matrix** (its full linear 2-port, no model assumed) and as a **transfer
+  function** (the velocity `n-τ` FTF). Shows the full acoustic+entropy recovery, then the
+  **acoustics-only** (`isentropic=True`) workflow that matches how such 2-ports are measured,
+  with the de-embedding **conditioning** as the identifiability diagnostic.
 - **`multiple_fuels.ipynb`** — **two very different fuels at different positions**:
   n-octane (`C8H18`) burned in the primary zone, then hydrogen (`H2`) injected into the
   hot products as a **reheat** stage (it re-equilibrates and releases more heat, no

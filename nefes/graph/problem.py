@@ -66,6 +66,11 @@ class CompiledProblem:
     # flow ignores it (a constant mean source is acoustically passive).  length N,
     # or empty -> none.
     node_dynamic_source: tuple = ()
+    # per-node transfer-matrix descriptor (Python objects; nefes.perturbation.matrix
+    # .TransferMatrix, or an identify.UnknownTransferMatrix marker).  Carried on a
+    # TRANSFER_MATRIX element for the perturbation stamp; the mean flow (an isentropic
+    # area change) ignores it.  length N, or empty -> none.
+    node_transfer_matrix: tuple = ()
     # band-1 row of the transported burnt marker (the last advected scalar, row 3 + n_elem),
     # or -1 when the network carries none (perfect gas, or a hard-closure reacting network).
     # Marker-gated reacting networks (auto closure with a flame) use EQ_MARKER on every edge

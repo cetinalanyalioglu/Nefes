@@ -32,6 +32,7 @@ from .ids import (
     MASS_SOURCE,
     LINEAR_RESISTANCE,
     PIPE,
+    TRANSFER_MATRIX,
 )
 
 
@@ -284,7 +285,11 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps,
         R[r0 + 1] = s0 * (mom0 + est[ES_P, e0]) + s1 * (mom1 + est[ES_P, e1]) - mdot_src * u_inj / a0 - kappa_term
         return
 
-    if rid == ISEN_AREA_CHANGE:
+    if rid == ISEN_AREA_CHANGE or rid == TRANSFER_MATRIX:
+        # TRANSFER_MATRIX shares the mean-flow jump of an isentropic area change (mass +
+        # energy conserved, isentropic, area change allowed); it differs only in the
+        # perturbation layer, where its acoustic rows are overwritten by a user transfer
+        # matrix (nefes.perturbation.operator.tm_stamps) instead of the linearized jump.
         m_in = -ss * est[ES_M, se]  # Mach at small port, oriented into element
         sub_margin = 1.0 - m_in
         pt_large = est[ES_PT, e1] if se == e0 else est[ES_PT, e0]

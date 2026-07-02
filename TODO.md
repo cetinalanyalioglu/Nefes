@@ -14,6 +14,7 @@
 
 ## Issues
 
+- [ ] In notebooks, we seem to have too many imports from our package, looking a bit intimidating. It is too much for the user, and perhaps some functionality could be offered as class methods? We should discuss.
 - [ ] We don't have any mechanism to prevent connecting incompatible elements with each other - see the guardrails we put in the UI. Perhaps we were too strict, this is open to re-evalute.
 
 ## Deferred

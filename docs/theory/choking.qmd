@@ -1,0 +1,154 @@
+---
+jupyter: python3
+code-fold: true
+execute:
+  warning: false
+---
+
+# Choking
+
+A gas passage cannot carry an arbitrarily large mass flow.
+As the back pressure is lowered, the flow in the narrowest section accelerates until it reaches the local speed of sound, $M = 1$, and the mass-flow rate then stops increasing however much further the outlet is drawn down.
+This saturation is *choking*, the most consequential compressible-flow phenomenon in network analysis — the operating principle of orifice flow meters, control valves, and rocket nozzles alike.
+
+In this framework choking is not switched on by a regime flag; it is *emergent*.
+The either/or of "subsonic and lossless" versus "sonic and capped" is encoded once, as a complementarity condition inside the area-change and outlet rows already written in [elements](elements.md), and the network then discovers by itself which passage chokes and caps the mass flow there, with no regime declaration and no branching logic.
+This document derives that mechanism and exhibits the operating map it produces, computed directly by the solver.
+It restricts itself, in keeping with the [overview](overview.md) scope, to subsonic operation up to a sonic throat; the supersonic and shock-bearing regimes are deferred, and the closing section states precisely which part of the physics that defers and why.
+
+The presentation begins with the choking limit itself, then proceeds to the observation that a throat is always an edge and to the complementarity that makes choking emergent, building on this to the validated operating map, and closing with the one configuration that cannot be made emergent within the present scope.
+
+## The choking limit
+
+For a given upstream stagnation state, the mass flux through a passage is bounded, and the bound is reached exactly when the passage becomes sonic.
+The maximum dimensionless mass flux and the pressure ratio at which it occurs are given as:
+
+$$
+\left(\frac{\dot m\sqrt{T_t}}{A\,p_t}\right)_{\max}
+= \sqrt{\frac{\gamma}{R}}\,\Big(\frac{2}{\gamma + 1}\Big)^{\frac{\gamma + 1}{2(\gamma - 1)}},
+\qquad
+\frac{p}{p_t}\bigg|_{M = 1}
+= \Big(\frac{2}{\gamma + 1}\Big)^{\frac{\gamma}{\gamma - 1}} \approx 0.528\ (\gamma = 1.4),
+$$
+
+where $\gamma$ is the ratio of specific heats, $R$ the specific gas constant, $A$ the passage area, and $p_t$ and $T_t$ the upstream total pressure and temperature.
+The second relation is the *critical pressure ratio*: while the ratio of back pressure to total pressure stays above it the passage is subsonic and the mass flow rises as the back pressure falls, and once it drops to the critical value the passage is sonic and the mass flow can rise no further.
+
+## The throat is always an edge
+
+A structural convention of the model makes the sonic state easy to place: every element is taken to be *internally monotone* in area, interpolating between its port areas and hiding no interior extremum.
+The minimum area along any flow path is therefore an edge area, so any throat coincides with an edge, and the natural home of the sonic state is that edge — a state the recovery of [state and recovery](state-and-recovery.qmd) returns without any singularity, since the density root remains single and regular through $M = 1$.
+Consequently the choking constraint is attached to the existing elements adjacent to their small-port edges, rather than to a special nozzle element with hidden internal geometry; the physics is expressed on the geometry the network already carries.
+
+## Emergent choking via complementarity
+
+Two facts conspire to make choking invisible to the plain isentropic equation, and understanding them is what motivates the complementarity form.
+First, the choking inequality — that the dimensionless mass flux cannot exceed its sonic value — holds *identically* on the edge-state manifold, so it can never be violated and therefore cannot itself act as a limiter.
+Second, at the choked state the total-pressure coupling of the isentropic element becomes tangent to zero, a *fold*: a double root at which the Jacobian is singular, observed as a smallest singular value collapsing to $\sigma_{\min} \sim 5\times10^{-5}$ with over-driven cases stalling pinned at $M = 1$.
+The missing ingredient is the explicit either/or, supplied as a complementarity between the subsonic margin and the total-pressure drop, given as:
+
+$$
+0 \;\le\; \big(1 - M^{\text{in}}_{\text{small}}\big)
+\;\perp\;
+\frac{p_{t,\text{small}} - p_{t,\text{large}}}{p_{t,\text{small}}} \;\ge\; 0,
+$$
+
+where $M^{\text{in}}_{\text{small}}$ is the Mach number at the small port oriented into the element and the symbol $\perp$ requires that at least one of the two non-negative quantities vanish.
+The condition reads directly: *either* the small port is subsonic, $M < 1$, and the total-pressure drop is zero — the classical lossless element, valid in either flow direction — *or* the small port is exactly sonic, $M = 1$, and a total-pressure drop becomes admissible, the lumped normal shock standing in the diverging continuation.
+
+An important and easily missed point is that the distance from choking must be measured as $1 - M$, a regular zero that is linear in the approach to sonic, and **not** as the mass-flow deficit $\dot m^\ast - \dot m$ formed from the same edge.
+The latter vanishes *quadratically* at the sonic point — it is the fold in disguise — and using it would re-create the very singularity the complementarity is meant to remove; with the $1 - M$ measure the choked state is a regular equation and the smallest singular value at a choked solution improves by more than an order of magnitude (tests: `test_choked_nozzle_saturates_mass_flow`, `test_critical_pressure_ratio_is_the_knee`).
+
+The either/or is realized as a single smooth residual by the Fischer–Burmeister complementarity function, given as:
+
+$$
+\varphi_\varepsilon(a, b) = a + b - \sqrt{a^2 + b^2 + \varepsilon^2},
+$$
+
+where $a$ and $b$ are the two non-negative quantities above and $\varepsilon$ is a small, fixed smoothing.
+On the smoothed root manifold $2ab = \varepsilon^2$, so the inactive branch is pinned to a quadratically small bias, and $\varepsilon$ must be kept small and fixed — the bias $\tfrac{1}{2}\varepsilon^2 p_t$ is a fictitious total-pressure loss that must stay far below the smallest driving pressure difference in the network, which is why $\varepsilon$ is *not* relaxed along the friction homotopy of [well-posedness](well-posedness.md).
+The same complementarity governs a converging pressure outlet, whose exit chokes at exactly $M = 1$ and whose static pressure then detaches *upward* from the specification — the underexpanded discharge of a choked orifice, whose expansion to the ambient occurs outside the network (test: `test_choked_nozzle_outlet_critical_mass_flux`).
+
+## The validated operating map
+
+The whole of the subsonic-to-choked behaviour follows from these rows without any regime input, and it is best seen in the operating map of a converging nozzle as the back pressure is swept down, shown in @fig-operating-map.
+Every point is an independent converged solve of the same two-element network — a reservoir feeding an isentropic area change that discharges through a pressure outlet — so the curves are the solver's own output, not an analytic overlay.
+
+```{python}
+#|label: setup
+#|echo: false
+import numpy as np
+import plotly.graph_objects as go
+
+from nefes.plotting import use_nefes_theme, COLORWAY
+from nefes.thermo.configure import perfect_gas
+from nefes.elements import catalog as cat
+from nefes.solver import solve
+from nefes.solver.control import states_table
+from nefes.assembly.derive import ES_MDOT, ES_P, ES_M
+
+use_nefes_theme()
+
+R_AIR, GAMMA = 287.0, 1.4
+CP = GAMMA * R_AIR / (GAMMA - 1.0)
+PT, TT, A0, A1 = 120000.0, 300.0, 0.10, 0.05  # converging nozzle: throat is the exit edge
+
+
+def solve_nozzle(pr):
+    """Solve the reservoir -> area change -> pressure-outlet network at back-pressure ratio pr."""
+    cfg = perfect_gas(R_AIR, GAMMA)
+    els = [cat.total_pressure_inlet(PT, TT), cat.isentropic_area_change(),
+           cat.pressure_outlet(pr * PT, Tt_backflow=TT)]
+    prob = cat.build_problem(cfg, els, [(0, 1, A0), (1, 2, A1)], 14.0, 101325.0, CP * TT)
+    est = states_table(prob, solve(prob).x)
+    return float(est[ES_M, 1]), float(est[ES_MDOT, 1]), float(est[ES_P, 1])
+
+
+flux_star = np.sqrt(GAMMA / R_AIR) * (2.0 / (GAMMA + 1.0)) ** ((GAMMA + 1.0) / (2.0 * (GAMMA - 1.0)))
+mdot_max = PT / np.sqrt(TT) * flux_star * A1
+crit_pr = (2.0 / (GAMMA + 1.0)) ** (GAMMA / (GAMMA - 1.0))
+```
+
+```{python}
+#|label: fig-operating-map
+#|fig-cap: "Operating map of a converging nozzle as the back-pressure ratio $p_b/p_t$ is lowered, every point an independent solve of the same network. The exit Mach number (top) rises to unity and then pins; the mass flow (middle), normalized by its sonic value $\\dot m^\\ast$, rises and then saturates at $1$; the exit static pressure (bottom) follows the back pressure while subsonic and then detaches, holding at the critical value $p^\\ast/p_t \\approx 0.528$ as the back pressure keeps falling — the underexpanded choked discharge. The knee of all three curves is the critical pressure ratio (dashed), and nothing in the network was told where it is."
+prs = np.linspace(0.95, 0.30, 28)
+M, mdot, pexit = np.array([solve_nozzle(pr) for pr in prs]).T
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=prs, y=M, mode="lines+markers", line=dict(color=COLORWAY[0]),
+                         marker=dict(size=5), name="exit Mach  M"))
+fig.add_trace(go.Scatter(x=prs, y=mdot / mdot_max, mode="lines+markers", line=dict(color=COLORWAY[1]),
+                         marker=dict(size=5), name="mass flow  ṁ / ṁ*"))
+fig.add_trace(go.Scatter(x=prs, y=pexit / PT, mode="lines+markers", line=dict(color=COLORWAY[2]),
+                         marker=dict(size=5), name="exit pressure  p / p_t"))
+fig.add_vline(x=crit_pr, line=dict(color="#888888", dash="dash", width=1))
+fig.add_annotation(x=crit_pr, y=1.18, text="critical ratio ≈ 0.528", showarrow=False,
+                   font=dict(size=12, color="#888888"), xanchor="left")
+fig.update_layout(xaxis_title="back-pressure ratio  p_b / p_t", yaxis_title="")
+fig.update_xaxes(autorange="reversed")  # back pressure falls to the right
+fig.update_yaxes(range=[0.0, 1.25])
+fig
+```
+
+The three regimes are all emergent from the one set of rows, and each matches the classical construction:
+
+1. **Above the critical ratio** — the passage runs as a subsonic venturi: lossless, with mass flow below the sonic value and the exit pressure equal to the back pressure (validated against the exact isentropic relation, `test_subsonic_nozzle_matches_isentropic`).
+2. **At and below the critical ratio** — the throat edge reaches $M = 1$, the mass flow saturates at $\dot m^\ast$ and is never exceeded, and the saturation is continuous and monotone through the knee (`test_choked_nozzle_saturates_mass_flow`, `test_critical_pressure_ratio_is_the_knee`).
+3. **Converging exit below critical** — the exit behaves as a choked orifice: sonic at $M = 1$, mass flow at $\dot m^\ast$, and the exit static pressure detached upward to $p^\ast$, independent of the specified back pressure (`test_choked_nozzle_outlet_critical_mass_flux`).
+
+Beyond these lies the shock regime — a normal shock standing in a *diverging* passage downstream of a supersonic patch — which requires supersonic flow inside the domain and is outside the present subsonic scope.
+It is worth noting how it would be recovered: a normal shock conserves mass and total enthalpy, so the converged total-pressure loss determines it in post-processing, and the shock's Mach number and location are *deduced* from the Rankine–Hugoniot relations rather than imposed as unknowns — the location is an output, not an input.
+
+## What remains non-emergent
+
+One configuration cannot be made emergent within the present degree-of-freedom set, and the reason is instructive rather than incidental.
+At a *supersonic exit edge* all three characteristics leave the domain, so the back pressure physically imposes nothing on the interior over a finite range of its values (see [characteristics](characteristics.md)).
+No smooth, outlet-local residual row can express "impose nothing over a range": scaling a row never weakens its root, and fading a row to exactly zero leaves the system structurally singular, so a square smooth system with an active back-pressure row cannot reproduce the continuum of back pressures that share one internal supersonic solution.
+
+The precise statement is narrower than "impossible," and worth keeping exact.
+An emergent supersonic outlet through any outlet-local smooth row is impossible in the present formulation; an emergent supersonic converging–diverging nozzle is *not* impossible in principle, but it requires an additional internal unknown — a shock-position degree of freedom in the diverging element — that the current element set does not carry.
+Supplying that unknown, so that each regime freedom gets a physical degree of freedom and each regime boundary becomes a bound complementarity on it, is the same enrichment that finite-frequency acoustics of shocked nozzles will require; it is deferred with the rest of the supersonic scope, not refuted.
+Within the subsonic scope, the choking mechanism of this document is complete: the network finds the choke point, caps the flow, and matches the classical operating map, all from the element rows written for the mean flow.
+
+With the mean-flow model complete through choking, the same rows are ready to be linearized at the operating point into the acoustic layer, where the compact choked nozzle contributes its Marble–Candel reflection (see [perturbation network](perturbation-network.md)).

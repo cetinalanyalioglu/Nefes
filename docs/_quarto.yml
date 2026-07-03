@@ -1,0 +1,88 @@
+# Nefes documentation — Quarto render layer (provisional; see documentation-plan.md §6).
+#
+# The Markdown under docs/ stays the authoritative source; Quarto only renders it to HTML,
+# without moving or rewriting anything. Preview locally with:
+#
+#     quarto preview docs
+#
+# The Quarto CLI is not in the dev sandbox, so render on your machine or in CI.
+# The internal planning document is excluded from the render below.
+
+project:
+  type: website
+  output-dir: _site
+  render:
+    - "*.md"
+    - "theory/*.md"
+    - "theory/*.qmd"
+    - "design/*.md"
+    - "design/*.qmd"
+    - "validation/*.md"
+    - "reference/*.md"
+    - "!documentation-plan.md"
+
+website:
+  title: "Nefes"
+  description: "Network solver for reacting compressible flows and thermoacoustics."
+  reader-mode: true
+  sidebar:
+    style: docked
+    search: true
+    collapse-level: 1
+    contents:
+      - href: README.md
+        text: Home
+      - section: "Theory"
+        contents:
+          - theory/overview.md
+          - theory/framework.md
+          - theory/governing-equations.md
+          - theory/state-and-recovery.qmd
+          - theory/equation-structure.md
+          - theory/transport.qmd
+          - theory/elements.md
+          - theory/well-posedness.md
+          - theory/characteristics.md
+          - theory/choking.qmd
+      - section: "Theory — acoustics & reacting flow"
+        contents:
+          - theory/thermochemistry.md
+          - theory/perturbation-network.md
+          - theory/dynamic-sources.qmd
+          - theory/analyses.qmd
+          - theory/identification.md
+          - theory/limitations.md
+      - section: "Design"
+        contents:
+          - design/philosophy.md
+          - design/kernel-architecture.md
+          - design/complex-step.qmd
+          - design/smoothness-contract.md
+          - design/assembly.md
+          - design/solver.md
+          - design/reproducibility.md
+      - section: "Validation"
+        contents:
+          - validation/validation-map.md
+          - validation/verification.md
+          - validation/benchmarks.md
+      - section: "Reference"
+        contents:
+          - reference/atomic-elements.md
+          - reference/composite-elements.md
+          - reference/modeling-guide.md
+          - reference/examples.md
+      - href: nomenclature.md
+        text: Nomenclature
+
+format:
+  html:
+    theme: [cosmo, custom.scss]
+    toc: true
+    toc-depth: 3
+    html-math-method: katex
+    code-copy: true
+    code-overflow: wrap
+    link-external-newwindow: true
+
+bibliography: references.bib

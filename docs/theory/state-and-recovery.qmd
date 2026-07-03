@@ -1,0 +1,255 @@
+---
+jupyter: python3
+code-fold: true
+execute:
+  warning: false
+---
+
+# Solution variables and state recovery
+
+The framework places a small state vector on every edge, and the choice of *which* variables it holds governs the solver's robustness more than any other single decision.
+Robustness is the organizing aim of the mean-flow solver: it must locate the operating point from an uninformed cold start, follow the flow through reversal and up to choking, and never step onto a branch or a singularity of its own construction — all without hand-holding.
+The variable set of this document, the recovery built on it, and the solution method of later documents are, in large part, consequences of that single requirement.
+
+Concretely, the variable set is chosen so that the mean-flow problem has the following properties, each established below or in the documents referenced:
+
+1. **Single-valued recovery.** Each admissible triple of unknowns maps to exactly one physical state, with no subsonic/supersonic branch ambiguity.
+2. **Unconditional recovery.** That state is found by an iteration that converges from a fixed, always-admissible starting point.
+3. **Well-behaved balances.** The mass balances are exactly linear and the energy balances nearly so, the best-conditioned equations available.
+4. **Smoothness through reversal and rest.** Flow reversal is a change of sign and zero flow is an ordinary point, so the residuals stay smooth and complex-analytic (see [well-posedness](well-posedness.md)).
+5. **Direction independence.** Quantities that must not depend on an edge's arbitrary arrow — the stagnation state in particular — do not.
+
+The presentation begins with the variable set and its motivations, then proceeds to the state recovery as a thermodynamic closure and its perfect-gas and reacting instances, building on this to the complex-step treatment and the derived state, and culminating in the contrast with total-pressure/total-temperature variables.
+
+## Standing assumptions
+
+The recovery assumes a thermodynamic closure that returns the density and temperature — and their derivatives — from the carried variables, and it assumes $p > 0$ and $h_t > 0$ on every edge.
+For the perfect-gas closure these two positivity conditions are exactly what the existence–uniqueness proof requires, and the solver treats a violation as a non-physical state rather than continuing.
+
+## The variable set
+
+Each edge $e$ carries a state vector of three unknowns, chosen for the numerical behaviour they confer rather than for physical familiarity:
+
+$$
+\mathbf{x}_e = \big(\dot m_e,\; p_e,\; h_{t,e}\big),
+$$
+
+where $\dot m_e$ is the signed mass flow rate along the edge, $p_e$ the static pressure, and $h_{t,e}$ the total enthalpy (a reacting edge additionally carries its transported composition, see [thermochemistry](thermochemistry.md)).
+Each choice serves the robustness requirement directly:
+
+1. **Mass flow $\dot m$** enters every mass balance linearly with coefficients $\pm 1$, the best-conditioned equations in the system; flow reversal is then a change of sign and needs no special handling.
+2. **Static pressure $p$** is the quantity that boundary conditions and junction models naturally constrain, and — unlike the total pressure — it makes the state recovery single-valued, as shown below.
+3. **Total enthalpy $h_t$** is the quantity transported with the flow and conserved through every adiabatic element, which renders the energy balances nearly linear.
+
+Every other quantity — density, velocity, temperature, sound speed, Mach number, total pressure — is a *dependent* quantity, recovered from this triple and the port area, and the recovery is single-valued for this choice, a property that alternative triples do not share.
+
+## State recovery as a thermodynamic closure
+
+State recovery is the map from an edge's carried variables $(\dot m, p, h_t)$ and its area $A$ (and, for a reacting edge, its composition) to the full thermodynamic and kinematic state that the element residuals consume.
+Its structure is the same for every thermodynamic closure, and isolating that structure makes explicit where — and only where — a particular closure enters.
+
+Write the mass flux density $m = \dot m / A$, the mass of gas crossing each square metre of the port per second.
+The recovery rests on a single kinematic coupling and a single thermodynamic one.
+The kinematic coupling is that the kinetic energy is carried by the mass flux, so the static (thermal) enthalpy left to the gas depends on the density through the velocity $u = m/\varrho$:
+
+$$
+h = h_t - \tfrac{1}{2}u^2 = h_t - \frac{m^2}{2\varrho^2}.
+$$
+
+The thermodynamic coupling is the equation of state, which the closure supplies: given the static enthalpy and the pressure, it returns the density.
+Consistency between the two — the density assumed in the kinematic coupling and the density the equation of state predicts at the resulting static enthalpy — is one scalar equation in one unknown, the density, and its root is the recovered state.
+The closure enters this construction *only* through the equation of state and its derivatives; the derivatives matter as much as the values, because they are what the recovery hands to the exact-Jacobian machinery (see the complex-step section below).
+
+### The perfect-gas instance
+
+For a calorically perfect gas the consistency equation can be written explicitly, and doing so exhibits the property that motivates the whole variable set.
+We determine the density by a trial argument.
+Posit a *trial density* $\varrho$; it fixes the velocity $u = m/\varrho$ and therefore the static enthalpy it would leave the gas:
+
+$$
+H(\varrho) = h_t - \frac{m^2}{2\varrho^2},
+$$
+
+where $H(\varrho)$ is the static enthalpy implied by the trial density — the total enthalpy less the kinetic part that this density implies.
+Thermodynamic consistency demands that the density the equation of state predicts at this static enthalpy and the given pressure, $\varrho = p/(RT)$ with $T = H/c_p$, equal the trial density.
+Substituting $T = H/c_p$ and $\Gamma = c_p/R$ closes this to a single scalar equation:
+
+$$
+F(\varrho) \;=\; \varrho \;-\; \frac{p\,\Gamma}{H(\varrho)} \;=\; 0,
+$$
+
+where $\Gamma = c_p/R$ is the caloric constant.
+The recovery is thus reduced to a scalar root-find, and the whole cost and robustness of the mean-flow solve hinges on how that root behaves.
+
+**Existence and uniqueness.**
+The physically admissible densities are those above the floor $\varrho_{\min} = |m|/\sqrt{2h_t}$, below which the implied velocity would exceed the total energy budget and $H$ would turn negative.
+On the domain $\varrho > \varrho_{\min}$ the derivative is strictly positive,
+
+$$
+F'(\varrho) = 1 + \frac{p\,\Gamma\,m^2}{\varrho^3 H^2} > 0,
+$$
+
+while $F \to -\infty$ as $\varrho \to \varrho_{\min}^+$ and $F \to +\infty$ as $\varrho \to \infty$, so $F$ rises monotonically through a single zero.
+The density therefore exists and is unique for *every* value of $\dot m$ — positive, negative, zero, subsonic, or supersonic — provided only that $p > 0$ and $h_t > 0$.
+At the root, $H = p\Gamma/\varrho > 0$, so the recovered static temperature $T = H/c_p$ is automatically positive; and since $F(p\Gamma/h_t) \le 0$, a safeguarded Newton iteration started at the always-admissible point $p\Gamma/h_t$ converges unconditionally (tests: `test_real_root_matches_brentq` across the mass-flux range, `test_round_trip_physical_state` for the full recovered state).
+This single-crossing behaviour is shown in @fig-density-root, for a fixed port swept from quiescent through subsonic to supersonic; every quantity is recomputed from the shipped `pg_solve_density` kernel, so the recovered roots (marked) are the exact ones the solver would find.
+
+```{python}
+#|label: setup
+#|echo: false
+import numpy as np
+import plotly.graph_objects as go
+
+from nefes.plotting import use_nefes_theme, COLORWAY
+from nefes.thermo.perfect_gas import pg_solve_density
+
+use_nefes_theme()
+
+R = 287.0  # air
+gamma = 1.4
+Gamma = gamma / (gamma - 1.0)  # caloric constant cp / R
+cp = Gamma * R
+
+
+def H(rho, m, ht):
+    """Static enthalpy implied by a trial density."""
+    return ht - m ** 2 / (2.0 * rho ** 2)
+
+
+def F(rho, m, p, ht):
+    """Density-recovery residual  F(rho) = rho - p*Gamma / H(rho)."""
+    return rho - p * Gamma / H(rho, m, ht)
+
+
+def rho_min(m, ht):
+    """Admissibility floor: below it the implied kinetic energy exceeds the budget."""
+    return abs(m) / np.sqrt(2.0 * ht)
+```
+
+```{python}
+#|label: fig-density-root
+#|fig-cap: "The density-recovery residual $F(\\varrho)$ for a fixed port ($p = 1\\,$bar, $h_t = 3\\times10^5\\,$J/kg, $A = 0.1\\,$m$^2$) as the mass flow sweeps from quiescent to supersonic. Each curve rises monotonically through a single zero (the recovered density, marked); the dashed vertical is that regime's floor $\\varrho_\\mathrm{min}$. Reversing the flow leaves the curve unchanged, as $F$ depends on the mass flux only through $m^2$."
+p = 1.0e5    # static pressure [Pa]
+ht = 3.0e5   # total enthalpy [J/kg]
+A = 0.1      # port area [m^2]
+
+fig = go.Figure()
+for k, mdot in enumerate([0.0, 15.0, 25.0, 45.0, 65.0]):  # kg/s: quiescent -> supersonic
+    m = mdot / A
+    lo = rho_min(m, ht)
+    rr = np.linspace(lo + 1e-3 * max(lo, 1.0), 2.0, 400)
+    rr = rr[rr > lo]
+    color = COLORWAY[k % len(COLORWAY)]
+    rho = float(pg_solve_density(m, p, ht, Gamma))  # recovered root, shipped kernel
+    Mach = (m / rho) / np.sqrt(gamma * R * H(rho, m, ht) / cp)
+    fig.add_trace(go.Scatter(x=rr, y=F(rr, m, p, ht), mode="lines", line=dict(color=color),
+                             name=f"mdot = {mdot:g} kg/s  (M = {Mach:.2f})"))
+    fig.add_trace(go.Scatter(x=[rho], y=[0.0], mode="markers",
+                             marker=dict(color=color, size=9), showlegend=False))
+    if lo > 0.0:
+        fig.add_vline(x=lo, line=dict(color=color, dash="dash", width=1))
+
+fig.add_hline(y=0.0, line=dict(color="#888888", width=1))
+fig.update_layout(xaxis_title="trial density  ρ  [kg/m³]", yaxis_title="F(ρ)")
+fig.update_yaxes(range=[-2.0, 2.0])
+fig
+```
+
+### The reacting instance
+
+For a chemical-equilibrium mixture the same two couplings hold, and only the equation of state changes: density and temperature no longer follow from $\varrho = p/(RT)$ with constant $c_p$, but from an equilibrium solve at the given pressure, composition, and static enthalpy.
+The scalar consistency root is then taken on the static enthalpy, wrapped around the equilibrium solve, and it likewise carries the kinetic-energy coupling exactly — so the reacting recovery returns the *exact* static state rather than the $\mathcal{O}(M^2)$ approximation $h \approx h_t$.
+The equilibrium closure, the transported mixture fractions it consumes, and the marker-gated frozen/burnt blend are the subject of [thermochemistry](thermochemistry.md); the point here is that the recovery's structure — a scalar root enforcing kinematic–thermodynamic consistency — is closure-independent, and the thermo model is confined to the equation of state and its derivatives.
+
+## Complex-step safety of the recovery
+
+The recovery is the one place in the solver where an iteration is unavoidable, and an iteration is not, in general, transparent to complex-step differentiation: a safeguarded Newton loop *branches* — on the bracket, on the sign of the residual — and a branch taken on the real part discards any imaginary derivative seed carried alongside it (see [complex-step](../design/complex-step.qmd)).
+The recovery is therefore split into a real solve and an analytic derivative.
+The root is found on the real parts of the carried variables alone; its sensitivity to a complex-step seed is then attached by the implicit function theorem applied to the consistency equation $F(\varrho; m, p, h_t) = 0$:
+
+$$
+\mathrm{d}\varrho
+= -\,\frac{F_m\,\mathrm{d}m + F_p\,\mathrm{d}p + F_{h_t}\,\mathrm{d}h_t}{F_\varrho},
+\qquad
+F_\varrho = 1 + \frac{p\Gamma m^2}{\varrho^3 H^2},
+\quad
+F_m = -\frac{p\Gamma m}{\varrho^2 H^2},
+\quad
+F_p = -\frac{\Gamma}{H},
+\quad
+F_{h_t} = \frac{p\Gamma}{H^2},
+$$
+
+where the partial derivatives are evaluated at the converged real root and are furnished by the closure (here, the perfect gas).
+An important remark is that this introduces no approximation: the implicit-function relation is exact, so the recovered density carries the exact derivative even though the root itself was obtained by a branching iteration, and the complex-step Jacobian of the whole solver remains exact to machine precision.
+The construction is closure-independent — the reacting recovery splices its seed by the same theorem, using the equilibrium closure's derivatives — and the dtype-generic implementation returns the bare real root on the real path and adds the spliced imaginary part on the seeded path, from one source.
+
+## Derived state
+
+With the density recovered, the remaining quantities follow in closed form:
+
+$$
+u = \frac{m}{\varrho},
+\qquad
+T = \frac{H}{c_p},
+\qquad
+c = \sqrt{\gamma R T},
+\qquad
+M = \frac{u}{c}\ \text{(signed)},
+$$
+
+$$
+T_t = \frac{h_t}{c_p},
+\qquad
+p_t = p\left(1 + \tfrac{\gamma - 1}{2}M^2\right)^{\Gamma},
+\qquad
+s_{\text{inv}} = \frac{p}{\varrho^\gamma},
+$$
+
+where $u$ is the signed velocity, $T$ the static temperature, $c$ the sound speed, $M$ the signed Mach number, $T_t$ and $p_t$ the total (stagnation) temperature and pressure, and $s_{\text{inv}} = p/\varrho^\gamma$ the entropy invariant.
+The implementation additionally records the mixture molar mass $W = \varrho R_u T / p$ (with $R_u$ the universal gas constant) and the local specific heat $c_p$, both constant for a perfect gas but carrying the equilibrium or frozen flavour on a reacting edge, where they feed the acoustic assembly.
+Since $p_t$ and $T_t$ depend on $M^2$, they are independent of the flow direction, as they must be.
+
+**Entropy lemma.**
+For a perfect gas the entropy relative to a reference state is expressible in either the static or the stagnation variables:
+
+$$
+s - s_{\text{ref}}
+= c_p \ln\frac{T}{T_{\text{ref}}} - R \ln\frac{p}{p_{\text{ref}}}
+= c_p \ln\frac{T_t}{T_{\text{ref}}} - R \ln\frac{p_t}{p_{\text{ref}}},
+$$
+
+the second equality holding because bringing a stream to rest losslessly changes neither its entropy nor, by definition, its stagnation state.
+Hence entropy is a function of $(p_t, T_t)$ alone: if total pressure and total temperature are continuous across an element, so is entropy.
+This is why no separate entropy equation appears anywhere in the mean-flow framework — an isentropic element enforces continuity of $p_t$ and $T_t$, and the second law enters as the requirement that $p_t$ never rises across a loss.
+
+## Why not total pressure and total temperature?
+
+It is worth stating plainly why the more familiar variables of compressible-flow tables, $(\dot m, p_t, T_t)$, are *not* used, since the reason is the single-valuedness requirement in reverse.
+Recovering the static state from those variables requires inverting the dimensionless mass-flux function:
+
+$$
+\frac{\dot m \sqrt{T_t}}{A\,p_t}
+= \sqrt{\frac{\gamma}{R}}\; M\left(1 + \tfrac{\gamma - 1}{2}M^2\right)^{-\frac{\gamma + 1}{2(\gamma - 1)}},
+$$
+
+which rises with Mach number, peaks at $M = 1$, and falls again (@fig-massflux), so it is not invertible: for a given mass flux there are two Mach numbers — one subsonic, one supersonic — no solution at all above the peak, and an infinite-slope inverse exactly at $M = 1$.
+
+```{python}
+#|label: fig-massflux
+#|fig-cap: "The dimensionless mass-flux function $\\dot m\\sqrt{T_t}/(A p_t)$ against Mach number. It peaks at $M = 1$ and is not invertible: the dashed level line meets it twice, one subsonic and one supersonic root, which is the branch fork the $(\\dot m, p_t, T_t)$ variables would hand the solver."
+Mg = np.linspace(1e-3, 3.0, 500)
+Phi = np.sqrt(gamma / R) * Mg * (1.0 + 0.5 * (gamma - 1.0) * Mg ** 2) ** (-(gamma + 1.0) / (2.0 * (gamma - 1.0)))
+
+fig2 = go.Figure()
+fig2.add_trace(go.Scatter(x=Mg, y=Phi, mode="lines", line=dict(color=COLORWAY[0]), name="flux function"))
+fig2.add_hline(y=0.6 * Phi.max(), line=dict(color="#888888", dash="dash", width=1))
+fig2.add_vline(x=1.0, line=dict(color=COLORWAY[3 % len(COLORWAY)], dash="dot", width=1))
+fig2.update_layout(xaxis_title="Mach number  M", yaxis_title="ṁ √T_t / (A p_t)")
+fig2
+```
+
+A solver whose intermediate iterates roam freely would meet every one of these features as a trap, and a solver that must *discover* the flow regime cannot be handed this branch fork at its innermost step.
+Choosing static $p$ rather than $p_t$ collapses the fork to the single monotone root proved above, which is the whole reason for the variable set of this framework.
+
+With the state recovered on every edge, the remaining question is how the balances and transport relations are counted and assigned, which is taken up in [equation structure](equation-structure.md).

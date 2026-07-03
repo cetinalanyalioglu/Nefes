@@ -29,12 +29,12 @@ branches on the flow state); Jacobians come from complex-step differentiation.
 
 **Acoustic face.** In the perturbation problem the operator is
 
-$$A(\omega) = J_\text{alg} + i\omega\, M + P + S.$$
+$$\mathbf{A}(\omega) = \overline{\mathbf{J}} + \mathrm{i}\omega\, \mathbf{M} + \mathbf{P} + \mathbf{S}.$$
 
-Most elements contribute only through $J_\text{alg}$ (the complex-step linearization of their
+Most elements contribute only through $\overline{\mathbf{J}}$ (the complex-step linearization of their
 mean residual). Three override that default face: `duct`/`pipe` add the phase-propagation
-stamp $P(\omega)$; `cavity` (and a plenum `junction`/`splitter`) add the storage stamp $M$;
-the flames carry an unsteady heat-release source $S(\omega)$ on their `DynamicSource`
+stamp $\mathbf{P}(\omega)$; `cavity` (and a plenum `junction`/`splitter`) add the storage stamp $\mathbf{M}$;
+the flames carry an unsteady heat-release source $\mathbf{S}(\omega)$ on their `DynamicSource`
 descriptor. Single-port boundaries can also carry an explicit `PerturbationBC`
 (reflection/impedance); left at `None` they inherit the linearization of their own mean row.
 
@@ -48,18 +48,18 @@ descriptor. Single-port boundaries can also carry an explicit `PerturbationBC`
 | `mass_flow_outlet` | `MASS_FLOW_OUTLET` (15) | 1 | $\dot m = \dot m_\text{spec}>0$; $p$ floats | inherited ($\dot m'=0$) |
 | `choked_nozzle_outlet` | `CHOKED_NOZZLE_OUTLET` (16) | 1 | $\dot m = \dot m^{*}(p_t,T_t,A^{*})$ | inherited (Marble–Candel) |
 | `wall` | `WALL` (11) | 1 | $\dot m = 0$ | hard wall $R=+1$ |
-| `cavity` | `CAVITY` (18) | 1 | $\dot m = 0$ (wall to mean flow) | storage $M$, $C=V/(\rho c^2)$ |
-| `isentropic_area_change` | `ISEN_AREA_CHANGE` (3) | 2 | mass + $p_{t,0}=p_{t,1}$ across an area change | default (+$M$ if length-bearing) |
+| `cavity` | `CAVITY` (18) | 1 | $\dot m = 0$ (wall to mean flow) | storage $\mathbf{M}$, $C=V/(\varrho c^2)$ |
+| `isentropic_area_change` | `ISEN_AREA_CHANGE` (3) | 2 | mass + $p_{t,0}=p_{t,1}$ across an area change | default (+$\mathbf{M}$ if length-bearing) |
 | `sudden_area_change` | `SUDDEN_AREA_CHANGE` (4) | 2 | mass + Borda–Carnot / vena-contracta loss | default |
-| `loss` | `LOSS` (5) | 2 | mass + $\Delta p_t = K\cdot\tfrac12\rho u^2$ | default (+$M$ if length-bearing) |
-| `linear_resistance` | `LINEAR_RESISTANCE` (17) | 2 | mass + $\Delta p_t = R\,\dot m$ | default (+$M$ if length-bearing) |
-| `duct` | `DUCT` (8) | 2 | mass + equal-area $p_t$ continuity | phase $P(\omega)$ |
-| `pipe` | `PIPE` (20) | 2 | mass + Darcy–Weisbach $K=fL/D$ | phase $P(\omega)$ |
-| `heat_release_flame` | `FLAME_HEAT_RELEASE` (12) | 2 | mass + $p_t$ continuity, $\Delta h_t=\dot Q/\dot m$ | default (+$S(\omega)$ if dynamic) |
-| `equilibrium_flame` | `FLAME_EQUILIBRIUM` (13) | 2 | mass + static-$p$ + $h_t$ + $Z$ conserved | default (+$S(\omega)$ if dynamic) |
+| `loss` | `LOSS` (5) | 2 | mass + $\Delta p_t = K\cdot\tfrac12\varrho u^2$ | default (+$\mathbf{M}$ if length-bearing) |
+| `linear_resistance` | `LINEAR_RESISTANCE` (17) | 2 | mass + $\Delta p_t = R\,\dot m$ | default (+$\mathbf{M}$ if length-bearing) |
+| `duct` | `DUCT` (8) | 2 | mass + equal-area $p_t$ continuity | phase $\mathbf{P}(\omega)$ |
+| `pipe` | `PIPE` (20) | 2 | mass + Darcy–Weisbach $K=fL/D$ | phase $\mathbf{P}(\omega)$ |
+| `heat_release_flame` | `FLAME_HEAT_RELEASE` (12) | 2 | mass + $p_t$ continuity, $\Delta h_t=\dot Q/\dot m$ | default (+$\mathbf{S}(\omega)$ if dynamic) |
+| `equilibrium_flame` | `FLAME_EQUILIBRIUM` (13) | 2 | mass + static-$p$ + $h_t$ + $Z$ conserved | default (+$\mathbf{S}(\omega)$ if dynamic) |
 | `mass_source` | `MASS_SOURCE` (14) | 2 | mass/momentum/energy/composition injection | default |
-| `junction` | `JUNCTION` (6) | variable | common **static** pressure $p_i=p_0$ | default (+$M$ if plenum) |
-| `splitter` | `SPLITTER` (7) | variable | common **total** pressure $p_{t,i}=p_{t,0}$ | default (+$M$ if plenum) |
+| `junction` | `JUNCTION` (6) | variable | common **static** pressure $p_i=p_0$ | default (+$\mathbf{M}$ if plenum) |
+| `splitter` | `SPLITTER` (7) | variable | common **total** pressure $p_{t,i}=p_{t,0}$ | default (+$\mathbf{M}$ if plenum) |
 | `forced_splitter` | `FORCED_SPLITTER` (19) | variable | $\dot m_{\text{out},k}=\beta_k\dot m_\text{in}$ | default |
 | *supersonic inlet/outlet* | (9 / 10) | 1 | **reserved — deferred** (v1 is subsonic) | — |
 
@@ -145,9 +145,9 @@ inherited $\dot m'=0$. Pass `perturbation_bc` for a liner impedance. No physics 
 A **wall to the mean flow** ($\dot m = 0$, no interior mean unknowns) but a **compliance to
 acoustics**: the enclosed gas compresses isentropically, giving
 
-$$C = \frac{V}{\rho c^2}$$
+$$C = \frac{V}{\varrho c^2}$$
 
-which populates the storage block $M$. Paired with a neck inertance (a short `duct` off a
+which populates the storage block $\mathbf{M}$. Paired with a neck inertance (a short `duct` off a
 `junction`) it forms a Helmholtz resonator, $f_0 = \dfrac{c}{2\pi}\sqrt{\dfrac{A_\text{neck}}{V\,l_\text{eff}}}$.
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
@@ -159,7 +159,7 @@ which populates the storage block $M$. Paired with a neck inertance (a short `du
 Every element here takes the optional **storage lengths** `l_up`, `l_down`, `end_correction`
 (all default `0`, in metres): the passage half-lengths on each side give acoustic compliance
 ($\sim l_i A_i$ of stored gas) and inertance (series effective length
-$l_\text{up}+l_\text{down}+\ell_\text{end}$), populating $M$ while staying inert in the mean
+$l_\text{up}+l_\text{down}+\ell_\text{end}$), populating $\mathbf{M}$ while staying inert in the mean
 flow.
 
 ### `isentropic_area_change(l_up=0.0, l_down=0.0, end_correction=0.0)`
@@ -176,7 +176,7 @@ default a lengthless (compact) jump.
 Mass conservation plus a direction-dependent loss. Forward flow (small → large) follows the
 **Borda–Carnot** momentum balance; reverse flow (large → small) a **vena-contracta** loss
 
-$$\Delta p_t = K_c\left(\tfrac12\rho u^2\right)_\text{small}, \qquad K_c = \left(\frac{1}{c_c}-1\right)^2.$$
+$$\Delta p_t = K_c\left(\tfrac12\varrho u^2\right)_\text{small}, \qquad K_c = \left(\frac{1}{c_c}-1\right)^2.$$
 
 The incompressible head is accurate to $O(M^2)$; the [`sudden_contraction`
 composite](composite-elements.md) is the compressible upgrade.
@@ -191,7 +191,7 @@ composite](composite-elements.md) is the compressible upgrade.
 Conserves mass and drops total pressure by $K$ dynamic heads, the head signed by flow
 direction:
 
-$$p_{t,\text{in}} - p_{t,\text{out}} = K\left(\tfrac12\rho u^2\right)_{\text{ref\_port}}.$$
+$$p_{t,\text{in}} - p_{t,\text{out}} = K\left(\tfrac12\varrho u^2\right)_{\text{ref\_port}}.$$
 
 The static state on each port is reconstructed from that port's own area, so the loss may
 **straddle an area change**. With storage lengths it becomes an orifice impedance
@@ -200,7 +200,7 @@ $Z = R(u) + i\omega L_\text{eff}/A$.
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
 | `K` | $K$ | loss coefficient (dynamic heads) | — | required |
-| `ref_port` | — | port whose $\tfrac12\rho u^2$ head $K$ references | — | `0` (or `1`) |
+| `ref_port` | — | port whose $\tfrac12\varrho u^2$ head $K$ references | — | `0` (or `1`) |
 | `eps` | $\varepsilon$ | smoothing width | kg/s | `None` |
 | `l_up`, `l_down`, `end_correction` | — | storage lengths | m | `0.0` |
 
@@ -223,7 +223,7 @@ $Z = R + i\omega L_\text{eff}/A$.
 
 ### `duct(length=0.0)`
 Equal-area total-pressure continuity in the mean (length-independent); the `length` is inert
-in the steady residual and read only by the acoustic **phase stamp** $P(\omega)$ (wavenumber
+in the steady residual and read only by the acoustic **phase stamp** $\mathbf{P}(\omega)$ (wavenumber
 $k = \omega/c$), so it propagates waves $\propto e^{\pm i k L}$. Its two ports share one flow
 area.
 
@@ -235,9 +235,9 @@ area.
 The `DUCT + LOSS` unification (Greyvenstein–Laurie): one element that drops total pressure
 with the Darcy–Weisbach coefficient
 
-$$K = \frac{f\,L}{D}, \qquad p_{t,\text{in}} - p_{t,\text{out}} = K\left(\tfrac12\rho u^2\right),$$
+$$K = \frac{f\,L}{D}, \qquad p_{t,\text{in}} - p_{t,\text{out}} = K\left(\tfrac12\varrho u^2\right),$$
 
-**and** carries its `length` for the acoustic phase stamp $P(\omega)$. Constant area;
+**and** carries its `length` for the acoustic phase stamp $\mathbf{P}(\omega)$. Constant area;
 $D$ is the hydraulic diameter (friction term only). Chain several with the [`fanno_pipe`
 composite](composite-elements.md) to resolve Fanno gradients.
 
@@ -256,13 +256,13 @@ idealization neglecting the $O(M^2)$ Rayleigh loss) while raising the total enth
 $$\Delta h_t = \frac{\dot Q}{\dot m}, \qquad \Delta T_t = \frac{\dot Q}{\dot m\, c_p}.$$
 
 With $\dot Q$ fixed the mean flame is acoustically **passive**; a `dynamic_source` (an $n$–$\tau$
-flame transfer function) gives it the unsteady $S(\omega)$ that drives thermoacoustic
+flame transfer function) gives it the unsteady $\mathbf{S}(\omega)$ that drives thermoacoustic
 instability.
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
 | `Qdot` | $\dot Q$ | heat-release rate | W | required ($>0$ heats) |
-| `dynamic_source` | $S(\omega)$ | unsteady heat-release response (FTF) | — | `None` (passive) |
+| `dynamic_source` | $\mathbf{S}(\omega)$ | unsteady heat-release response (FTF) | — | `None` (passive) |
 
 ### `equilibrium_flame(dynamic_source=None)`
 The headline reacting flame: conserves mass, **static pressure** (low-Mach compact
@@ -270,17 +270,17 @@ idealization), total enthalpy (adiabatic) and elemental composition $Z$. "Igniti
 per-edge **closure switch** — the approach edge uses the frozen (`EQ_FROZEN`) closure, the
 product edge the equilibrium (`EQ_KERNEL`) closure — so the temperature rise emerges from an
 HP-equilibrium solve at the shared $(Z, h_t, p)$. Acoustically passive; a `dynamic_source`
-adds the lagged $S(\omega)$. No mean-flow parameters (the composition comes from the feeds).
+adds the lagged $\mathbf{S}(\omega)$. No mean-flow parameters (the composition comes from the feeds).
 
 | Argument | Symbol | Meaning | Units | Default |
 | --- | --- | --- | --- | --- |
-| `dynamic_source` | $S(\omega)$ | unsteady heat-release response (FTF) | — | `None` (passive) |
+| `dynamic_source` | $\mathbf{S}(\omega)$ | unsteady heat-release response (FTF) | — | `None` (passive) |
 
 ### `mass_source(mdot, T, composition, u_inj=0.0, basis="mole", dynamic_source=None, marker=0.0)`
 Injects a stream, conserving mass, momentum and energy with source terms:
 
 $$\dot m_\text{out} = \dot m_\text{in} + \dot m, \qquad
-\left[\rho u^2 + p\right]_\text{out} = \left[\rho u^2 + p\right]_\text{in} + \dot m\, u_\text{inj},$$
+\left[\varrho u^2 + p\right]_\text{out} = \left[\varrho u^2 + p\right]_\text{in} + \dot m\, u_\text{inj},$$
 
 with total enthalpy and composition mixed in mass-weighted. A fuel injector is this element
 with a fuel `composition`; it performs no reaction (ignition is the flame's job).
@@ -298,7 +298,7 @@ with a fuel `composition`; it performs no reaction (ignition is the flame's job)
 
 ### `junction(volume=0.0)`
 Ties all incident ports to a **common static pressure**: a mass balance $\sum_i \dot m_i = 0$
-plus $d-1$ rows $p_i = p_0$. A plenum `volume` adds the compliance $C = V/(\rho c^2)$ to $M$
+plus $d-1$ rows $p_i = p_0$. A plenum `volume` adds the compliance $C = V/(\varrho c^2)$ to $\mathbf{M}$
 (inert in the mean flow) — a junction with a volume is a cavity with through-flow. A branch's
 neck inertance is **not** a manifold parameter; model it as an explicit neck `duct` on that
 branch (exactly what `helmholtz_resonator` assembles).

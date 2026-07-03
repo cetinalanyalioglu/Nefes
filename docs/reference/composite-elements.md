@@ -31,11 +31,11 @@ Two classes ship:
 
 Each internal edge is a genuine intermediate flow state, so in the perturbation problem it is
 a real characteristic edge. Whether a composite **propagates acoustic waves** through its
-interior depends on whether its atoms carry the phase stamp $P(\omega)$:
+interior depends on whether its atoms carry the phase stamp $\mathbf{P}(\omega)$:
 
-- `duct` and `pipe` carry $P(\omega)$ (wavenumber $k=\omega/c$, propagation $\propto e^{\pm ikL}$).
+- `duct` and `pipe` carry $\mathbf{P}(\omega)$ (wavenumber $k=\omega/c$, propagation $\propto e^{\pm ikL}$).
 - `isentropic_area_change` / `sudden_area_change` are **compact** (lengthless) by default —
-  they contribute only through $J_\text{alg}$ (and $M$ if given storage lengths).
+  they contribute only through $\overline{\mathbf{J}}$ (and $\mathbf{M}$ if given storage lengths).
 
 So:
 
@@ -43,7 +43,7 @@ So:
   `duct`, so the horn's internal acoustics are resolved through $N$ real ducts (the
   area-change atoms handle the compact area jumps; the ducts carry the phase). This is exactly
   why it resolves horn / con-di acoustics that a single lumped area jump cannot.
-- **`fanno_pipe` propagates waves** — its `pipe` atoms carry $P(\omega)$ as well as friction.
+- **`fanno_pipe` propagates waves** — its `pipe` atoms carry $\mathbf{P}(\omega)$ as well as friction.
 - The Class-1 macros (`orifice`, `lossy_nozzle`, `sudden_contraction`) are built from compact
   atoms, so they are acoustically compact overall — their internal edge is a state, but no
   distributed phase accrues across it (the intended, correct behaviour for a compact orifice).
@@ -188,7 +188,7 @@ is a genuine intermediate flow state. A compact macro (orifice) recovers its com
 matrix by composing its sub-elements through the internal edge (validated against an
 independent Borda composition and the De Domenico / Cambridge references in
 `tests/test_perturbation_dedomenico.py`); a Class-2 chain carries its $N$ internal edges — with
-their $P(\omega)$ ducts — so the acoustic response is the distributed (non-compact) one,
+their $\mathbf{P}(\omega)$ ducts — so the acoustic response is the distributed (non-compact) one,
 converged via `grid_refine`.
 
 ## Known limitations (v1)

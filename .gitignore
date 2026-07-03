@@ -119,3 +119,10 @@ $RECYCLE.BIN/
 *.swn
 *.sublime-workspace
 *.sublime-project
+
+###############################################################################
+# Quarto (docs render output; the Markdown source stays authoritative)
+###############################################################################
+docs/_site/
+docs/.quarto/
+/.quarto/

@@ -1,5 +1,7 @@
 ## To implement
 
+- [ ] Proper estimation of friction coefficient for the pipe element, could be Moody charts or some other correlation.
+
 ## To verify
 
 ## To brainstorm

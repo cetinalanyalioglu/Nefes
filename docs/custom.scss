@@ -1,0 +1,33 @@
+/*-- scss:defaults --*/
+
+// Slightly roomier base line-height than cosmo's default.
+$line-height-base: 1.65;
+
+
+/*-- scss:rules --*/
+
+// KaTeX renders math at 1.21em by default, which reads noticeably larger than the
+// surrounding body text for inline math.  Bring it close to the text size (still a hair
+// larger, which aids legibility of subscripts/superscripts) rather than conspicuously bigger.
+.katex {
+  font-size: 1.06em;
+}
+
+// Give displayed equations a little more vertical breathing room.
+.katex-display {
+  margin: 1.15em 0;
+}
+
+// Loosen paragraph and list spacing a touch — the default packs blocks tightly.
+p {
+  margin-bottom: 0.85rem;
+}
+
+li {
+  margin-bottom: 0.3rem;
+}
+
+// A bit more air above section headings so sections read as separated.
+h2, h3 {
+  margin-top: 1.6rem;
+}

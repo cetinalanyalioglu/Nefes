@@ -1,0 +1,192 @@
+---
+jupyter: python3
+code-fold: true
+execute:
+  warning: false
+---
+
+# Stability and response analyses
+
+With the operator $\mathbf{A}(\omega)$ of the [perturbation network](perturbation-network.md) assembled, every acoustic question becomes a statement about that one matrix.
+Four analyses read different things from it: its resonances and their growth rates, an open-loop stability count taken on the real-frequency axis, the flux of acoustic energy and what it reveals about passivity, and the field forced by a prescribed excitation.
+This document gives each in turn, and begins by pinning the sign convention on which every stability statement depends — because the convention is easy to get backwards, and getting it backwards inverts the conclusion.
+
+## The sign convention
+
+The acoustics are posed with the time dependence $X'(t) = \Re\{\widehat{X}\,e^{\mathrm{i}\omega t}\}$, and a free mode of the network has a complex frequency $\omega = \omega_r + \mathrm{i}\omega_i$.
+Its time evolution is then $e^{\mathrm{i}\omega t} = e^{\mathrm{i}\omega_r t}\,e^{-\omega_i t}$, so a positive imaginary part *decays* and a negative one *grows*.
+The modal growth rate is therefore defined as:
+
+$$
+\sigma \;=\; -\omega_i \;=\; -\Im(\omega),
+\qquad\text{a mode is unstable when } \sigma > 0 \ (\Im(\omega) < 0),
+$$
+
+where $\omega_r/(2\pi)$ is the modal frequency in hertz and $\sigma$ the growth rate in inverse seconds.
+It should be emphasized that this convention — growth as the *negative* imaginary part — is the authoritative one throughout the implementation, fixed by a lossy-duct test that pins a passive decaying mode to $\Im(\omega) > 0$; it is stated here once and used without further comment below.
+
+## Modal stability
+
+The resonances of the network are the frequencies at which the operator is singular, so the modal problem is the nonlinear eigenproblem, given as:
+
+$$
+\det \mathbf{A}(\omega) \;=\; 0,
+\qquad \omega \in \mathbb{C},
+$$
+
+where each root $\omega$ yields a modal frequency $\omega_r/(2\pi)$ and a growth rate $\sigma = -\omega_i$.
+The operator is *entire* in $\omega$ — its only $\omega$-dependence is through $\mathrm{i}\omega\mathbf{M}$, the duct phases $e^{-\mathrm{i}\omega\tau}$, and any analytic source or boundary transfer function, none of which has a pole — so the roots are isolated and can be counted.
+
+The roots are found by the contour-integral method of Beyn, which recovers all eigenvalues inside a chosen contour from moments of the resolvent, given as:
+
+$$
+\mathbf{A}_0 = \frac{1}{2\pi\mathrm{i}}\oint \mathbf{A}(z)^{-1}\widehat{\mathbf{V}}\,\mathrm{d}z,
+\qquad
+\mathbf{A}_1 = \frac{1}{2\pi\mathrm{i}}\oint z\,\mathbf{A}(z)^{-1}\widehat{\mathbf{V}}\,\mathrm{d}z,
+$$
+
+where $\widehat{\mathbf{V}}$ is a random probe block and the contour is an ellipse spanning the frequency band and growth range of interest.
+The singular-value decomposition of the zeroth moment $\mathbf{A}_0$ reveals the number of enclosed modes, and a small dense eigenproblem built from the two moments returns the eigenvalues and eigenvectors — the method never forms $\det\mathbf{A}$ itself, which would overflow.
+
+An important feature is that the mode set is *certified complete* rather than merely "some modes found".
+Independently of Beyn's probe, the argument principle counts the enclosed roots by the winding of the determinant, given as:
+
+$$
+N \;=\; \frac{1}{2\pi\mathrm{i}}\oint \frac{\det'\mathbf{A}(z)}{\det\mathbf{A}(z)}\,\mathrm{d}z \;=\; \frac{1}{2\pi}\,\Delta\arg\det\mathbf{A},
+$$
+
+where the phase of $\det\mathbf{A}$ is accumulated from the triangular factors of an LU decomposition so that its magnitude is never formed, and the driver re-tiles and re-searches the region until Beyn's eigenvalue count matches this winding count.
+Each mode carries an eigenvector, projected per edge to the characteristic amplitudes $(f, g, h)$ through $\mathbf{L}_e$ (see [characteristics](characteristics.md)), which is the mode's spatial wave pattern.
+The behaviour is illustrated in @fig-spectrum for a Rijke tube — a duct with a compact heat source — whose modes move across the stability boundary as the flame is activated (tests: `test_beyn_oracle_lossy_complex_modes_and_sign`, `test_eigenmodes_certified_count_matches`, `test_n_tau_flame_drives_self_excited_instability`).
+
+```{python}
+#|label: setup
+#|echo: false
+import warnings
+import numpy as np
+import plotly.graph_objects as go
+
+from nefes.plotting import use_nefes_theme, COLORWAY
+from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import n_tau_flame
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation import eigenmodes
+from nefes.solver import solve
+from nefes.thermo.configure import perfect_gas
+
+use_nefes_theme()
+
+R_AIR, GAMMA = 287.0, 1.4
+CP = GAMMA * R_AIR / (GAMMA - 1.0)
+AREA, L1, L2 = 0.01, 0.6, 0.4  # tube areas and cold/hot duct lengths [m]
+
+
+def rijke_modes(n, tau, mdot=0.005, dT=400.0, band=(40.0, 520.0)):
+    """Eigenmodes of a hard-wall / open-end Rijke tube with an n–τ flame at the junction."""
+    Qdot = mdot * CP * dT
+    els = [
+        cat.mass_flow_inlet(mdot, 300.0, perturbation_bc=PerturbationBC.hard_wall()),
+        cat.duct(L1),
+        cat.heat_release_flame(Qdot, dynamic_source=n_tau_flame(n, tau, ref_edge=1)),
+        cat.duct(L2),
+        cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
+    ]
+    edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
+    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    x = solve(prob).x
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r = eigenmodes(prob, x, freq_band=band, growth_band=(-400.0, 400.0), isentropic=True)
+    return np.array(r.freqs), np.array(r.growth_rates)
+```
+
+```{python}
+#|label: fig-spectrum
+#|fig-cap: "Eigenmode spectrum of a Rijke tube — growth rate against modal frequency — for three flame settings, each a certified contour-eigensolver search of $\\det\\mathbf{A}(\\omega)=0$. Passive (no unsteady heat release): the modes are the tube's acoustic resonances, essentially neutral. Stabilizing flame ($n=0.8,\\ \\tau=1.5\\,$ms): the fundamental is pushed further below the boundary. Destabilizing flame ($n=0.8,\\ \\tau=4\\,$ms): a mode is lifted above the growth-rate boundary (dashed) into instability. Points above the line grow; points below decay."
+cases = [
+    ("passive (n = 0)", 0.0, 0.0, COLORWAY[3]),
+    ("stabilizing (n = 0.8, τ = 1.5 ms)", 0.8, 1.5e-3, COLORWAY[0]),
+    ("destabilizing (n = 0.8, τ = 4 ms)", 0.8, 4.0e-3, COLORWAY[1]),
+]
+
+fig = go.Figure()
+for label, n, tau, color in cases:
+    f, g = rijke_modes(n, tau)
+    fig.add_trace(go.Scatter(x=f, y=g, mode="markers", marker=dict(color=color, size=11, line=dict(width=1, color="white")),
+                             name=label))
+fig.add_hline(y=0.0, line=dict(color="#888888", dash="dash", width=1.5))
+fig.add_annotation(x=470, y=12, text="unstable ↑", showarrow=False, font=dict(size=12, color="#888888"))
+fig.update_layout(xaxis_title="modal frequency  f = ω_r / 2π  [Hz]", yaxis_title="growth rate  σ = −Im(ω)  [1/s]")
+fig
+```
+
+## Open-loop stability on the real axis
+
+The contour eigensolver is powerful but not universal, and three circumstances defeat it: a *measured* flame transfer function is defined only on the real axis and cannot be evaluated on the complex contour; a flowing network fills its spectrum with dense, near-marginal convected entropy and composition modes that overwhelm the completeness certificate; and a long convective delay makes $e^{-\mathrm{i}\omega\tau_u}$ overflow once the contour reaches into the complex plane.
+For these regimes stability is assessed on the real axis, by a Nyquist argument on the feedback the source introduces.
+
+The construction splits the operator into its passive part and the source, given as:
+
+$$
+\mathbf{A}(\omega) = \mathbf{A}_0(\omega) + \mathbf{S}(\omega),
+\qquad
+\mathbf{S}(\omega) = \sum_k \mathcal{F}_k(\omega)\,\mathbf{a}_k\mathbf{b}_k^{\top},
+$$
+
+where $\mathbf{A}_0$ is the network with every source switched off and $\mathbf{S}$ is the low-rank source, one rank-one term per feedback with transfer function $\mathcal{F}_k$, injection vector $\mathbf{a}_k$, and sensing vector $\mathbf{b}_k$.
+The matrix-determinant lemma then factors the determinant into the passive one and a small determinant of the return ratio, given as:
+
+$$
+\det\mathbf{A} = \det\mathbf{A}_0\,\cdot\,\det(\mathbf{I} - \mathbf{L}),
+\qquad
+\mathbf{L}(\omega) = -\operatorname{diag}(\mathcal{F})\,\mathbf{B}^{\top}\mathbf{A}_0^{-1}\mathbf{A},
+$$
+
+where $\mathbf{L}$ is the return ratio (a scalar for a single flame) and $D(\omega) = \det(\mathbf{I} - \mathbf{L}) = \det\mathbf{A}/\det\mathbf{A}_0$ is the stability determinant.
+Evaluated along the real-frequency axis, the locus of $D(\omega)$ encircles the origin once for each unstable mode, so the count follows from the encirclements, given as:
+
+$$
+n_{\text{unstable}} \;=\; -\tfrac{1}{2}\,(\text{winding of } D \text{ about the origin}),
+$$
+
+where the factor of one-half accounts for the closed contour including the negative-frequency image $D(-\omega) = \overline{D(\omega)}$, and the least value $\min_\omega|D|$ is the stability margin, vanishing at the onset of instability.
+An important qualification is that this counts unstable modes *relative to* $\mathbf{A}_0$, so it equals the absolute count only when the passive network is itself stable — a premise the driver checks with a rational fit of $D$ — and it is a tally up to the maximum swept frequency (tests: `test_unstable_count_matches_eigenmodes`, `test_entropy_path_is_the_sole_destabilizer`, `test_tabulated_ftf_supported_on_the_real_axis`).
+
+## Acoustic energy and passivity
+
+A complementary reading of the operator is energetic, through the mean-flow acoustic energy of Myers.
+For a plane-wave field the downstream energy flux (intensity) and the energy density are given as:
+
+$$
+I = \tfrac{1}{2}\overline{\varrho}\,\overline{c}\Big[(1 + M)^2|\widehat{f}|^2 - (1 - M)^2|\widehat{g}|^2\Big],
+\qquad
+e = \tfrac{1}{2}\overline{\varrho}\Big[(1 + M)|\widehat{f}|^2 + (1 - M)|\widehat{g}|^2\Big],
+$$
+
+where $\widehat{f}$ and $\widehat{g}$ are the downstream and upstream acoustic amplitudes and $M$ the mean Mach number, and for a single downstream wave $I/e = \overline{u} + \overline{c}$, the transport of energy at the group speed.
+These give a sharp statement of *passivity*: an energy-neutral termination reflects with a magnitude fixed by the mean flow, given as:
+
+$$
+|R|_{\text{neutral}} = \frac{1 + M}{1 - M}\ \text{(outlet)},
+\qquad
+|R|_{\text{neutral}} = \frac{1 - M}{1 + M}\ \text{(inlet)},
+$$
+
+and a reflection magnitude above this bound *adds* acoustic energy — an active boundary that behaves as a source.
+The energy view also furnishes an independent check on the eigensolver's growth rates: for a source-free mode the stored energy obeys $\mathrm{d}E/\mathrm{d}t = 2\sigma E$, which equals the net acoustic power delivered through the boundaries, so the sign of the net boundary power *must* match the sign of the growth rate — a physically grounded cross-check the code performs mode by mode (tests: `test_passive_bound_is_the_zero_flux_reflection`, `test_boundary_power_sign_matches_growth_every_mode`, `test_modal_energy_balance_recovers_growth_rate`).
+
+## Forced response
+
+The final analysis drives the network rather than letting it oscillate freely.
+With a forcing prescribed at a driven terminal — an incoming wave of unit or specified amplitude — the response is one sparse solve per frequency, given as:
+
+$$
+\mathbf{A}(\omega)\,\widehat{\mathbf{x}} \;=\; \widehat{\mathbf{b}}(\omega),
+$$
+
+where $\widehat{\mathbf{b}}$ is the forcing vector, nonzero only at the driven terminal rows.
+From the solved nodal field one reads the per-edge wave amplitudes, the reflection $\widehat{g}/\widehat{f}$ at any station, and the stored acoustic energy.
+Because the system is linear, the response scales exactly with the forcing amplitude and superposes over several drives, and it becomes singular precisely at the resonances where $\det\mathbf{A}(\omega) = 0$ — the same modes the eigensolver locates (tests: `test_forced_response_scales_linearly_with_amplitude`, `test_forced_response_obeys_superposition`).
+
+All four analyses read the single operator $\mathbf{A}(\omega)$, and all four presume that every element in it is modeled.
+When one element is *not* — its two-port or its flame response known only through measurement — that response can be recovered from a measured network response by de-embedding, the subject of [identification](identification.md).

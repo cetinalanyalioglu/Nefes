@@ -36,7 +36,7 @@ As project matures, these documents should serve more as a guideline than of a r
 
 ## Documentation
 
-- Use "\overline" instead of "\bar" in math mode to represent temporal mean.
+- Denote the mean/base (temporal-mean) state with an overbar `\overline{}` (e.g. `\overline{c}`, `\overline{\mathbf{x}}`, and `\overline{\mathbf{J}}` for the base Jacobian), never `\bar`. Do NOT use subscript-0 for mean states: it clashes with port indices (`p_0`). Section (area) averages use angle brackets `\langle\cdot\rangle`.
 
 ## Conventions
 

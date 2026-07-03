@@ -1,0 +1,183 @@
+---
+jupyter: python3
+code-fold: true
+execute:
+  warning: false
+---
+
+# Transport of carried scalars on edges
+
+The network settles pressure between components by negotiation — an element's pressure relation couples the states on its two sides — but temperature is not settled that way.
+The gas in a duct is as hot as wherever it came from; total enthalpy is *carried* with the flow rather than balanced across a component.
+This document builds the one relation that expresses that fact, shows that it is the single member of a family that also carries species and any other advected scalar, and explains why mass alone is deliberately left out of the family.
+
+The device has to meet the same robustness standard as the rest of the mean-flow solver (see [state and recovery](state-and-recovery.qmd)): it must stay well defined while the solver is still discovering the flow direction, iterate smoothly through a reversal, and reduce to exact upwinding once the flow has settled.
+Meeting that standard is what turns the plain statement "each edge inherits its upstream neighbour's enthalpy" into the smoothly upwinded, donor-based form derived here.
+
+The presentation begins with the donor enthalpy an element offers to the streams leaving it, then proceeds to the per-edge transport equation that delivers it and the three properties that make it solver-safe, building on this to the generalization to any carried scalar and the way sources enter, and culminating in the reason mass is not transported this way but conserved nodally.
+
+## Standing assumptions
+
+The relations below are posed at a steady operating point, under the [overview](overview.md) assumptions, of which two are load-bearing here.
+
+1. **Section-averaged edge scalars.** Each carried quantity takes a single representative value on an edge, the section average of the [framework](framework.md); the true port flux of a convected scalar $\psi$ is $A\,\langle m\,\psi\rangle = \beta_\psi\,\dot m\,\psi_e$, and the transport relation is written for the edge value $\psi_e$ with the profile-shape factor $\beta_\psi$ absorbed into the closure.
+2. **Adiabatic elements unless a source is declared.** An element neither adds nor removes the carried scalar except through an explicit lumped source (a flame's heat release, an inline injector), so that in the absence of such a source the scalar is conserved through the element.
+
+Throughout, an edge $e$ carries the signed mass flow $\dot m_e$ along its reference arrow, and $\sigma_{P,e} = \pm 1$ orients that arrow at element $P$ ($+1$ if $P$ is the tail, $-1$ if the head), so that the mass leaving $P$ through $e$ is $\dot m^{\text{out}}_{P,e} = \sigma_{P,e}\dot m_e$ and the mass entering is $\dot m^{\text{in}}_{P,e} = -\sigma_{P,e}\dot m_e$.
+
+## The donor enthalpy of an element
+
+We first ask what total enthalpy an element makes available to the streams leaving it, a quantity we call its *donor* enthalpy $H_P$.
+Steady energy conservation at element $P$, in the flux form of the [governing equations](governing-equations.md), is given as:
+
+$$
+\sum_e \sigma_{P,e}\,\dot m_e\, h_{t,e} = 0,
+$$
+
+where the sum runs over the edges incident to $P$ and $h_{t,e}$ is the total enthalpy carried on edge $e$.
+Splitting the sum into inflow ports, where $h_{t,e}$ is set by the upstream neighbour, and outflow ports, where the gas leaves carrying the element's donated value $H_P$, and using mass conservation to equate the two rate sums, yields the donor as the inflow-mass-weighted average of the incoming enthalpies:
+
+$$
+H_P \;=\; \frac{\sum_e \dot m^{\text{in}}_{P,e}\,h_{t,e}}{\sum_e \dot m^{\text{in}}_{P,e}}
+\qquad\text{(sum over inflow ports, } \dot m^{\text{in}}_{P,e} > 0\text{)},
+$$
+
+where $\dot m^{\text{in}}_{P,e} = -\sigma_{P,e}\dot m_e$ is the mass entering $P$ through edge $e$.
+It can be interpreted as the *perfect-mixing* statement of a lumped element: having no resolved interior, the element blends its incoming streams into one mixed state and offers that single state to every outlet — all outflow ports of one element therefore carry the same total enthalpy.
+How the mass then *splits* between several outlets is set by the pressure relations, not by energy; the thermodynamic state of the mixed stream is single-valued.
+
+**Worked example (a tee).**
+Two streams mix and leave through one outlet, with inflows $\dot m_1 = 3\,\mathrm{kg/s}$ at $T_{t,1} = 300\,\mathrm{K}$ and $\dot m_2 = 1\,\mathrm{kg/s}$ at $T_{t,2} = 500\,\mathrm{K}$, so that $h_{t,i} = c_p T_{t,i}$.
+The donor is given as:
+
+$$
+H_P = \frac{3\,(c_p\cdot 300) + 1\,(c_p\cdot 500)}{3 + 1} = c_p\cdot 350\,\mathrm{K},
+$$
+
+that is $T_{t,\text{out}} = 350\,\mathrm{K}$, pulled toward the larger stream as mixing demands; were there two outlets, both would leave at $350\,\mathrm{K}$.
+
+The exact-upwind average above is not yet solver-safe, because "inflow port" is a branch on the sign of $\dot m_e$ and the denominator vanishes at zero throughflow.
+Both are removed by replacing the hard positive part with its smooth counterpart, the same $C^\infty$ primitive family used throughout the residuals (see [complex-step](../design/complex-step.qmd)):
+
+$$
+H_P \;=\; \frac{\sum_e w_e\,h_{t,e}}{\sum_e w_e},
+\qquad
+w_e = \operatorname{spos}\!\big(\dot m^{\text{in}}_{P,e};\,\varepsilon\big) = \tfrac{1}{2}\Big(\dot m^{\text{in}}_{P,e} + \sqrt{(\dot m^{\text{in}}_{P,e})^2 + \varepsilon^2}\,\Big),
+$$
+
+where $w_e$ is the smooth donor weight of edge $e$, $\operatorname{spos}(\cdot;\varepsilon)$ is the regularized positive part, and $\varepsilon$ is the smoothing width in mass-flow units.
+Because $w_e \ge \varepsilon/2 > 0$, the mixture is well defined for any flow state, degrading gracefully to a plain average at complete stagnation, while at a converged state the weight of an *outflow* port decays like $\varepsilon^2/(4\,|\dot m_e|)$ — a quadratically small contamination.
+
+Boundary elements override this donor with their specification rather than mixing incoming streams: an inlet offers its prescribed $c_p T_t^{\text{spec}}$, and a pressure outlet offers $c_p T_t^{\text{backflow}}$, the total enthalpy a re-entering stream would carry — the same convention adopted at pressure outlets in field solvers.
+
+## The edge transport equation
+
+With each element offering a donor value, each edge contributes one equation that delivers the donor of whichever element is upstream onto that edge.
+Writing $\operatorname{tail}(e)$ and $\operatorname{head}(e)$ for the elements at the tail and head of the arrow, the edge transport equation is given as:
+
+$$
+h_{t,e} \;=\; \theta(\dot m_e)\, H_{\operatorname{tail}(e)} \;+\; \big(1 - \theta(\dot m_e)\big)\, H_{\operatorname{head}(e)},
+\qquad
+\theta(x) = \tfrac{1}{2}\Big(1 + \frac{x}{\sqrt{x^2 + \varepsilon^2}}\Big),
+$$
+
+where $\theta$ is a smoothed Heaviside step (the regularized upwind weight): for clearly positive $\dot m_e$ it tends to $1$ and the edge inherits the tail element's donor, for clearly negative to $0$ and it inherits the head's, and near zero it blends the two — keeping the relation well-behaved at the one state where the physics genuinely cannot decide which side is upstream.
+
+Three properties carry the whole design, and the first is the reason the transport lives on the edge rather than being reassigned between an element's ports.
+
+1. **No degeneracy.** The equation always carries a coefficient of $1$ on $h_{t,e}$ itself, so it stays independent of the balances as the flow tends to zero and cannot collapse onto another row of the system (contrast the near-degeneracy that a port-assigned convected condition would develop at rest, discussed in [well-posedness](well-posedness.md)).
+2. **Smoothness.** The weight $\theta$ has no kink anywhere, so the residual and its Jacobian are smooth and complex-analytic through a flow reversal, and the solver may iterate *through* $\dot m_e = 0$ without a special case.
+3. **Asymptotic exactness.** At a converged state with $|\dot m_e| \gg \varepsilon$ the smooth weight differs from the exact upwind value by $\mathcal{O}\!\big((\varepsilon/\dot m_e)^2\big)$: the leak onto the downstream side is $1 - \theta \approx \tfrac{1}{4}(\varepsilon/\dot m_e)^2$, so with the default $\varepsilon = 10^{-4}\,\dot m_{\text{ref}}$ the imprint on the solution sits near the $10^{-8}$ relative level, far below any engineering tolerance (test: `test_passive_tracer_mixes_mass_weighted`, verifying the mass-weighted donor mix).
+
+These first and third properties are visible directly in the shipped weight, plotted in @fig-upwind-weight: the left panel shows how $\theta$ rounds the hard upwind switch over a blend region of width set by $\varepsilon$, and the right panel confirms that the downstream leak decays with the advertised quadratic slope, so the converged solution is exact to the smoothing order.
+
+```{python}
+#|label: setup
+#|echo: false
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from nefes.plotting import use_nefes_theme, COLORWAY
+from nefes.assembly.smooth import smooth_step
+
+use_nefes_theme()
+```
+
+```{python}
+#|label: fig-upwind-weight
+#|fig-cap: "The smooth upwind weight $\\theta(\\dot m_e)$ from the shipped `smooth_step` kernel, in mass flow normalized by a reference $\\dot m_\\mathrm{ref}$. **Left:** $\\theta$ rounds the hard Heaviside upwind switch (grey) over a blend region whose width is set by the smoothing $\\varepsilon$; two exaggerated values are shown so the blend is visible — the default $\\varepsilon = 10^{-4}\\,\\dot m_\\mathrm{ref}$ would render as an indistinguishable step at this scale. **Right:** the leak onto the downstream side, $1 - \\theta$ for $\\dot m_e > 0$, on log axes; it follows the reference slope $\\tfrac{1}{4}(\\varepsilon/\\dot m_e)^2$ (dashed), the quadratically small contamination that makes the converged transport exact to $\\mathcal{O}((\\varepsilon/\\dot m_e)^2)$."
+eps_show = [0.15, 0.05]  # exaggerated, in units of mdot_ref, so the blend is visible
+
+fig = make_subplots(
+    rows=1, cols=2,
+    subplot_titles=("smooth upwind weight  θ(ṁ)", "downstream leak  1 − θ,   ṁ &gt; 0"),
+)
+
+# left: theta vs the hard Heaviside
+x = np.linspace(-0.6, 0.6, 600)
+fig.add_trace(go.Scatter(x=x, y=np.where(x > 0.0, 1.0, 0.0), mode="lines",
+                         line=dict(color="#888888", width=1.5, dash="dot"),
+                         name="hard upwind"), row=1, col=1)
+for k, eps in enumerate(eps_show):
+    theta = np.array([float(smooth_step(xi, eps)) for xi in x])
+    fig.add_trace(go.Scatter(x=x, y=theta, mode="lines", line=dict(color=COLORWAY[k]),
+                             name=f"ε = {eps:g} ṁ_ref"), row=1, col=1)
+
+# right: the downstream leak and its quadratic reference
+xp = np.logspace(-1.0, 1.0, 400)  # ṁ / ε, so the curves overlay
+for k, eps in enumerate(eps_show):
+    md = xp * eps
+    leak = np.array([1.0 - float(smooth_step(m, eps)) for m in md])
+    fig.add_trace(go.Scatter(x=md, y=leak, mode="lines", line=dict(color=COLORWAY[k]),
+                             name=f"1 − θ,  ε = {eps:g}", showlegend=False), row=1, col=2)
+    ref = 0.25 * (eps / md) ** 2
+    fig.add_trace(go.Scatter(x=md, y=ref, mode="lines",
+                             line=dict(color=COLORWAY[k], width=1, dash="dash"),
+                             name="¼(ε/ṁ)²" if k == 0 else None,
+                             showlegend=(k == 0)), row=1, col=2)
+
+fig.update_xaxes(title_text="ṁ / ṁ_ref", row=1, col=1)
+fig.update_yaxes(title_text="θ", row=1, col=1)
+fig.update_xaxes(title_text="ṁ", type="log", row=1, col=2)
+fig.update_yaxes(title_text="1 − θ", type="log", row=1, col=2)
+fig
+```
+
+Finally, no separate entropy transport is needed alongside the enthalpy one.
+For a single-component gas the entropy is fixed by the stagnation pair $(p_t, T_t)$ (the entropy lemma of [state and recovery](state-and-recovery.qmd)), both of which are already carried — $p_t$ through the pressure relations and $T_t$ through this enthalpy transport — so entropy is a derived quantity rather than an independently advected one.
+
+## Generalization to any carried scalar
+
+Nothing in the construction used a property of enthalpy beyond its being an *intensive scalar passively advected with the flow*: a quantity whose edge value is inherited from the upstream element and whose junction value is the mass-weighted mixture of the inflows.
+Any per-unit-mass scalar $\phi$ — a species mass fraction, a conserved mixture fraction $Z_i$, a reaction-progress or burnt marker, a passive tracer — therefore obeys the identical pair, with a donor $\Phi_P$ and an edge equation given as:
+
+$$
+\Phi_P \;=\; \frac{\sum_e w_e\,\phi_e \;+\; \dot S^{\phi}_P}{\sum_e w_e},
+\qquad
+\phi_e \;=\; \theta(\dot m_e)\,\Phi_{\operatorname{tail}(e)} \;+\; \big(1 - \theta(\dot m_e)\big)\,\Phi_{\operatorname{head}(e)},
+$$
+
+where $\phi_e$ is the scalar carried on edge $e$, $\Phi_P$ the donor value element $P$ offers, $w_e$ and $\theta$ are the same smooth weights as for enthalpy, and $\dot S^{\phi}_P$ is any lumped source of $\phi$ within the element.
+This is not an aspiration but the literal shape of the assembly: a single loop over the carried scalars applies the same donor-and-upwind kernel to the total enthalpy ($\phi = h_t$) and to each transported composition scalar in turn.
+Total enthalpy is simply the first instance, with $\phi = h_t$, $\Phi_P = H_P$, and $\dot S^{\phi}_P = \dot Q_P$ the lumped heat-release rate; the mixture-fraction transport of reacting flow is the subject of [thermochemistry](thermochemistry.md).
+
+Each new scalar adds exactly one unknown per edge and one transport equation per edge, so the squareness of the system is preserved automatically, without any change to the element rows (see [equation structure](equation-structure.md)).
+
+**Sources enter through the donor, not the edge.**
+The source term $\dot S^{\phi}_P$ appears only in the donor — the mixed value becomes "what flowed in, plus what the element added, spread over the throughflow mass" — while the per-edge equation is untouched.
+This is the same hook by which a boundary element overrides its donor: because the element owns its donor, sources, specifications, and overrides all live in one place and none of them alters the equation count.
+A heat-addition flame is the archetype, raising the outflow total enthalpy by $\dot Q_P/|\dot m|$ through its enthalpy donor, its $|\dot m|$ floored by the same $\varepsilon$ so the jump stays bounded and smooth at zero flow (see [elements](elements.md)).
+An important caveat is that a fixed source with vanishing net throughflow has no bounded steady donor: as $\sum_e w_e$ falls to its regularization floor, $\dot S^{\phi}_P / \sum_e w_e$ grows large, and while the floor keeps the value finite rather than undefined it becomes $\varepsilon$-dependent.
+That regime — steady heating of a stagnant junction — is genuinely ill-posed physics, not a solver artifact.
+
+## Why mass is not a carried scalar
+
+Mass conservation deliberately stays a nodal balance and is *not* recast as an edge donor–transport pair, for two independent reasons.
+
+1. **Nothing to carry.** The donor–upwind device transports an intensive, per-unit-mass scalar whose edge value is inherited from upstream. The mass flux $\dot m_e$ is the extensive flux itself — the carrier, not the carried — and it *is* the edge unknown; the analogue of $\phi$ for mass is the constant $1$, whose transport equation would be vacuous.
+2. **No defect to repair.** The per-edge form exists to remove the direction-dependent equation *count* of the convected conditions (see [equation structure](equation-structure.md)). The mass balance is already direction-invariant in count — one per element, with $\sigma_{P,e}\dot m_e$ merely changing sign under an arrow flip — so there is no structural discontinuity to absorb; recasting it would only forfeit exact global conservation and reintroduce the very $\dot m \to 0$ degeneracy the edge form was built to avoid.
+
+The clean statement of the framework is therefore that mass is conserved nodally, while every intensive carried scalar — total enthalpy today, species and progress variables in a reacting network — is transported on the edges by the donor-and-upwind pair of this document.
+
+With the balances counted and the transport assigned, the remaining task is to give each element its pressure relations, which is taken up in [elements](elements.md).

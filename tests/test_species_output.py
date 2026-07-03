@@ -134,7 +134,7 @@ def test_invalid_basis_raises():
 def test_yaml_includes_chemistry_by_default(tmp_path):
     sol = _reacting_rig().solve()
     path = tmp_path / "case.yaml"
-    sol.save(str(path))
+    sol.to_yaml(str(path))
     txt = path.read_text()
     assert "Molar mass" in txt and "Specific heat" in txt  # W, cp fields
     assert "Chemistry" in txt  # the chemistry dataset
@@ -145,7 +145,7 @@ def test_yaml_includes_chemistry_by_default(tmp_path):
 def test_yaml_perfect_gas_has_no_chemistry_dataset(tmp_path):
     sol = _perfect_duct().solve()
     path = tmp_path / "case.yaml"
-    sol.save(str(path))
+    sol.to_yaml(str(path))
     txt = path.read_text()
     assert "Molar mass" in txt  # W still emitted
     assert "Chemistry" not in txt  # no composition transported

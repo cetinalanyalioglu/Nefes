@@ -510,11 +510,37 @@ def _build_ui_spec(node: dict):
 
 def load_case(path: str):
     """Load a YAML file exported from the UI tool into a ``Network``."""
-
-    from ..shell import Network  # local import to avoid an import cycle
-
     with open(path, "r") as fh:
         doc = yaml.safe_load(fh)
+    return case_from_dict(doc, case_dir=os.path.dirname(os.path.abspath(path)), source=path)
+
+
+def case_from_dict(doc: dict, case_dir: str = None, source: str = "<dict>"):
+    """Build a ``Network`` from an already-parsed UI/YAML case document.
+
+    The file-less core of :func:`load_case`: the same schema, as an in-memory ``dict``.
+
+    Parameters
+    ----------
+    doc : dict
+        The parsed case document (a ``model`` section with ``nodes`` / ``edges``).
+    case_dir : str, optional
+        Directory used to resolve a reacting mechanism file referenced by relative path
+        (default: the current working directory).
+    source : str, optional
+        Label used in error messages (default ``"<dict>"``).
+
+    Returns
+    -------
+    Network
+    """
+    from ..shell import Network  # local import to avoid an import cycle
+
+    path = source
+    if case_dir is None:
+        case_dir = os.getcwd()
+    if not isinstance(doc, dict):
+        raise ValueError(f"{path}: case must be a mapping (dict), got {type(doc).__name__}")
     model = doc.get("model")
     if not isinstance(model, dict):
         raise ValueError(f"{path}: not a UI save file (no 'model' section)")
@@ -533,7 +559,6 @@ def load_case(path: str):
     # Thermo model: a calorically-perfect gas, or the reacting equilibrium model (transported
     # feed-stream mixture fractions slaved to HP equilibrium).
     model_kind = str(g.get("thermoModel") or "perfect_gas")
-    case_dir = os.path.dirname(os.path.abspath(path))
     if model_kind == "perfect_gas":
         gas = perfect_gas(R=float(g["gasConstant"]), gamma=float(g["heatCapacityRatio"]))
         reacting = False

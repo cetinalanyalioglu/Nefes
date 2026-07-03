@@ -6,7 +6,7 @@ flow reads left to right.  It is a structural view (no solve needed): a quick wa
 to confirm the connectivity, element indices and edge directions before solving.
 
     from nefes.plotting import plot_network_topology
-    plot_network_topology(net).show()      # or net.plot_topology()
+    plot_network_topology(net).show()      # or net.plot() / sol.plot(color_by="T")
 """
 
 import numpy as np
@@ -94,10 +94,16 @@ def _positions(n, edges):
     return x, y
 
 
-def _edge_field(solution, name, n_edges, kind):
-    """Per-edge values of a solved field for an overlay (clear errors on misuse)."""
+def _edge_field(network, solution, name, n_edges, kind):
+    """Per-edge values of a field for an overlay (clear errors on misuse).
+
+    ``area`` lives on the network edges, so it is available without a solve (the geometry-weighted
+    diagram of an unsolved network); every other field is read from the converged ``solution``.
+    """
     if name not in _FIELD_INFO:
         raise ValueError(f"{kind}={name!r} is not a known edge field; choose from {sorted(_FIELD_INFO)}")
+    if name == "area":
+        return np.asarray([a for (_t, _h, a) in network._edges[:n_edges]], dtype=float)
     vals = np.asarray(solution.field(name), dtype=float)
     # A composite network solves on an expanded graph (internal edges appended at the tail),
     # so the solution may carry MORE edges than the drawn (user) topology -- the user edges keep
@@ -140,12 +146,14 @@ def plot_network_topology(
         / ``width_by``; when given it also enriches the edge hover with ``mdot``,
         ``T`` and ``M``.
     color_by : str, optional
-        Solved edge field to color the edges by (e.g. ``"T"``, ``"M"``, ``"mdot"``;
-        keys of :data:`nefes.shell.network._EDGE_FIELDS`).  Adds a colorbar and labels
-        each edge with its value.  Requires ``solution``.
+        Edge field to color the edges by (e.g. ``"T"``, ``"M"``, ``"mdot"``; keys of
+        :data:`nefes.shell.network._EDGE_FIELDS`).  Adds a colorbar and labels each edge
+        with its value.  ``"area"`` needs no solve; every other field requires ``solution``.
     width_by : str, optional
-        Solved edge field whose magnitude scales the arrow width (e.g. ``"mdot"`` --
-        a flow-weighted diagram).  Requires ``solution``.
+        Edge field whose magnitude scales the arrow width (e.g. ``"mdot"`` for a
+        flow-weighted diagram, ``"area"`` for a geometry-weighted one).  ``"area"`` needs no
+        solve -- it is the width :meth:`Network.plot` uses by default; every other field
+        requires ``solution``.
     colorscale : str, optional
         Plotly colorscale name for ``color_by`` (default ``"Viridis"``).
     show_edge_labels : bool, optional
@@ -169,12 +177,13 @@ def plot_network_topology(
     n = len(elements)
     x, y = _positions(n, [(t, h) for (t, h, _a) in edges])
 
-    if (color_by or width_by) and solution is None:
+    # Every overlay field but ``area`` (which lives on the network) needs a converged solution.
+    if any(f and f != "area" for f in (color_by, width_by)) and solution is None:
         raise ValueError("color_by / width_by need a converged `solution` of this network")
 
-    # -- solved-field overlays (edge-centric: Nefes state lives on edges)
-    cvals = _edge_field(solution, color_by, len(edges), "color_by") if color_by else None
-    wvals = _edge_field(solution, width_by, len(edges), "width_by") if width_by else None
+    # -- field overlays (edge-centric: Nefes state lives on edges; area lives on the network)
+    cvals = _edge_field(network, solution, color_by, len(edges), "color_by") if color_by else None
+    wvals = _edge_field(network, solution, width_by, len(edges), "width_by") if width_by else None
     edge_colors = None
     if cvals is not None and len(cvals):
         cmin, cmax = float(np.min(cvals)), float(np.max(cvals))

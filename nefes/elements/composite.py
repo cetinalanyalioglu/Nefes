@@ -25,7 +25,9 @@ solve time; a bandwidth-aware renumber is a deferred refinement -- see
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, List, Tuple
+from typing import Dict, FrozenSet, List, Optional, Tuple
+
+import numpy as np
 
 from .ids import FIXED_NPORTS, RESIDUAL_NAMES
 
@@ -97,6 +99,55 @@ class CompositeMap:
     def expanded_nodes(self, user_node: int) -> Tuple[int, ...]:
         """The expanded node ids a user node expanded to (``(n,)`` if atomic)."""
         return self.user_node_to_expanded[user_node]
+
+
+@dataclass
+class CompositeView:
+    """A solved composite element, presented as the single element the user added.
+
+    Returned by :meth:`nefes.shell.network.Solution.composite`.  A composite expands at
+    build time into a small graph of sub-elements joined by internal edges; this view lets a
+    caller read those hidden internal states -- for example the throat of an orifice or a
+    tapered nozzle -- without knowing the expanded node/edge layout.
+
+    Attributes
+    ----------
+    name, kind : str
+        The composite's display name and type label.
+    node : int
+        The composite's user node id (its first expanded sub-element).
+    nodes : tuple of int
+        All expanded node ids the composite occupies.
+    internal_edges : tuple of int
+        The composite's internal edge ids (both endpoints inside the composite).
+    throat : int or None
+        The narrowest internal edge (minimum area).  Meaningful for a contracting composite
+        such as an orifice or nozzle, where it is the throat; ``None`` if the composite has no
+        internal edge.
+    """
+
+    name: str
+    kind: str
+    node: int
+    nodes: Tuple[int, ...]
+    internal_edges: Tuple[int, ...]
+    throat: Optional[int]
+    _solution: object = None
+
+    def state(self, e: int) -> dict:
+        """``{field: value}`` of all derived quantities on edge ``e`` (an internal or boundary edge)."""
+        return self._solution.edge(int(e))
+
+    @property
+    def throat_state(self) -> dict:
+        """``{field: value}`` at the throat (narrowest) edge; empty if the composite has none."""
+        return {} if self.throat is None else self.state(self.throat)
+
+    def profile(self, name: str):
+        """The named field along the composite's internal edges (area-ordered, narrowest first)."""
+        field = self._solution.field(name)
+        order = sorted(self.internal_edges, key=lambda e: float(self._solution.field("area")[e]))
+        return np.array([field[e] for e in order])
 
 
 def is_composite(el) -> bool:

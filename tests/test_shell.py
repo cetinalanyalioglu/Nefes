@@ -45,7 +45,7 @@ def test_mdot_ref_default_from_inlet():
     net.add(cat.mass_flow_inlet(7.5, 300.0))
     net.add(cat.pressure_outlet(101325.0))
     net.connect(0, 1, 0.1)
-    assert net.mdot_ref == pytest.approx(7.5)
+    assert net._seed_mdot() == pytest.approx(7.5)
 
 
 def test_h_ref_defaults_to_cp_t_ref():
@@ -55,7 +55,7 @@ def test_h_ref_defaults_to_cp_t_ref():
     net.add(cat.mass_flow_inlet(5.0, 300.0))
     net.add(cat.pressure_outlet(101325.0))
     net.connect(0, 1, 0.05)
-    assert net.h_ref == pytest.approx(CP * 300.0)
+    assert net._seed_h() == pytest.approx(CP * 300.0)
     assert net.compile().var_scale[2] == pytest.approx(CP * 300.0)
 
 
@@ -75,7 +75,7 @@ def test_h_ref_explicit_override():
         return net
 
     net = build(h0)
-    assert net.h_ref == pytest.approx(h0)
+    assert net._seed_h() == pytest.approx(h0)
     assert net.compile().var_scale[2] == pytest.approx(h0)
 
     explicit = net.solve()
@@ -544,7 +544,8 @@ def test_network_repr_summarizes_topology_and_thermo():
     assert "mdot=0.5 kg/s (auto)" in text
     # element + edge listings with their names, and the dynamic-source marker on the flame
     assert "air-in" in text and "HeatReleaseFlame *" in text
-    assert "duct -> flame" in text and "pre-flame" in text
+    # factory-default names are numbered from the start ("duct" -> "duct-1"); "pre-flame" is an explicit edge name
+    assert "duct-1 -> flame-1" in text and "pre-flame" in text
     assert "carries a dynamic S(omega) source" in text
 
     html = net._repr_html_()

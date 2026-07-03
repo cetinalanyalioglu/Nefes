@@ -151,7 +151,7 @@ def test_active_inlet_drives_instability_via_boundary_power():
     by_name = {e["name"]: e for e in bp.entries}
     assert by_name["reservoir"]["power_in"] > 0.0  # active inlet feeds energy
     assert by_name["reservoir"]["reflection"] > by_name["reservoir"]["passive_bound"]
-    assert by_name["nozzle"]["power_in"] < 0.0  # choked nozzle absorbs
+    assert by_name["nozzle-1"]["power_in"] < 0.0  # choked nozzle absorbs ("nozzle" is a factory default -> numbered)
     assert abs(by_name["bleed"]["fraction"]) < 1e-6  # mass-flow outlet is energy-neutral
 
 

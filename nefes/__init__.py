@@ -13,3 +13,7 @@ doubles as the zero-frequency perturbation operator.
 """
 
 __version__ = "0.1.0"
+
+from .shell import Network, Solution
+
+__all__ = ["Network", "Solution"]

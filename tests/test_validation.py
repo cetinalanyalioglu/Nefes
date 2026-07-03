@@ -106,10 +106,11 @@ def test_junction_needs_two_ports():
 # -- unique element names ---------------------------------------------------
 
 
-def test_ensure_unique_names_suffixes_duplicates():
+def test_ensure_unique_names_numbers_defaults_from_one():
+    # factory defaults are numbered from the start, so a lone default still reads "duct-1"
     els = [cat.duct(1.0), cat.duct(1.0), cat.duct(1.0)]
     cat.ensure_unique_names(els)
-    assert [e.name for e in els] == ["duct", "duct-1", "duct-2"]
+    assert [e.name for e in els] == ["duct-1", "duct-2", "duct-3"]
 
 
 def test_ensure_unique_names_is_idempotent():
@@ -120,11 +121,11 @@ def test_ensure_unique_names_is_idempotent():
     assert [e.name for e in els] == once
 
 
-def test_ensure_unique_names_skips_taken_suffix():
-    # an explicit "duct-1" already present must not be re-issued to a clash
-    els = [cat.duct(1.0), cat.duct(1.0, name="duct-1"), cat.duct(1.0)]
+def test_ensure_unique_names_keeps_explicit_names_bare():
+    # a name the caller chose (not a factory default) stays unnumbered; defaults number around it
+    els = [cat.duct(1.0), cat.duct(1.0, name="main"), cat.duct(1.0)]
     cat.ensure_unique_names(els)
-    assert [e.name for e in els] == ["duct", "duct-1", "duct-2"]
+    assert [e.name for e in els] == ["duct-1", "main", "duct-2"]
 
 
 def test_compile_normalizes_duplicate_names():
@@ -137,5 +138,5 @@ def test_compile_normalizes_duplicate_names():
     ]
     edges = [(0, 1, 0.02), (1, 2, 0.02), (2, 3, 0.02)]
     prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
-    assert prob.node_names == ("pt-inlet", "duct", "duct-1", "outlet")
+    assert prob.node_names == ("pt-inlet-1", "duct-1", "duct-2", "outlet-1")
     assert len(set(prob.node_names)) == prob.n_nodes

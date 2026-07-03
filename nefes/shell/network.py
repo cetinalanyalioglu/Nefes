@@ -11,7 +11,7 @@ from ..thermo.api import PERFECT_GAS, EQ_KERNEL
 from ..graph.connectivity import build_connectivity
 from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
-from ..elements.composite import is_composite
+from ..elements.composite import is_composite, CompositeView
 from ..elements.ids import RESIDUAL_NAMES
 from ..graph.problem import CompiledProblem
 from ..solver import solve as _solve
@@ -38,91 +38,57 @@ _EDGE_FIELDS = {
 _REPR_MAX_ROWS = 20
 
 
-@dataclass
-class CompositeView:
-    """A solved composite element projected back to its user-facing identity.
-
-    Returned by :meth:`Solution.composite`.  Lets a caller read a composite's intra-element
-    state (e.g. an orifice's throat) without knowing the expanded node/edge layout.
-
-    Attributes
-    ----------
-    name, kind : str
-        The composite's display name and type label.
-    node : int
-        The composite's user node id (its first expanded sub-element).
-    nodes : tuple of int
-        All expanded node ids the composite occupies.
-    internal_edges : tuple of int
-        The composite's internal edge ids (both endpoints inside the composite).
-    throat : int or None
-        The narrowest internal edge (minimum area) -- the throat of an orifice/nozzle;
-        ``None`` if the composite has no internal edge.
-    """
-
-    name: str
-    kind: str
-    node: int
-    nodes: Tuple[int, ...]
-    internal_edges: Tuple[int, ...]
-    throat: Optional[int]
-    _solution: object = None
-
-    def state(self, e: int) -> dict:
-        """``{field: value}`` of all derived quantities on edge ``e`` (an internal or boundary edge)."""
-        return self._solution.edge(int(e))
-
-    @property
-    def throat_state(self) -> dict:
-        """``{field: value}`` at the throat (narrowest) edge; empty if the composite has none."""
-        return {} if self.throat is None else self.state(self.throat)
-
-    def profile(self, name: str):
-        """The named field along the composite's internal edges (area-ordered, narrowest first)."""
-        field = self._solution.field(name)
-        order = sorted(self.internal_edges, key=lambda e: float(self._solution.field("area")[e]))
-        return np.array([field[e] for e in order])
-
-
 class Network:
-    """The main object for building and solving flow networks."""
+    """The main object for building and solving flow networks.
+
+    A network can be built incrementally with :meth:`add` / :meth:`connect`, specified
+    complete in one shot via the ``nodes`` / ``edges`` constructor arguments, or loaded from
+    a saved case with :meth:`from_yaml` / :meth:`from_dict`.  Call :meth:`solve` for the
+    steady mean flow (a :class:`Solution`) or :meth:`compile` / :attr:`problem` for the
+    immutable compiled problem.  Write it back out with :meth:`to_yaml`.
+    """
 
     def __init__(
         self,
         gas: Optional[ThermoConfig] = None,
+        nodes=None,
+        edges=None,
+        *,
         p_ref=101325.0,
         T_ref=300.0,
         mdot_ref=None,
         h_ref=None,
-        nodes=None,
-        edges=None,
         edge_models=None,
     ):
         """Create a network, optionally fully specified in one shot.
 
-        The network can be built incrementally with :meth:`add` / :meth:`connect`, or
-        constructed complete by passing ``nodes`` and ``edges`` -- the convenient one-shot
-        form that supersedes the lower-level :func:`nefes.elements.catalog.build_problem`.
+        The three positional arguments -- ``gas``, ``nodes`` and ``edges`` -- are the whole
+        interface for the common one-shot case; the one-shot form supersedes the lower-level
+        :func:`nefes.elements.catalog.build_problem`.  The remaining keyword-only arguments
+        are seldom-touched reference/advanced overrides.
 
         Parameters
         ----------
         gas : ThermoConfig, optional
             The thermodynamic model (default: dry-air perfect gas).
+        nodes : sequence of ElementSpec, optional
+            The elements, in node order -- attached via :meth:`add`.
+        edges : sequence of tuple, optional
+            Directed edges referencing node indices, attached via :meth:`connect`.  Each is
+            ``(tail, head, area)`` or, to pin the local ports, ``(tail, head, area, tail_port,
+            head_port)``; ports left unspecified are auto-assigned in attachment order.
         p_ref : float, optional
             Absolute-pressure gauge reference [Pa] (default 101325).
         T_ref : float, optional
             Reference temperature [K] for the initial guess (default 300).
         mdot_ref, h_ref : float, optional
-            Hidden seed overrides for the residual scaling; normally auto-derived and
-            re-measured during the solve (see :attr:`mdot_ref` / :attr:`h_ref`).
-        nodes : sequence of ElementSpec, optional
-            The elements, in node order -- attached via :meth:`add`.
-        edges : sequence of tuple, optional
-            Directed edges ``(tail, head, area)`` referencing node indices, attached via
-            :meth:`connect` (ports auto-assigned in attachment order).
+            Advanced seed overrides for the residual scaling; normally auto-derived and
+            re-measured during the solve, so rarely set.
         edge_models : sequence of int, optional
-            Per-edge thermo-model id override aligned with ``edges`` (e.g. frozen-unburnt
-            vs equilibrium-burnt across a flame); ``None`` entries use the gas default.
+            Advanced per-edge thermo-model id override aligned with ``edges`` (a hard
+            frozen/equilibrium closure); ``None`` entries use the gas default.  Normally left
+            unset -- a reacting network with an equilibrium flame gates the closure
+            automatically off the transported burnt marker.
         """
         self.gas = gas if gas is not None else perfect_gas()
         self.p_ref = p_ref
@@ -139,6 +105,8 @@ class Network:
         self._edge_models: List[Optional[int]] = []
         # Provenance metadata for the network (e.g. from the UI).
         self.provenance = None
+        # Lazily compiled problem, invalidated by any topology change (see ``_invalidate``).
+        self._compiled: Optional[CompiledProblem] = None
 
         for spec in nodes or ():
             self.add(spec)
@@ -148,18 +116,74 @@ class Network:
         models = list(edge_models) if edge_models is not None else [None] * len(edges)
         if len(models) != len(edges):
             raise ValueError(f"edge_models has {len(models)} entries but there are {len(edges)} edges")
-        for (tail, head, area), model in zip(edges, models):
-            self.connect(tail, head, area, edge_model=model)
+        for edge, model in zip(edges, models):
+            # Accept a bare (tail, head, area) or a port-pinned (tail, head, area, tail_port, head_port).
+            tail, head, area = edge[0], edge[1], edge[2]
+            tail_port = edge[3] if len(edge) > 3 else None
+            head_port = edge[4] if len(edge) > 4 else None
+            self.connect(tail, head, area, tail_port=tail_port, head_port=head_port, edge_model=model)
 
     # -- construction -------------------------------------------------------------------------------------------------
 
+    @classmethod
+    def from_yaml(cls, path: str) -> "Network":
+        """Build a network from a saved UI/YAML case file.
+
+        A convenience so callers need not reach into :mod:`nefes.io`; equivalent to
+        :func:`nefes.io.load_case`.
+
+        Parameters
+        ----------
+        path : str
+            Path to a ``.yaml`` case file (as written by :meth:`to_yaml`).
+
+        Returns
+        -------
+        Network
+        """
+        from ..io import load_case
+
+        return load_case(path)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Network":
+        """Build a network from an in-memory case dictionary.
+
+        The dictionary is the parsed form of the same schema :meth:`from_yaml` reads, so this
+        is the file-less equivalent of :meth:`from_yaml`.
+
+        Parameters
+        ----------
+        data : dict
+            A case document (a ``model`` section with ``nodes`` / ``edges``, as in a YAML case).
+
+        Returns
+        -------
+        Network
+        """
+        from ..io import case_from_dict
+
+        return case_from_dict(data)
+
+    def _invalidate(self) -> None:
+        """Drop the cached compiled problem after a topology change."""
+        self._compiled = None
+
     def add(self, spec: ElementSpec) -> int:
-        """Add an element and return its node index."""
+        """Add an element and return its node index.
+
+        The element names are required to be unique. If a non-unique name is provided in the ElementSpec,
+        it will be made unique by appending a number.
+        """
+        taken = {el.name for el in self._elements}
+        base = spec.name or ""
+        spec.name = cat.unique_name(base, taken, always_number=base in cat.default_name_bases())
         self._elements.append(spec)
+        self._invalidate()
         return len(self._elements) - 1
 
     def connect(
-        self, tail: int, head: int, area: float, name: str = "", tail_port=None, head_port=None, edge_model=None
+        self, tail: int, head: int, area: float, name: str = "", *, tail_port=None, head_port=None, edge_model=None
     ) -> int:
         """Add a directed edge from element `tail` to element `head`, returning its edge id.
 
@@ -167,9 +191,11 @@ class Network:
         dynamic source's ``ref_edge`` (e.g. the edge just upstream of a flame) without guessing.
 
         `tail_port`/`head_port` pin the local port indices at each endpoint; leave them `None` to let the
-        compiler auto-assign ports in attachment order.  `edge_model` overrides the per-edge thermo-model id
-        (e.g. a frozen-unburnt vs. equilibrium-burnt split across a flame); leave `None` to use the gas
-        config's default model on this edge.
+        compiler auto-assign ports in attachment order.
+
+        `edge_model` is an advanced, keyword-only override of the per-edge thermo-model id (a hard
+        frozen/equilibrium closure); leave it `None` to use the gas config's default model -- a reacting
+        network gates the frozen/equilibrium split automatically off the transported burnt marker.
         """
         idx = len(self._edges)
         self._edges.append((tail, head, float(area)))
@@ -177,6 +203,7 @@ class Network:
         self._edge_models.append(None if edge_model is None else int(edge_model))
         # Edge name is optional, defaulting to "e<index>".
         self._edge_names.append(name or f"e{idx}")
+        self._invalidate()
         return idx
 
     def edge_between(self, tail: int, head: int) -> int:
@@ -194,12 +221,7 @@ class Network:
         return matches[0]
 
     def set_dynamic_source(self, node: int, source) -> int:
-        """Attach (or replace) the dynamic-source descriptor on an already-added element.
-
-        Lets the network be wired up first -- so a flame's ``ref_edge`` can be taken from the edge id
-        :meth:`connect` returns -- and the ``S(omega)`` source attached afterwards, rather than baking a
-        guessed edge index into the element at construction time.  The mean solve ignores the source; the
-        perturbation layer consumes it.
+        """Attach (or replace) the dynamic-source descriptor on an *already-added* element.
 
         Parameters
         ----------
@@ -214,32 +236,29 @@ class Network:
             The same ``node``, for chaining.
         """
         self._elements[node].dynamic_source = source
+        self._invalidate()
         return node
 
-    @property
-    def h_ref(self) -> float:
-        """Reference enthalpy scale (a hidden override; normally auto-derived).
+    def _seed_h(self) -> float:
+        """Seed enthalpy scale threaded into the compiled ``var_scale`` (an explicit override or auto).
 
-        Like :attr:`mdot_ref`, only the seed for the residual scaling -- the solve re-measures
-        the enthalpy scale from the realized inflow.  Auto-derivation is the perfect-gas
-        ``cp * T_ref``; the reacting backend passes its formation-inclusive datum explicitly.
-        Set ``h_ref=`` only to override.
+        Only the *seed* for the residual scaling -- the solve re-measures the enthalpy scale from the
+        realized inflow, and the reacting initial guess seeds each edge from its feed enthalpy, so this
+        need only be order-of-magnitude right.  Auto-derivation is the perfect-gas ``cp * T_ref``; an
+        explicit ``h_ref=`` (as the reacting backend supplies) overrides it.
         """
         if self._h_ref is not None:
             return self._h_ref
         return self.gas.tf[0] * self.T_ref
 
-    @property
-    def mdot_ref(self) -> float:
-        """Reference mass-flow scale (a hidden override; normally auto-derived).
+    def _seed_mdot(self) -> float:
+        """Seed mass-flow scale threaded into the compiled ``var_scale`` (an explicit override or auto).
 
-        This is only the *seed* for the residual scaling -- the solve re-measures it from
-        the realized inflow at each homotopy stage (``adaptive_scale``) -- so it need only be
-        order-of-magnitude right.  Auto-derivation: the **total** specified inflow when every
-        inlet is a mass-flow inlet; otherwise a dP-based isentropic estimate
-        ``A * sqrt(2 rho dP_max)`` from the boundary pressures (replacing the old
-        pressure-blind M=0.3 guess); a quiescent / pressureless network falls back to the
-        M=0.3 estimate.  Set ``mdot_ref=`` on the network only to override it.
+        Only the *seed* for the residual scaling -- the solve re-measures it from the realized inflow at
+        each homotopy stage (``adaptive_scale``) -- so it need only be order-of-magnitude right.
+        Auto-derivation: the **total** specified inflow when every inlet is a mass-flow inlet; otherwise
+        a dP-based isentropic estimate ``A * sqrt(2 rho dP_max)`` from the boundary pressures; a quiescent
+        / pressureless network falls back to an M=0.3 estimate.  An explicit ``mdot_ref=`` overrides it.
         """
         if self._mdot_ref is not None:
             return self._mdot_ref
@@ -275,9 +294,33 @@ class Network:
         default = int(self.gas.model_id)
         return np.array([default if m is None else m for m in self._edge_models], dtype=np.int64)
 
+    @property
+    def problem(self) -> CompiledProblem:
+        """The compiled problem for the current topology, built on first access and cached.
+
+        Most callers never need the compiled object directly -- :meth:`solve` and the
+        :class:`Solution` it returns cover the common path -- but it is here for the lower-level
+        routines that take a ``CompiledProblem``.  The cache is dropped whenever the network is
+        mutated (:meth:`add` / :meth:`connect` / :meth:`set_dynamic_source`), so it always
+        reflects the live topology.
+        """
+        if self._compiled is None:
+            self._compiled = self._build()
+        return self._compiled
+
     def compile(self) -> CompiledProblem:
-        """Compile the elements and edges into an immutable ``CompiledProblem``."""
+        """Compile the elements and edges into an immutable ``CompiledProblem`` and cache it.
+
+        Rebuilds unconditionally (refreshing the :attr:`problem` cache); prefer :attr:`problem`
+        when a cached compile is enough.
+        """
+        self._compiled = self._build()
+        return self._compiled
+
+    def _build(self) -> CompiledProblem:
+        """Assemble a fresh ``CompiledProblem`` from the current elements and edges."""
         edge_models = self._resolve_edge_models()
+        mdot_ref, h_ref = self._seed_mdot(), self._seed_h()
         # If the ports are explicitly set, use the connectivity builder.
         explicit = self._edges and all(tp is not None and hp is not None for (tp, hp) in self._ports)
         if explicit:
@@ -285,10 +328,10 @@ class Network:
             conn = build_connectivity(len(self._elements), endpoints)
             area = np.array([a for (_t, _h, a) in self._edges], dtype=np.float64)
             return cat.build_problem_from_connectivity(
-                self.gas, self._elements, conn, area, self.mdot_ref, self.p_ref, self.h_ref, edge_models=edge_models
+                self.gas, self._elements, conn, area, mdot_ref, self.p_ref, h_ref, edge_models=edge_models
             )
         return cat.build_problem(
-            self.gas, self._elements, self._edges, self.mdot_ref, self.p_ref, self.h_ref, edge_models=edge_models
+            self.gas, self._elements, self._edges, mdot_ref, self.p_ref, h_ref, edge_models=edge_models
         )
 
     def solve(self, x0=None, **kw) -> "Solution":
@@ -324,11 +367,15 @@ class Network:
         """Return the solver's initial state guess for the compiled problem."""
         return initial_guess(self.compile(), **kw)
 
-    def plot_topology(self, **kwargs):
-        """Draw the network topology (element indices/names and edge directions).
+    def plot(self, **kwargs):
+        """Draw the network as a node/edge diagram (Plotly).
 
-        A structural diagnostic -- no solve needed.  Thin wrapper over
-        :func:`nefes.plotting.plot_network_topology`; see it for the keyword options.
+        A structural view by default: element indices/names and edge directions, with each edge's arrow
+        **width scaled by its area** (``width_by="area"``), so the geometry reads at a glance. Pass
+        ``width_by=None`` for uniform arrows, or another field (with a converged ``solution=``) to weight
+        by it instead; ``color_by`` similarly tints the edges, and :meth:`Solution.plot` is the same diagram
+        driven from a solution. Thin wrapper over :func:`nefes.plotting.plot_network_topology`; see it for
+        the full keyword set.
 
         Returns
         -------
@@ -336,12 +383,16 @@ class Network:
         """
         from ..plotting import plot_network_topology
 
+        # Default the arrow width to edge area (geometry-weighted); the caller can override or disable it.
+        kwargs.setdefault("width_by", "area")
         return plot_network_topology(self, **kwargs)
 
-    def save(self, path: str, **kwargs) -> None:
+    def to_yaml(self, path: str, **kwargs) -> None:
         """Write this network as a UI-readable YAML case (no result data).
 
-        Thin wrapper over :func:`nefes.io.save_case`; see it for the full set of keyword options.
+        The inverse of :meth:`from_yaml`.  Thin wrapper over :func:`nefes.io.save_case`; see it for
+        the full set of keyword options.  To embed solved fields as well, use
+        :meth:`Solution.to_yaml`.
 
         Parameters
         ----------
@@ -353,6 +404,10 @@ class Network:
         from ..io import save_case
 
         save_case(self, path, **kwargs)
+
+    def save(self, path: str, **kwargs) -> None:
+        """Alias for :meth:`to_yaml` (kept for intuitive usage)."""
+        self.to_yaml(path, **kwargs)
 
     # -- display ------------------------------------------------------------------------------------------------------
 
@@ -375,13 +430,13 @@ class Network:
         return f"model #{g.model_id}"
 
     def _refs(self):
-        """``(p_ref, T_ref, mdot_ref_or_None, mdot_is_explicit)`` for the repr headers."""
+        """``(p_ref, T_ref, mdot_seed_or_None, mdot_is_explicit)`` for the repr headers."""
         try:
             # The auto-derive medians the edge areas; an edge-less network yields a quiet NaN
             # (suppress numpy's "mean of empty slice" warning -- we report it as "n/a" below).
             with np.errstate(invalid="ignore"), warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
-                m = float(self.mdot_ref)
+                m = float(self._seed_mdot())
             if not np.isfinite(m):
                 m = None
         except Exception:
@@ -528,7 +583,25 @@ def _html_table(headers, rows, align):
 
 @dataclass
 class Solution:
-    """Converged mean-flow result with named edge-field access."""
+    """Converged mean-flow result with named edge-field access.
+
+    Key methods
+    -----------
+    field(name), edge(e)
+        Read a per-edge field across the network, or every field on one edge.
+    print_states(), table()
+        Show / return the full per-edge mean-flow state table.
+    residuals(), print_residuals()
+        The converged residual broken down equation-by-equation.
+    composite(key), composites
+        Read a composite element's hidden interior (e.g. an orifice throat).
+    species(e), mixture_fractions(e), marker(e)
+        Per-edge chemistry: solved species, transported feed fractions, burnt marker.
+    cuton_report()
+        Per-duct plane-wave validity ceiling (higher-order-mode cut-on).
+    to_yaml(path)
+        Write the network and these results to a UI-readable YAML case.
+    """
 
     network: Network
     problem: CompiledProblem
@@ -557,7 +630,7 @@ class Solution:
 
     @property
     def residual_norm(self) -> float:
-        """Final residual norm."""
+        """Final scaled-residual 2-norm -- the quantity the solve drives below its ``tol``."""
         return self.result.residual_norm
 
     @property
@@ -583,7 +656,12 @@ class Solution:
         return est[:, keep]
 
     def composite(self, key) -> "CompositeView":
-        """Project a solved composite element back to its user-facing identity.
+        """Read the hidden interior of a solved composite element.
+
+        A composite (e.g. an orifice or a tapered nozzle) is added as one element but expands into
+        several sub-elements joined by internal edges that :meth:`table` hides by default.  This
+        returns a :class:`~nefes.elements.composite.CompositeView` over that interior -- its internal
+        edges, and, for a contracting composite, its throat.
 
         Parameters
         ----------
@@ -593,7 +671,7 @@ class Solution:
         Returns
         -------
         CompositeView
-            A view exposing the composite's internal edges and throat state.
+            A view exposing the composite's internal edges and (where it contracts) throat state.
         """
         cm = self.problem.composite_map
         if cm is None:
@@ -629,7 +707,7 @@ class Solution:
             return []
         return [self.composite(n) for n in sorted(cm.composite_name)]
 
-    def cuton_report(self, section: str = "circular"):
+    def cuton_report(self, section: str = "circular", aspect: float = 1.0):
         """Per-duct higher-order-mode cut-on frequencies and the plane-wave ceiling.
 
         The Nefes acoustic layer is plane-wave (1-D); it is valid only below the first
@@ -640,8 +718,12 @@ class Solution:
 
         Parameters
         ----------
-        section : {"circular", "square"}, optional
+        section : {"circular", "square", "rectangular"}, optional
             Assumed duct cross-section shape (Nefes ducts store only an area).
+        aspect : float, optional
+            Width-to-height ratio (``>= 1``) for ``section="rectangular"``, used to recover the
+            larger transverse dimension (which sets the cut-on) from the area.  Ignored for the
+            circular and square sections; default ``1.0`` (a square).
 
         Returns
         -------
@@ -649,7 +731,37 @@ class Solution:
         """
         from ..perturbation.fields.cuton import duct_cuton_frequencies
 
-        return duct_cuton_frequencies(self.problem, self.result.x, section=section, names=self.network._edge_names)
+        return duct_cuton_frequencies(
+            self.problem, self.result.x, section=section, aspect=aspect, names=self.network._edge_names
+        )
+
+    def plot(self, color_by=None, width_by=None, **kwargs):
+        """Draw this solved network as a node/edge diagram with the solved state on the edges (Plotly).
+
+        The same diagram as :meth:`Network.plot`, with this solution attached: the edge hover carries
+        the headline state, and ``color_by`` / ``width_by`` map any solved edge field onto edge color /
+        arrow width.  Shares one backend (:func:`nefes.plotting.plot_network_topology`) with the
+        structural view, so topology and results read the same way.
+
+        Parameters
+        ----------
+        color_by : str, optional
+            Solved edge field to color the edges by, e.g. ``"T"``, ``"M"``, ``"mdot"`` (keys of the
+            per-edge state; see :meth:`field`).  Adds a colorbar and labels each edge with its value.
+        width_by : str, optional
+            Solved edge field whose magnitude scales each edge's arrow width (e.g. ``"mdot"`` for a
+            flow-weighted diagram, ``"area"`` for a geometry-weighted one).
+        **kwargs
+            Forwarded to :func:`nefes.plotting.plot_network_topology` (e.g. ``colorscale``,
+            ``show_edge_labels``, ``show_areas``, ``title``, ``height``, ``width``).
+
+        Returns
+        -------
+        plotly.graph_objects.Figure
+        """
+        from ..plotting import plot_network_topology
+
+        return plot_network_topology(self.network, solution=self, color_by=color_by, width_by=width_by, **kwargs)
 
     def print_states(self, edges=None, precision: int = 5, file=None) -> None:
         """Print the per-edge mean-flow state table to the screen.
@@ -777,19 +889,30 @@ class Solution:
         lib = self.network.gas.library
         return edge_species(self.problem, self.result.x, e, lib, basis=basis, moles=moles, stream_Y=stream_Y)
 
-    def save(self, path: str, **kwargs) -> None:
-        """Write the network and this solution's results as a UI-readable case.
+    def to_yaml(self, path: str, dataset: str = "Mean flow", **kwargs) -> None:
+        """Write the network and this solution's results to a UI-readable YAML case.
 
-        Wrapper over :func:`nefes.io.save_case` with this solution attached, so the mean-flow result fields are
-        embedded as datasets the UI can load.
+        Embeds the mean-flow fields (and any transported chemistry) as a named dataset the UI can
+        load.  If ``path`` does not yet exist, a fresh case is written.  If it exists -- and already
+        holds this same network -- the results are *appended* as a new dataset, so several solutions
+        (e.g. operating points) can be overlaid in one file from repeated calls with distinct
+        ``dataset`` names.
 
         Parameters
         ----------
         path : str
-            Destination ``.yaml`` path.
+            Destination ``.yaml`` path.  Appended to when it already exists.
+        dataset : str, optional
+            Name for this solution's mean-flow dataset (default ``"Mean flow"``).  Appending a
+            dataset whose name is already present in the file raises ``ValueError``.
         **kwargs
-            Forwarded to :func:`nefes.io.save_case` (e.g. ``fields``, ``node_data``, ``forced``, ``title``).
+            Forwarded to :func:`nefes.io.save_case` / :func:`nefes.io.dump_case` (e.g. ``fields``,
+            ``node_data``, ``forced``, ``title``).
         """
-        from ..io import save_case
+        from ..io import save_solution
 
-        save_case(self.network, path, solution=self, **kwargs)
+        save_solution(self.network, self, path, dataset=dataset, **kwargs)
+
+    def save(self, path: str, dataset: str = "Mean flow", **kwargs) -> None:
+        """Alias for :meth:`to_yaml` (kept for intuitive usage)."""
+        self.to_yaml(path, dataset=dataset, **kwargs)

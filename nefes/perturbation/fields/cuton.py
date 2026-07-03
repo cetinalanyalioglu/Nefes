@@ -34,19 +34,34 @@ from ...assembly.derive import ES_C, ES_M, ES_AREA
 # duct -- the lowest higher-order mode, hence the one that cuts on first.
 ALPHA_CIRCULAR = 1.8411837813406593
 
-_SECTIONS = ("circular", "square")
+_SECTIONS = ("circular", "square", "rectangular")
 
 
-def _transverse_span(area, section):
-    """Cross-sectional dimension feeding the cut-on: circle diameter or square side."""
+def _check_aspect(aspect):
+    """Validate a rectangular aspect ratio (larger-to-smaller side, ``>= 1``)."""
+    aspect = float(aspect)
+    if not aspect >= 1.0:
+        raise ValueError(f"aspect (width-to-height ratio) must be >= 1; got {aspect}")
+    return aspect
+
+
+def _transverse_span(area, section, aspect=1.0):
+    """Cross-sectional dimension feeding the cut-on: circle diameter, or the larger rectangle side.
+
+    For a rectangle of area ``area`` and side ratio ``aspect = a/b >= 1``, the larger side is
+    ``a = sqrt(area * aspect)`` -- the dimension that sets the first (lowest) transverse mode.  The
+    square is the ``aspect = 1`` special case.
+    """
     if section == "circular":
         return 2.0 * np.sqrt(area / np.pi)  # diameter
     if section == "square":
         return np.sqrt(area)  # side
+    if section == "rectangular":
+        return np.sqrt(area * _check_aspect(aspect))  # larger side
     raise ValueError(f"section must be one of {_SECTIONS}; got {section!r}")
 
 
-def cuton_frequency(area, c, mach=0.0, section="circular"):
+def cuton_frequency(area, c, mach=0.0, section="circular", aspect=1.0):
     """First higher-order-mode cut-on frequency [Hz] of a uniform duct.
 
     Parameters
@@ -58,8 +73,11 @@ def cuton_frequency(area, c, mach=0.0, section="circular"):
     mach : float, optional
         Mean-flow Mach number; its magnitude lowers the ceiling by
         ``sqrt(1 - M^2)`` (default 0, the quiescent ceiling).
-    section : {"circular", "square"}, optional
+    section : {"circular", "square", "rectangular"}, optional
         Assumed cross-section shape (Nefes ducts store only an area).
+    aspect : float, optional
+        Width-to-height ratio (``>= 1``) for ``section="rectangular"``; ignored otherwise
+        (default ``1.0``, a square).
 
     Returns
     -------
@@ -70,10 +88,10 @@ def cuton_frequency(area, c, mach=0.0, section="circular"):
     c = float(c)
     if area <= 0.0 or c <= 0.0:
         raise ValueError(f"area and c must be positive; got area={area}, c={c}")
-    d = _transverse_span(area, section)
+    d = _transverse_span(area, section, aspect)
     if section == "circular":
         f0 = ALPHA_CIRCULAR * c / (np.pi * d)
-    else:  # square
+    else:  # square / rectangular: half-wavelength across the larger side
         f0 = c / (2.0 * d)
     m = abs(float(mach))
     flow = np.sqrt(max(1.0 - m * m, 0.0))  # subsonic v1; M->1 drives the ceiling to 0
@@ -100,6 +118,13 @@ class CutOnReport:
 
     section: str
     ducts: List[DuctCutOn] = field(default_factory=list)
+    aspect: float = 1.0
+
+    def _section_label(self) -> str:
+        """The section descriptor shown in the headers (with the aspect ratio when rectangular)."""
+        if self.section == "rectangular":
+            return f"{self.section} section, aspect {self.aspect:g}"
+        return f"{self.section} section"
 
     @property
     def f_cuton(self) -> float:
@@ -120,7 +145,7 @@ class CutOnReport:
             return "CutOnReport(no ducts)"
         lim = self.limiting
         head = (
-            f"Cut-on report ({self.section} section)\n"
+            f"Cut-on report ({self._section_label()})\n"
             f"  plane-wave validity ceiling: f < {self.f_cuton:.1f} Hz "
             f"(edge {lim.edge} {lim.name!r}, span {lim.span:.4g} m, M {lim.mach:.3f})\n"
         )
@@ -135,8 +160,44 @@ class CutOnReport:
         )
         return head + cols + rows
 
+    def _repr_html_(self) -> str:
+        if not self.ducts:
+            return "<div><b>CutOnReport</b> &middot; no ducts</div>"
+        lim = self.limiting
+        header = (
+            "<div style='font-family:sans-serif;margin-bottom:4px'>"
+            f"<b>Cut-on report</b> &nbsp;&middot;&nbsp; {self._section_label()} &nbsp;|&nbsp; "
+            f"plane-wave validity ceiling <b>f &lt; {self.f_cuton:.1f} Hz</b> "
+            f"(edge {lim.edge} {lim.name!r}, span {lim.span:.4g} m, M {lim.mach:.3f})</div>"
+        )
+        th = "padding:2px 8px;border-bottom:1px solid #ccc"
+        cols = ("edge", "name", "area [m&sup2;]", "span [m]", "c [m/s]", "M", "f_cut [Hz]", "(M=0) [Hz]")
+        head = "<tr>" + "".join(f"<th style='text-align:right;{th}'>{c}</th>" for c in cols) + "</tr>"
+        body = []
+        for d in self.ducts:
+            flag = " style='background:#fff3cd'" if d.edge == lim.edge else ""
+            cells = (
+                str(d.edge),
+                d.name,
+                f"{d.area:.4g}",
+                f"{d.span:.4g}",
+                f"{d.c:.1f}",
+                f"{d.mach:.3f}",
+                f"{d.f_cuton:.1f}",
+                f"{d.f_cuton_quiescent:.1f}",
+            )
+            tds = "".join(f"<td style='text-align:right;padding:2px 8px'>{c}</td>" for c in cells)
+            body.append(f"<tr{flag}>" + tds + "</tr>")
+        table = (
+            "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>"
+            + head
+            + "".join(body)
+            + "</table>"
+        )
+        return header + table
 
-def duct_cuton_frequencies(prob, x, *, section="circular", names=None):
+
+def duct_cuton_frequencies(prob, x, *, section="circular", aspect=1.0, names=None):
     """Per-duct cut-on frequencies of a solved network.
 
     Reads each edge's area, sound speed and Mach number from the converged
@@ -150,8 +211,11 @@ def duct_cuton_frequencies(prob, x, *, section="circular", names=None):
         The compiled network (provides ``n_edges``).
     x : ndarray
         Converged mean-flow state (as returned by the solver).
-    section : {"circular", "square"}, optional
+    section : {"circular", "square", "rectangular"}, optional
         Assumed duct cross-section shape (default ``"circular"``).
+    aspect : float, optional
+        Width-to-height ratio (``>= 1``) for ``section="rectangular"``; ignored otherwise
+        (default ``1.0``, a square).
     names : sequence of str, optional
         Per-edge names for the report (default ``"e{edge}"``).
 
@@ -161,6 +225,8 @@ def duct_cuton_frequencies(prob, x, *, section="circular", names=None):
     """
     if section not in _SECTIONS:
         raise ValueError(f"section must be one of {_SECTIONS}; got {section!r}")
+    if section == "rectangular":
+        _check_aspect(aspect)
     from ...solver.control import states_table
 
     est = states_table(prob, x)
@@ -175,11 +241,11 @@ def duct_cuton_frequencies(prob, x, *, section="circular", names=None):
                 edge=e,
                 name=name,
                 area=area,
-                span=float(_transverse_span(area, section)),
+                span=float(_transverse_span(area, section, aspect)),
                 c=c,
                 mach=mach,
-                f_cuton=cuton_frequency(area, c, mach, section),
-                f_cuton_quiescent=cuton_frequency(area, c, 0.0, section),
+                f_cuton=cuton_frequency(area, c, mach, section, aspect),
+                f_cuton_quiescent=cuton_frequency(area, c, 0.0, section, aspect),
             )
         )
-    return CutOnReport(section=section, ducts=ducts)
+    return CutOnReport(section=section, ducts=ducts, aspect=float(aspect))

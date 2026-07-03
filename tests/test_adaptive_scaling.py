@@ -98,7 +98,7 @@ def test_seed_sums_mass_inlets():
     o = net.add(cat.pressure_outlet(1.0e5, 300.0))
     for a, b in [(i1, j), (i2, j), (j, o)]:
         net.connect(a, b, 0.1)
-    assert net.mdot_ref == pytest.approx(8.0)  # total specified inflow
+    assert net._seed_mdot() == pytest.approx(8.0)  # total specified inflow
 
 
 def test_seed_uses_dp_estimate_when_pressure_driven():
@@ -110,10 +110,10 @@ def test_seed_uses_dp_estimate_when_pressure_driven():
     net.connect(d, o, 0.1)
     rho = 1e5 / (287.0 * 300.0)
     expected = 0.1 * np.sqrt(2.0 * rho * (1.2e5 - 1.0e5))
-    assert net.mdot_ref == pytest.approx(expected, rel=1e-6)
+    assert net._seed_mdot() == pytest.approx(expected, rel=1e-6)
 
 
 def test_refs_remain_overridable():
     net = Network(gas=CFG, p_ref=1e5, T_ref=300.0, mdot_ref=42.0, h_ref=9999.0)
-    assert net.mdot_ref == 42.0
-    assert net.h_ref == 9999.0
+    assert net._seed_mdot() == 42.0
+    assert net._seed_h() == 9999.0

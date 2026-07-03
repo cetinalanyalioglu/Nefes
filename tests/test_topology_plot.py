@@ -1,4 +1,4 @@
-"""Network topology diagram (`plot_network_topology` / `Network.plot_topology`)."""
+"""Network topology diagram (`plot_network_topology` / `Network.plot` / `Solution.plot`)."""
 
 import pytest
 
@@ -72,7 +72,7 @@ def test_linear_figure_has_nodes_and_edge_arrows():
 
 def test_branched_topology_layers_branch_and_merge():
     net = _branched_net()
-    fig = net.plot_topology()
+    fig = net.plot()
     assert len(fig.layout.annotations) == 6  # six directed edges
     # the two parallel ducts (nodes 2, 3) land on the same layer
     x, _y = _positions(len(net._elements), [(t, h) for (t, h, _a) in net._edges])
@@ -103,7 +103,7 @@ def _solved_linear_net():
 
 def test_color_by_adds_colorbar_and_tints_edges():
     net, sol = _solved_linear_net()
-    fig = net.plot_topology(solution=sol, color_by="M")
+    fig = net.plot(solution=sol, color_by="M")
     # the edge-midpoint trace carries the colored field + a colorbar
     edge_trace = next(t for t in fig.data if t.name == "edges")
     assert edge_trace.marker.showscale is True
@@ -117,7 +117,7 @@ def test_color_by_adds_colorbar_and_tints_edges():
 
 def test_width_by_scales_arrow_widths():
     net, sol = _solved_linear_net()
-    fig = net.plot_topology(solution=sol, width_by="mdot")
+    fig = net.plot(solution=sol, width_by="mdot")
     widths = [ann.arrowwidth for ann in fig.layout.annotations]
     assert all(w > 0 for w in widths)  # all scaled from |mdot|
 
@@ -125,13 +125,37 @@ def test_width_by_scales_arrow_widths():
 def test_overlay_requires_solution():
     net, _ = _solved_linear_net()
     with pytest.raises(ValueError, match="need a converged"):
-        net.plot_topology(color_by="T")
+        net.plot(color_by="T")
 
 
 def test_unknown_field_rejected():
     net, sol = _solved_linear_net()
     with pytest.raises(ValueError, match="not a known edge field"):
-        net.plot_topology(solution=sol, color_by="entropy")
+        net.plot(solution=sol, color_by="entropy")
+
+
+def test_width_by_area_needs_no_solution():
+    # area lives on the network, so a geometry-weighted width works with no solve
+    net = _branched_net()
+    fig = plot_network_topology(net, width_by="area")
+    widths = [round(ann.arrowwidth, 6) for ann in fig.layout.annotations]
+    assert all(w > 0 for w in widths)
+    assert len(set(widths)) > 1  # the wider inlet/outlet edges get thicker arrows than the split legs
+
+
+def test_network_plot_defaults_to_area_width():
+    net = _branched_net()
+    # Network.plot() defaults width_by="area" -> identical to asking for it explicitly
+    got = [a.arrowwidth for a in net.plot().layout.annotations]
+    ref = [a.arrowwidth for a in plot_network_topology(net, width_by="area").layout.annotations]
+    assert got == ref
+    # the default is overridable: width_by=None restores uniform arrows
+    assert [a.arrowwidth for a in net.plot(width_by=None).layout.annotations] == pytest.approx([1.4] * 6)
+
+
+def test_network_plot_area_default_is_safe_on_empty_network():
+    fig = Network(gas=CFG).plot()  # the area-width default must not choke on an edgeless network
+    assert fig is not None and len(fig.layout.annotations) == 0
 
 
 def test_no_solution_is_structural_view():
@@ -141,3 +165,22 @@ def test_no_solution_is_structural_view():
     edge_trace = next(t for t in fig.data if t.name == "edges")
     assert edge_trace.marker.showscale in (None, False)
     assert fig.layout.title.text == "Network topology"
+
+
+def test_solution_plot_shares_backend_and_overlays():
+    # Solution.plot draws the same diagram as Network.plot, with this solution attached
+    net, sol = _solved_linear_net()
+    fig = sol.plot(color_by="M", width_by="mdot")
+    edge_trace = next(t for t in fig.data if t.name == "edges")
+    assert edge_trace.marker.showscale is True
+    assert tuple(edge_trace.marker.color) == pytest.approx(tuple(sol.field("M")))
+    assert "Mach" in fig.layout.title.text
+    # a bare sol.plot() is the solved-network structural view (no colorbar, enriched hover)
+    plain = sol.plot()
+    assert next(t for t in plain.data if t.name == "edges").marker.showscale in (None, False)
+
+
+def test_solution_plot_rejects_unknown_field():
+    _net, sol = _solved_linear_net()
+    with pytest.raises(ValueError, match="not a known edge field"):
+        sol.plot(color_by="entropy")

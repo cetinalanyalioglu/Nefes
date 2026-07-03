@@ -736,7 +736,7 @@ def test_freeze_accepts_node_name_and_validates():
     prob, res = _wall_branch()
 
     by_id = perturbation_response(prob, res.x, FR, freeze=[6])
-    by_name = perturbation_response(prob, res.x, FR, freeze=["wall"])  # the wall's element name
+    by_name = perturbation_response(prob, res.x, FR, freeze=["wall-1"])  # the wall's element name
     assert by_id.frozen == by_name.frozen == (6,)
 
     with pytest.raises(ValueError, match="does not exist"):
@@ -757,7 +757,7 @@ def test_repr_omits_matrix_dims_and_reports_frozen():
     assert "matrices" not in s_open and "x2" not in s_open and "2x" not in s_open
     assert "frozen" not in s_open and "forcing(s)" in s_open and "terminal(s)" in s_open
 
-    r_fr = perturbation_response(prob, res.x, FR, freeze=["wall"])
+    r_fr = perturbation_response(prob, res.x, FR, freeze=["wall-1"])
     s_fr = repr(r_fr)
-    assert "BC frozen at 6:wall" in s_fr
+    assert "BC frozen at 6:wall-1" in s_fr
     assert "matrices" not in s_fr

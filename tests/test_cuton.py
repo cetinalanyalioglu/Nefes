@@ -28,6 +28,25 @@ def test_square_cuton_matches_closed_form():
     assert cuton_frequency(area, c, 0.0, "square") == pytest.approx(c / (2.0 * side), rel=1e-12)
 
 
+def test_rectangular_cuton_uses_the_larger_side():
+    c = 340.0
+    a, b = 0.12, 0.03  # larger, smaller side
+    area, aspect = a * b, a / b
+    # first cut-on is a half wavelength across the larger side a
+    assert cuton_frequency(area, c, 0.0, "rectangular", aspect) == pytest.approx(c / (2.0 * a), rel=1e-12)
+    # aspect 1 collapses back onto the square section
+    assert cuton_frequency(area, c, 0.0, "rectangular", 1.0) == pytest.approx(
+        cuton_frequency(area, c, 0.0, "square"), rel=1e-12
+    )
+    # an elongated (aspect > 1) duct cuts on lower than the equal-area square
+    assert cuton_frequency(area, c, 0.0, "rectangular", aspect) < cuton_frequency(area, c, 0.0, "square")
+
+
+def test_rectangular_requires_valid_aspect():
+    with pytest.raises(ValueError, match="aspect"):
+        cuton_frequency(0.01, 340.0, section="rectangular", aspect=0.5)
+
+
 def test_flow_lowers_the_ceiling():
     area, c = 0.01, 340.0
     f0 = cuton_frequency(area, c, 0.0)
@@ -98,3 +117,11 @@ def test_solution_convenience_method():
     assert len(rep.ducts) == 2
     assert rep.ducts[0].name == "approach"
     assert np.isfinite(rep.f_cuton)
+
+    # a rectangular section is threaded through and reported, lowering the ceiling vs the square default
+    rect = sol.cuton_report(section="rectangular", aspect=3.0)
+    assert rect.aspect == 3.0 and "rectangular" in repr(rect) and "aspect 3" in repr(rect)
+    assert rect.f_cuton < sol.cuton_report(section="square").f_cuton
+    # the report renders as HTML (Jupyter) without error, naming the limiting duct
+    html = rep._repr_html_()
+    assert "Cut-on report" in html and "<table" in html

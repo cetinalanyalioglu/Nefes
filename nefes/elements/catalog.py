@@ -4,10 +4,16 @@ An ``ElementSpec`` names an element's residual id and its ordered float
 parameters (the order the @njit kernels expect).  ``build_problem`` turns a list
 of element specs plus directed edges into the immutable CompiledProblem.
 """
+# CA: Why would we keep CompiledProblem builder here? What does it have to do with the elements catalog?
+# We should probably move it to the shell module. Same goes for connectivity related routines, this is 
+# part of the core functonality as well and probably belongs to the shell module.
 
+import inspect
 import math
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -1190,18 +1196,50 @@ def ensure_unique_names(elements: List[ElementSpec]) -> None:
         The network elements, in node order.  Mutated in place.
     """
     seen = set()
+    bases = default_name_bases()
     for el in elements:
-        name = el.name or ""
-        if name not in seen:
-            seen.add(name)
+        base = el.name or ""
+        # Factory defaults always start numbered ("inlet" -> "inlet-1"); user-chosen names keep
+        # their bare form and are suffixed only on an actual clash.
+        el.name = unique_name(base, seen, always_number=base in bases)
+        seen.add(el.name)
+
+
+def unique_name(name: str, taken, always_number: bool = False) -> str:
+    """Return a copy of ``name`` not already in ``taken``.
+
+    If ``name`` is free it is returned unchanged, unless ``always_number`` is set, in which case the
+    first free ``<name>-1``, ``<name>-2``, ... is returned instead (so a lone factory default still
+    reads ``inlet-1``).  ``taken`` is any container of used names; the result is *not* added to it --
+    the caller records it, which keeps this usable both for a running build and for a one-shot pass
+    over a finished list.
+    """
+    if not always_number and name not in taken:
+        return name
+    k = 1
+    while f"{name}-{k}" in taken:
+        k += 1
+    return f"{name}-{k}"
+
+
+@lru_cache(maxsize=1)
+def default_name_bases() -> frozenset:
+    """The set of factory-default element names, read from the catalog factory signatures.
+
+    Every public factory here declares its default label as a ``name=`` keyword (``duct`` for
+    :func:`duct`, ``inlet`` for :func:`mass_flow_inlet`, ...).  Collecting those defaults lets the
+    dedup pass tell a factory default apart from a name the user chose, so only the defaults are
+    force-numbered.  Cached: the signatures are fixed at import.
+    """
+    bases = set()
+    module = sys.modules[__name__]
+    for obj in vars(module).values():
+        if not (inspect.isfunction(obj) and obj.__module__ == __name__):
             continue
-        k = 1
-        candidate = f"{name}-{k}"
-        while candidate in seen:
-            k += 1
-            candidate = f"{name}-{k}"
-        el.name = candidate
-        seen.add(candidate)
+        param = inspect.signature(obj).parameters.get("name")
+        if param is not None and isinstance(param.default, str) and param.default:
+            bases.add(param.default)
+    return frozenset(bases)
 
 
 def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.ndarray) -> None:

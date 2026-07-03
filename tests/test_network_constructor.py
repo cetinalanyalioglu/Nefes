@@ -47,7 +47,7 @@ def test_one_shot_matches_build_problem():
     nodes, edges = _nodes_edges()
     net = Network(gas=CFG, nodes=nodes, edges=edges)
     one = net.solve()
-    prob = cat.build_problem(CFG, nodes, edges, net.mdot_ref, net.p_ref, net.h_ref)
+    prob = cat.build_problem(CFG, nodes, edges, net._seed_mdot(), net.p_ref, net._seed_h())
     func = solve(prob)
     assert np.allclose(one.x, func.x)
 
@@ -105,6 +105,60 @@ def test_edge_models_passthrough():
     assert sol.field("T")[-1] > 1200.0  # flame ignited on the burnt edge
 
 
+def test_marker_gating_matches_explicit_edge_models():
+    # The automatic burnt-marker closure (edge_models left unset) reproduces the mean flow of the
+    # hand-specified frozen/equilibrium split -- so the explicit knob is an escape hatch, not a
+    # requirement, for a reacting network with an equilibrium flame.
+    from thermolib import SpeciesLibrary, Thermo
+
+    gas = Thermo(SpeciesLibrary.from_native(MECH))
+
+    def build(models):
+        nodes = [
+            cat.total_pressure_inlet(1.2e5, 300.0, composition={"O2": 0.21, "N2": 0.79}, name="air"),
+            cat.mass_source(0.006, 300.0, composition={"H2": 1.0}, name="H2"),
+            cat.equilibrium_flame(),
+            cat.mass_flow_outlet(0.406),
+        ]
+        edges = [(0, 1, 0.01), (1, 2, 0.01), (2, 3, 0.01)]
+        return Network(gas=equilibrium(gas.mech), p_ref=1e5, T_ref=300.0, nodes=nodes, edges=edges, edge_models=models)
+
+    explicit = build([EQ_FROZEN, EQ_FROZEN, EQ_KERNEL]).solve()
+    auto = build(None).solve()  # marker-gated
+    assert explicit.converged and auto.converged
+    assert auto.marker(2) == pytest.approx(1.0, abs=1e-6)  # burnt edge flagged by the transported marker
+    for f in ("T", "M", "p", "mdot"):
+        assert np.allclose(auto.field(f), explicit.field(f), rtol=1e-6), f
+
+
+def test_marker_gating_needs_explicit_edge_models_when_inert_diluted_downstream():
+    # Where marker-gating is NOT enough: injecting a fresh (marker-0) stream downstream of the flame
+    # pulls the burnt marker below 1, so the diluted edge runs a frozen/equilibrium blend instead of
+    # full equilibrium and diverges from the pinned closure.  This is why edge_models is retained as
+    # an advanced escape hatch rather than removed.
+    from thermolib import SpeciesLibrary, Thermo
+
+    gas = Thermo(SpeciesLibrary.from_native(MECH))
+
+    def build(models):
+        nodes = [
+            cat.total_pressure_inlet(1.2e5, 300.0, composition={"O2": 0.21, "N2": 0.79}, name="air"),
+            cat.mass_source(0.006, 300.0, composition={"H2": 1.0}, name="H2"),
+            cat.equilibrium_flame(),
+            cat.mass_source(0.4, 300.0, composition={"O2": 0.21, "N2": 0.79}, name="dilution"),  # inert, marker 0
+            cat.mass_flow_outlet(0.806),
+        ]
+        edges = [(0, 1, 0.02), (1, 2, 0.02), (2, 3, 0.02), (3, 4, 0.02)]
+        return Network(gas=equilibrium(gas.mech), p_ref=1e5, T_ref=300.0, nodes=nodes, edges=edges, edge_models=models)
+
+    explicit = build([EQ_FROZEN, EQ_FROZEN, EQ_KERNEL, EQ_KERNEL]).solve()
+    auto = build(None).solve()  # marker-gated
+    assert explicit.converged and auto.converged
+    assert auto.marker(3) < 0.9  # the dilution diluted the burnt marker on the outlet edge
+    # so the outlet temperature diverges from the pinned all-equilibrium closure
+    assert abs(auto.field("T")[3] - explicit.field("T")[3]) > 1.0
+
+
 def test_validation():
     nodes, edges = _nodes_edges()
     with pytest.raises(ValueError, match="edge_models has 1 entries"):
@@ -117,3 +171,43 @@ def test_backward_compatible_empty_constructor():
     # the incremental API is unchanged: no nodes/edges -> an empty network to build up.
     net = Network(gas=CFG, p_ref=1e5, T_ref=300.0)
     assert net._elements == [] and net._edges == []
+
+
+def test_edge_tuples_accept_explicit_ports():
+    # a 5-tuple edge pins the local ports; the pins thread through to connect() and the compiled problem
+    nodes, edges3 = _nodes_edges()
+    edges5 = [(0, 1, 0.1, 0, 0), (1, 2, 0.05, 1, 0)]  # (tail, head, area, tail_port, head_port)
+    net = Network(gas=CFG, nodes=nodes, edges=edges5)
+    assert net._ports == [(0, 0), (1, 0)]
+    pinned = net.solve()
+    auto = Network(gas=CFG, nodes=nodes, edges=edges3).solve()
+    assert pinned.converged and auto.converged
+    assert np.allclose(pinned.field("M"), auto.field("M"), rtol=1e-8)
+
+
+def test_from_yaml_and_from_dict_roundtrip(tmp_path):
+    import yaml
+
+    nodes, edges = _nodes_edges()
+    net = Network(gas=CFG, nodes=nodes, edges=edges)
+    ref = net.solve()
+    path = os.path.join(str(tmp_path), "case.yaml")
+    net.to_yaml(path)
+
+    from_file = Network.from_yaml(path)
+    from_dict = Network.from_dict(yaml.safe_load(open(path).read()))
+    for reloaded in (from_file, from_dict):
+        assert len(reloaded._elements) == len(nodes)
+        assert len(reloaded._edges) == len(edges)
+        again = reloaded.solve()
+        assert again.converged
+        assert np.allclose(again.field("M"), ref.field("M"), rtol=1e-6)
+
+
+def test_problem_property_caches_and_invalidates():
+    nodes, edges = _nodes_edges()
+    net = Network(gas=CFG, nodes=nodes, edges=edges)
+    first = net.problem
+    assert first is net.problem and net._compiled is first  # cached: same object on re-access
+    net.add(cat.duct(0.1))  # any topology change drops the cache
+    assert net._compiled is None

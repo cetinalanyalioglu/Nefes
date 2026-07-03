@@ -203,13 +203,13 @@ def test_composite_view_reads_the_throat():
     net.connect(orf, o, A2)
     sol = net.solve()
     assert sol.converged
-    cv = sol.composite("orifice")
-    assert cv.name == "orifice" and cv.kind == "orifice" and cv.node == orf
+    cv = sol.composite("orifice-1")  # "orifice" is a factory default, so it is numbered
+    assert cv.name == "orifice-1" and cv.kind == "orifice" and cv.node == orf
     assert cv.throat is not None
     assert cv.throat_state["area"] == pytest.approx(AT)  # the narrowest section
     assert 0.0 < cv.throat_state["M"] < 1.0  # subsonic throat
     # composites list + lookup by node id agree
-    assert [c.name for c in sol.composites] == ["orifice"]
+    assert [c.name for c in sol.composites] == ["orifice-1"]
     assert sol.composite(orf).throat == cv.throat
 
 
@@ -319,7 +319,7 @@ def test_tapered_duct_throat_is_narrowest_and_fastest():
     # a subsonic con-di: the composite's throat is the min-area edge and carries the peak Mach
     sol = _condi(8, pt_in=108000.0)
     est = sol.table()
-    cv = sol.composite("nozzle")
+    cv = sol.composite("nozzle-1")  # "nozzle" is a factory default, so it is numbered
     assert cv.throat is not None
     assert est[ES_AREA, cv.throat] == pytest.approx(est[ES_AREA].min())  # the narrowest edge
     assert est[ES_M, cv.throat] == pytest.approx(est[ES_M].max(), rel=1e-6)  # the fastest

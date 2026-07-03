@@ -376,7 +376,7 @@ def test_reacting_roundtrip_resolves(tmp_path):
     # the auto edges stay 'auto' (the marker closure handles the split internally -- no need to
     # bake the frozen/equilibrium labels into the file); the marker rides in as a 'burnt' dataset
     assert [e["attributes"]["thermoModel"] for e in doc["model"]["edges"]] == ["auto", "auto"]
-    chem = next(d for d in doc["data"]["datasets"] if d["name"] == "Chemistry")
+    chem = next(d for d in doc["data"]["datasets"] if d["name"] == "Mean flow chemistry")
     burnt = next(it for it in chem["items"] if it["name"] == "burnt")
     assert burnt["values"][0] == pytest.approx(0.0, abs=1e-6)  # fresh approach
     assert burnt["values"][1] == pytest.approx(1.0, abs=1e-6)  # burnt downstream

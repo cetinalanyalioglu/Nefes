@@ -418,13 +418,42 @@ def test_custom_dataset_metadata_roundtrips(tmp_path):
     assert "unit" not in entry
 
 
-def test_network_and_solution_save_methods(tmp_path):
+def test_network_and_solution_to_yaml_methods(tmp_path):
     net = _nozzle_in_python()
     sol = net.solve()
     p_case = os.path.join(str(tmp_path), "net.yaml")
     p_sol = os.path.join(str(tmp_path), "sol.yaml")
-    net.save(p_case)
-    sol.save(p_sol)
-    # Network.save writes no result data; Solution.save embeds it.
+    net.to_yaml(p_case)
+    sol.to_yaml(p_sol)
+    # Network.to_yaml writes no result data; Solution.to_yaml embeds it.
     assert "data" not in yaml.safe_load(open(p_case).read())
     assert "data" in yaml.safe_load(open(p_sol).read())
+
+
+def test_save_is_an_alias_for_to_yaml(tmp_path):
+    net = _nozzle_in_python()
+    sol = net.solve()
+    a, b = os.path.join(str(tmp_path), "a.yaml"), os.path.join(str(tmp_path), "b.yaml")
+    net.save(a)  # alias
+    net.to_yaml(b)  # canonical
+    # both write a network-only case (topology, no result data)
+    da, db = yaml.safe_load(open(a).read()), yaml.safe_load(open(b).read())
+    assert da["model"]["nodes"] and "data" not in da
+    assert da["model"]["nodes"] == db["model"]["nodes"]
+    # Solution.save likewise mirrors Solution.to_yaml (embeds the mean-flow data)
+    p = os.path.join(str(tmp_path), "sol.yaml")
+    sol.save(p)
+    assert "data" in yaml.safe_load(open(p).read())
+
+
+def test_solution_to_yaml_appends_named_datasets(tmp_path):
+    net = _nozzle_in_python()
+    sol = net.solve()
+    p = os.path.join(str(tmp_path), "multi.yaml")
+    sol.to_yaml(p, dataset="Operating point A")
+    sol.to_yaml(p, dataset="Operating point B")  # appended to the same file
+    names = [d["name"] for d in yaml.safe_load(open(p).read())["data"]["datasets"]]
+    assert "Operating point A" in names and "Operating point B" in names
+    # A repeated dataset name is rejected rather than silently overwritten.
+    with pytest.raises(ValueError, match="already exists"):
+        sol.to_yaml(p, dataset="Operating point A")

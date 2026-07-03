@@ -33,6 +33,7 @@ and synthetic ids are generated.
 import cmath
 import copy
 import math
+import os
 import re
 import warnings
 from dataclasses import dataclass, field
@@ -219,6 +220,7 @@ def dump_case(
     title=None,
     extra_datasets=None,
     include_in_save=True,
+    mean_flow_name="Mean flow",
 ) -> str:
     """Serialize a network (and optional results) to a UI-readable YAML string.
 
@@ -265,6 +267,9 @@ def dump_case(
     include_in_save : bool, optional
         The ``includeInSave`` flag stamped on generated datasets (default
         ``True``).
+    mean_flow_name : str, optional
+        Name for the mean-flow dataset built from ``solution`` (default ``"Mean flow"``); the
+        companion chemistry dataset, if any, is named ``"<mean_flow_name> chemistry"``.
 
     Returns
     -------
@@ -283,6 +288,7 @@ def dump_case(
         eig_modes,
         eig_fields,
         include_in_save,
+        mean_flow_name,
     )
     if extra_datasets:
         datasets = list(datasets) + list(extra_datasets)
@@ -309,6 +315,69 @@ def save_case(network, path: str, **kwargs) -> None:
         fh.write(text)
 
 
+def save_solution(network, solution, path: str, *, dataset: str = "Mean flow", **kwargs) -> None:
+    """Write or append a solved network to a UI-readable YAML case.
+
+    If ``path`` does not exist, writes a fresh case (network + this solution's datasets).  If it
+    exists, the file is expected to already hold this same network; the solution's datasets are
+    *appended* under the given ``dataset`` name so several solutions can be overlaid in one file.
+
+    Parameters
+    ----------
+    network : Network
+        The flow network (must match the network already stored in an existing file).
+    solution : Solution
+        The converged solution whose fields are embedded.
+    path : str
+        Destination ``.yaml`` path; appended to when it already exists.
+    dataset : str, optional
+        Name for this solution's mean-flow dataset (default ``"Mean flow"``).  Raises if a dataset
+        of that name (or its companion chemistry dataset) is already present in the file.
+    **kwargs
+        Forwarded to :func:`dump_case` (e.g. ``fields``, ``node_data``, ``forced``).
+    """
+    if not os.path.exists(path):
+        save_case(network, path, solution=solution, mean_flow_name=dataset, **kwargs)
+        return
+
+    import yaml as _yaml
+
+    with open(path, "r") as fh:
+        doc = _yaml.safe_load(fh)
+    _require_matching_topology(doc, network, path)
+
+    fresh = _yaml.safe_load(dump_case(network, solution=solution, mean_flow_name=dataset, **kwargs))
+    new_datasets = (fresh.get("data") or {}).get("datasets", [])
+    existing = doc.setdefault("data", {}).setdefault("datasets", [])
+    existing_names = {d.get("name") for d in existing}
+    for d in new_datasets:
+        if d.get("name") in existing_names:
+            raise ValueError(f"{path}: a dataset named {d.get('name')!r} already exists in this case")
+    # Renumber the appended dataset / item ids so they continue after the existing ones.
+    base = len(existing)
+    for i, d in enumerate(new_datasets):
+        d["id"] = f"ds-{base + i}-{_slug(d.get('name'))}"
+        for j, item in enumerate(d.get("items", [])):
+            item["id"] = f"{d['id']}-item-{j}"
+    existing.extend(new_datasets)
+    with open(path, "w") as fh:
+        fh.write(_yaml_dump(doc))
+
+
+def _require_matching_topology(doc, network, path):
+    """Raise if the case in ``doc`` does not have the same node/edge counts as ``network``."""
+    model = doc.get("model") if isinstance(doc, dict) else None
+    if not isinstance(model, dict):
+        raise ValueError(f"{path}: not a UI save file (no 'model' section) -- cannot append a solution")
+    n_nodes = len(model.get("nodes") or [])
+    n_edges = len(model.get("edges") or [])
+    if n_nodes != len(network._elements) or n_edges != len(network._edges):
+        raise ValueError(
+            f"{path}: the stored case has {n_nodes} nodes / {n_edges} edges, but this network has "
+            f"{len(network._elements)} / {len(network._edges)} -- append expects the same network"
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Dataset construction
 # --------------------------------------------------------------------------- #
@@ -324,6 +393,7 @@ def _build_datasets(
     eig_modes,
     eig_fields,
     include_in_save,
+    mean_flow_name="Mean flow",
 ):
     datasets = []
     if solution is not None:
@@ -337,11 +407,17 @@ def _build_datasets(
             MetaEntry("kind", "Analysis", "Mean flow"),
             MetaEntry("converged", "Converged", bool(solution.converged)),
         ]
-        datasets.append(DataSet("Mean flow", items, include_in_save, info=info))
+        datasets.append(DataSet(mean_flow_name, items, include_in_save, info=info))
         chem = _chemistry_items(network, solution)
         if chem:
+            # Namespaced under the mean-flow name so several appended solutions never collide.
             datasets.append(
-                DataSet("Chemistry", chem, include_in_save, info=[MetaEntry("kind", "Analysis", "Chemistry")])
+                DataSet(
+                    f"{mean_flow_name} chemistry",
+                    chem,
+                    include_in_save,
+                    info=[MetaEntry("kind", "Analysis", "Chemistry")],
+                )
             )
     if forced is not None:
         datasets += _forced_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save)

@@ -11,6 +11,7 @@
 ## To discuss
 
 - [ ] How does linear resistance element behave in mean flow?
+- [ ] Does our infrastructure for composite elements open up the possibility to create potentially complicated sub networks and use them in another network? Currently referring specifically to "two port" sub networks, but would actually be very good if this was generalized to a sub net with N boundary nodes (with its own indexing in subnet) and these N nodes can be mapped to specified entry point nodes (like boundary nodes subnet-in and subnet-out). 
 
 ## To test
 

@@ -43,6 +43,7 @@ As project matures, these documents should serve more as a guideline than of a r
 - Always prefer frequency over angular frequency for user input and graph axes.
 - While preparing Jupyter notebooks split the lines from the sentences, the lines themselves don't need to respect the line length criterion. This rule applies to LaTeX as well.
 - Inline comments should appear after two whitespaces.
+- Avoid excessive usage of "--" to connect sentences.
 
 ## Hard constraints (don't violate without explicit reason)
 

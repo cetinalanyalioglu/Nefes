@@ -1,6 +1,8 @@
 ## To implement
 
 - [ ] Proper estimation of friction coefficient for the pipe element, could be Moody charts or some other correlation.
+- [ ] Full-nozzle composite carrying both distinct area reductions of De Domenico Fig. 3 in one element: the sub-throat vena contracta (`A_min = Gamma*A_T <= A_T`, sets the effective throat / choke) *and* the recovery jet plane (`A_j = beta*A_2 >= A_T`). Existing `lossy_nozzle` has only `A_j`; `sudden_contraction` only a downstream-referenced vena contracta. Stage `A_1 ->isen-> A_T ->isen-> Gamma*A_T ->isen-> A_j ->Borda-> A_2` with `Gamma`, `beta` inputs (later geometry-derived, see `scratch/nozzle-shape-loss-prediction.md`).
+- [ ] Combined linear+quadratic (Forchheimer) flow resistance: `linear_resistance` alone only captures the viscous low-flow regime and undershoots real screens/dampers at higher mass flow, while `loss` (quadratic) alone loses all acoustic resistance at the quiescent (M->0) limit; add a combined element (`dpt = a*mdot + b*mdot*abs(mdot)`) or a composite chaining the two existing atoms so both regimes and the quiescent damping hold together.
 
 ## To verify
 
@@ -9,9 +11,6 @@
 - [ ] We reject BC's when there is no absolute pressure reference from any of them. For such cases, would it work if we had an absolute pressure reference at some arbitrary edge state in the domain? If so, we could let the user enforce absolute pressure at exactly one edge.
 
 ## To discuss
-
-- [ ] How does linear resistance element behave in mean flow?
-- [ ] Does our infrastructure for composite elements open up the possibility to create potentially complicated sub networks and use them in another network? Currently referring specifically to "two port" sub networks, but would actually be very good if this was generalized to a sub net with N boundary nodes (with its own indexing in subnet) and these N nodes can be mapped to specified entry point nodes (like boundary nodes subnet-in and subnet-out). 
 
 ## To test
 

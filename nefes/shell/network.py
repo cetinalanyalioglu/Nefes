@@ -15,7 +15,8 @@ from ..elements.composite import is_composite, CompositeView
 from ..elements.ids import RESIDUAL_NAMES
 from ..graph.problem import CompiledProblem
 from ..solver import solve as _solve
-from ..solver.control import states_table, initial_guess, print_states, residual_breakdown, print_residuals
+from ..solver.control import initial_guess
+from ..solver.report import states_table, print_states, residual_breakdown, print_residuals
 from ..assembly.derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
 
 # ES for "edge state"
@@ -255,7 +256,7 @@ class Network:
         """Seed mass-flow scale threaded into the compiled ``var_scale`` (an explicit override or auto).
 
         Only the *seed* for the residual scaling -- the solve re-measures it from the realized inflow at
-        each homotopy stage (``adaptive_scale``) -- so it need only be order-of-magnitude right.
+        each continuation stage (``adaptive_scale``) -- so it need only be order-of-magnitude right.
         Auto-derivation: the **total** specified inflow when every inlet is a mass-flow inlet; otherwise
         a dP-based isentropic estimate ``A * sqrt(2 rho dP_max)`` from the boundary pressures; a quiescent
         / pressureless network falls back to an M=0.3 estimate.  An explicit ``mdot_ref=`` overrides it.
@@ -344,12 +345,12 @@ class Network:
         tol : float, optional
             Convergence tolerance on the scaled residual 2-norm (default ``1e-10``).
         max_iter : int, optional
-            Maximum Newton iterations per homotopy stage (default ``80``).
+            Maximum Newton iterations per continuation stage (default ``80``).
         kappa_stages : sequence of float, optional
-            Vanishing-friction homotopy schedule, warm-started in order (default ``(0.1, 0.01, 0.0)``).
+            Artificial-resistance continuation schedule, warm-started in order (default ``(0.1, 0.01, 0.0)``).
         verbose : int or bool, optional
             Progress verbosity (default ``0``). ``0``/``False`` is silent; ``1``/``True`` prints a one-line
-            gross-residual summary per homotopy stage; ``2`` additionally prints the scaled residual broken down by
+            gross-residual summary per continuation stage; ``2`` additionally prints the scaled residual broken down by
             equation kind (mass, pressure, energy, then each composition scalar) every ``progress_interval`` iterations.
         progress_interval : int, optional
             Iteration stride for the per-iteration prints at ``verbose >= 2`` (default ``1``).
@@ -766,7 +767,7 @@ class Solution:
     def print_states(self, edges=None, precision: int = 5, file=None) -> None:
         """Print the per-edge mean-flow state table to the screen.
 
-        Thin wrapper over :func:`nefes.solver.control.print_states`; see it for the column layout.
+        Thin wrapper over :func:`nefes.solver.report.print_states`; see it for the column layout.
         In a notebook (and when ``file`` is not given) the table renders as rich HTML;
         otherwise a fixed-width text table is printed.
 
@@ -800,7 +801,7 @@ class Solution:
     def print_residuals(self, sort: bool = True, top=None, precision: int = 4, file=None) -> None:
         """Print the residual broken down equation-by-equation.
 
-        Thin wrapper over :func:`nefes.solver.control.print_residuals`; see it for the column layout.
+        Thin wrapper over :func:`nefes.solver.report.print_residuals`; see it for the column layout.
 
         Parameters
         ----------

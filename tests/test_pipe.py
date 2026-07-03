@@ -13,7 +13,7 @@ import pytest
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_PT, ES_M, ES_T
 from nefes.perturbation import perturbation_response
 

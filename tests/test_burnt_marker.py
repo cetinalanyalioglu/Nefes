@@ -20,7 +20,8 @@ from nefes.elements import catalog as cat
 from nefes.thermo.configure import equilibrium
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from nefes.shell.network import Network
-from nefes.solver.control import solve, states_table, auto_initial_guess
+from nefes.solver.control import solve, auto_initial_guess
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_P
 from nefes.perturbation.response.response import perturbation_response
 

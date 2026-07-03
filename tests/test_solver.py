@@ -6,7 +6,8 @@ import pytest
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.solver import solve
-from nefes.solver.control import states_table, initial_guess
+from nefes.solver.control import initial_guess
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_MDOT, ES_P, ES_M, ES_PT, ES_HT
 
 R_AIR, GAMMA = 287.0, 1.4
@@ -86,7 +87,7 @@ def test_critical_pressure_ratio_is_the_knee():
 
 
 def test_quiescent_cold_start_converges():
-    # Start from (near) zero flow; the homotopy must still find the solution.
+    # Start from (near) zero flow; the continuation must still find the solution.
     prob = _nozzle(120000.0, 300.0, 101325.0)
     x0 = initial_guess(prob, mdot0=0.0)
     res = solve(prob, x0=x0)
@@ -161,7 +162,7 @@ def test_verbose_silent_by_default(capsys):
 
 def test_verbose_level1_prints_one_line_per_stage(capsys):
     prob = _nozzle(120000.0, 300.0, 101325.0)
-    solve(prob, verbose=1)  # one summary line per homotopy stage
+    solve(prob, verbose=1)  # one summary line per continuation stage
     out = capsys.readouterr().out
     lines = [ln for ln in out.splitlines() if ln.strip()]
     assert len(lines) == 3  # default kappa_stages = (0.1, 0.01, 0.0)

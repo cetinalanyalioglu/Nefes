@@ -9,7 +9,7 @@ The cases are chosen to span the framework's claims: a steady compressible netwo
 The steady mean-flow solver is benchmarked against Example 3 of Greyvenstein & Laurie (1994), a compressed-air pipe network solved in that work by an independent method and reported as a table of branch mass flows and nodal pressures.
 The network is assembled as a Nefes model with the corresponding pipe, junction, and boundary elements, solved from a cold start, and compared entry by entry against the published table.
 The converged branch mass flows and nodal pressures match the reference table, and the flow is confirmed to sit in the low-Mach regime the original analysis assumes, so the comparison is like-for-like (tests: `test_converges`, `test_mass_flows_match_table_iv`, `test_node_pressures_match_table_iv`, `test_low_mach_regime`).
-This case exercises the mean-flow machinery end to end — the friction-pipe loss model, the junction couplings, the boundary conditions, and the homotopy that finds the operating point — against an external result rather than an internal consistency check.
+This case exercises the mean-flow machinery end to end — the friction-pipe loss model, the junction couplings, the boundary conditions, and the continuation that finds the operating point — against an external result rather than an internal consistency check.
 
 ## Rijke-tube thermoacoustic stability
 

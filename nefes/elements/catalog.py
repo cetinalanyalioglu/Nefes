@@ -715,7 +715,7 @@ def forced_splitter(fractions, name="splitter"):
 
     Because the controlled branches float in pressure, the manifold has weaker
     pressure coupling than a plain splitter and is harder to converge as the inflow
-    nears choke; with the default homotopy it is robust to roughly inflow ``M ~ 0.6``.
+    nears choke; with the default continuation it is robust to roughly inflow ``M ~ 0.6``.
     """
     betas = [float(b) for b in fractions]
     if len(betas) < 1:

@@ -2,7 +2,7 @@
 
 The Newton solve nondimensionalizes by a characteristic scale per row / variable.  These
 were fixed boundary references; now (``adaptive_scale``, default on) the mass and enthalpy
-scales are re-measured from the realized inflow at each homotopy stage, so the user need not
+scales are re-measured from the realized inflow at each continuation stage, so the user need not
 supply ``mdot_ref`` / ``h_ref`` (auto-derived seeds, hidden but overridable).  The quiescent
 ``mdot = 0`` case must keep working -- it falls back to the seed scales.
 """

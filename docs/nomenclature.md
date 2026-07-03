@@ -69,7 +69,7 @@ The notation follows a small set of rules, applied uniformly:
 | $\beta_\psi$ | profile-shape factor of a convected scalar $\psi$ ($\beta_\psi = 1$ for a uniform profile) |
 | $\varepsilon$ | smoothing width of a regularized primitive (mass-flow units) |
 | $\theta,\ w,\ \xi$ | smooth upwind / donor / boundary-regime blending weights |
-| $\kappa$ | vanishing-friction (stabilization) coefficient |
+| $\kappa$ | artificial-resistance (stabilization) coefficient |
 | $\varphi_\varepsilon$ | smoothed complementarity residual (Fischer–Burmeister), selecting the subsonic and choked regimes of a single row |
 | $\lambda$ | Levenberg–Marquardt damping parameter |
 | $\tau_+,\ \tau_-,\ \tau_u$ | duct transit times of the downstream-acoustic, upstream-acoustic, and convected paths |

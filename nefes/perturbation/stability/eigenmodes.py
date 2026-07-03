@@ -46,7 +46,7 @@ from ..operator.characteristics import edge_transforms, basis_block_from_state, 
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
 from ..operator.terminals import find_terminals
 from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry
-from ...solver.control import states_table
+from ...solver.report import states_table
 from ...assembly.derive import ES_C
 
 # Below this Mach number a duct's entropy wave is treated as decoupled (stationary)

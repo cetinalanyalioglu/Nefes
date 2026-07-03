@@ -17,7 +17,7 @@ from nefes.assembly.assemble import jacobian, jacobian_dense
 from nefes.assembly.derive import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from nefes.elements import catalog as cat
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.thermo.configure import equilibrium, perfect_gas
 

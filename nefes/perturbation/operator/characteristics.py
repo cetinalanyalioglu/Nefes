@@ -125,7 +125,7 @@ def edge_caloric(prob, x_bar):
     list of tuple
         ``E`` rows ``(a, m, b)``, one per edge.
     """
-    from ...solver.control import states_table
+    from ...solver.report import states_table
     from ...thermo.api import thermo_state, PERFECT_GAS, EQ_MARKER, EQ_KERNEL, EQ_FROZEN
 
     est = states_table(prob, x_bar)

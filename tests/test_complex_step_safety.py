@@ -60,7 +60,7 @@ from nefes.elements.ids import (
 )
 from nefes.assembly.assemble import residual, jacobian
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_M
 from nefes.solver.linear import scaled_system, col_scale
 

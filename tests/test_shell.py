@@ -281,7 +281,7 @@ def test_solve_verbose2_prints_grouped_table(capsys):
     assert "mass" in out and "pressure" in out and "energy" in out
     assert "total" in out  # the trailing gross-norm column (groups in quadrature)
     assert "||R_hat||=" in out  # the gross-residual stage summary is still printed
-    # the header repeats per homotopy stage (3 stages); count its occurrences
+    # the header repeats per continuation stage (3 stages); count its occurrences
     assert out.count("it       mass") == 3
     # the last per-iteration "total" of a stage equals that stage's gross ||R_hat||
     lines = out.splitlines()

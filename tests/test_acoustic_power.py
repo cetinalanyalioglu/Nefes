@@ -31,7 +31,7 @@ from nefes.perturbation.fields.modeshape import build_geometry
 from nefes.perturbation.fields.power import _lumped_storage_energy, _stored_energy
 from nefes.shell import Network
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.thermo.configure import perfect_gas
 from nefes.assembly.derive import ES_RHO, ES_C, ES_U, ES_AREA
 

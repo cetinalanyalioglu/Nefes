@@ -42,4 +42,19 @@ def scaled_system(J, R, var_scale_col, res_scale):
 
 
 def col_scale(var_scale, n_edges):
+    """Per-column variable scale for the flattened system: ``var_scale`` tiled per edge.
+
+    Matches the edge-major column ordering of :func:`unflatten` and the Jacobian, so a
+    single vector rescales every unknown of every edge.
+    """
     return np.tile(var_scale, n_edges)
+
+
+def unflatten(flat, n_edges, n_solve=3):
+    """Reshape a flat Newton solution vector back to a ``(n_solve, n_edges)`` state.
+
+    The solver stacks the per-edge unknowns edge-major (each edge's ``n_solve`` variables
+    contiguous) to form the column vector the sparse solve operates on; this is the inverse
+    reshape, matching the column ordering of :func:`col_scale` and the assembled Jacobian.
+    """
+    return np.ascontiguousarray(flat.reshape(n_edges, n_solve).T)

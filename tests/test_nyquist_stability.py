@@ -28,7 +28,7 @@ from nefes.perturbation import open_loop_response, nyquist_stability, eigenmodes
 from nefes.perturbation.stability.nyquist import _rank1_terms, _passive_blocks
 from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.thermo.configure import perfect_gas
 from nefes.assembly.derive import ES_M
 

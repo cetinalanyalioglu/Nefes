@@ -50,7 +50,7 @@ def row_kind_tags(rid, deg):
 
     The single source of truth for the per-row kinds; both the residual-row scaling
     (:func:`nefes.elements.catalog._row_kinds`) and the per-equation residual report
-    (:func:`nefes.solver.control.residual_labels`) derive from it, so they cannot drift.
+    (:func:`nefes.solver.report.residual_labels`) derive from it, so they cannot drift.
 
     Parameters
     ----------

@@ -15,7 +15,7 @@ import yaml
 
 from nefes.io import load_case, save_case
 from nefes.io.yaml_in import _parse_composition
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 

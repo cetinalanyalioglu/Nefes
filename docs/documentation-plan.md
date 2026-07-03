@@ -80,7 +80,7 @@ under `reference/` and are cross-linked, not rewritten.
 | **D2** | `complex-step.md` | The exact-Jacobian engine: the complex-step derivative, why it beats finite differences, the analyticity requirement, and the seeded-path discipline (recompute, never cache). |
 | D3 | `smoothness-contract.md` | The complex-step-safety contract; the regularized primitive library (`smooth_abs/pos/step`, `smooth_sign_sq`, Fischer–Burmeister, `marker_gate`); error order `O(δ²/x²)`; the per-kernel probe roll-call. |
 | D4 | `assembly.md` | Edge-state recovery DAG; the band-1 / algebraic row split; sparse Jacobian structure; the perturbation-operator stamps (`M`, `P`, `S`, terminals, the transfer-matrix element). How the source `S` and transfer-matrix stamps enter the operator as a **low-rank update** — the structure the identification de-embed (T14) exploits for a one-factorization inverse. |
-| D5 | `solver.md` | Nondimensionalization/scaling; Newton with Levenberg–Marquardt damping; the vanishing-friction homotopy; warm-start caches. |
+| D5 | `solver.md` | Nondimensionalization/scaling; Newton with Levenberg–Marquardt damping; the artificial-resistance continuation; warm-start caches. |
 | D6 | `reproducibility.md` | Determinism, pinned environments (the split `nefes`/`thermolib` test envs), provenance capture on I/O, and the testing philosophy (complex-step==FD, oracle comparisons, validation gating). |
 
 ### Track III — Validation & verification

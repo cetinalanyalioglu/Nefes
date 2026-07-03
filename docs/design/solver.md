@@ -1,10 +1,10 @@
 # The solver
 
 Newton's method converges quadratically near a solution and not at all far from one, so a bare Newton iteration on the network equations would fail from the uninformed cold start the framework insists on supporting.
-This document describes the globalization that closes that gap — the scaling, damping, and homotopy that turn the local method into one that finds the operating point from exact rest on an arbitrary network — and the warm-start caches that keep repeated solves cheap.
+This document describes the globalization that closes that gap — the scaling, damping, and continuation that turn the local method into one that finds the operating point from exact rest on an arbitrary network — and the warm-start caches that keep repeated solves cheap.
 It builds on the exact Jacobian of [the complex-step derivative](complex-step.qmd) and the assembled system of [assembly](assembly.md), and it is the machinery that realizes the *discovery over prescription* principle of [the design philosophy](philosophy.md).
 
-The presentation begins with the scaling that makes the system well-conditioned, then proceeds to the damped Newton step, building on this to the vanishing-friction homotopy that removes the zero-flow trap, and closes with the warm-start caches.
+The presentation begins with the scaling that makes the system well-conditioned, then proceeds to the damped Newton step, building on this to the artificial-resistance continuation that removes the zero-flow trap, and closes with the warm-start caches.
 
 ## Nondimensionalization
 
@@ -35,11 +35,11 @@ where $\overline{\mathbf{J}}$ is the scaled Jacobian, $\widehat{\mathbf{R}}$ the
 For $\lambda \to 0$ the step is the pure Newton step, recovering quadratic convergence near the solution; for larger $\lambda$ it blends toward a cautious gradient-descent step that makes progress where the pure step would overshoot or where the Jacobian has lost rank — for instance at the undetermined split of a perfectly symmetric branching network at rest (see [well-posedness](../theory/well-posedness.md)).
 The damping is adapted per iteration, raised when a step fails to reduce the residual and lowered as the iteration homes in, so the solver interpolates automatically between robustness far out and speed near the answer.
 
-## The vanishing-friction homotopy
+## The artificial-resistance continuation
 
 The damped Newton step is still defeated by one structural trap: in a network driven only by pressure boundary conditions, the residuals have zero first-order sensitivity to the flows at the quiescent state, so the solver sees a flat landscape and cannot start the flow moving (see [well-posedness](../theory/well-posedness.md)).
-The cure is a homotopy in a physical parameter — a small fictitious friction $\kappa$ added to every pressure-type row — that injects first-order flow sensitivity without changing the final answer.
-With the friction active the network behaves like a resistive circuit, in which pressure differences push directly on the flows, and the solver locates the flow pattern readily; the friction is then reduced to zero over a short sequence of stages, given as:
+The cure is a continuation in a physical parameter [@allgower_georg_1990] — a small fictitious friction $\kappa$ added to every pressure-type row — that injects first-order flow sensitivity without changing the final answer.
+With the friction active the network behaves like a resistive circuit, in which pressure differences push directly on the flows, and the solver locates the flow pattern readily — the same regularization of the zero-flow Jacobian that gradient methods for hydraulic pipe networks employ [@todini_pilati_1988]; the friction is then reduced to zero over a short sequence of stages, given as:
 
 $$
 \kappa \in \{0.1,\ 0.01,\ 0\},
@@ -51,7 +51,7 @@ An important remark is that this is a continuation in a physical parameter rathe
 ## Warm-start caches
 
 Two kinds of reuse keep repeated solves cheap.
-Within a solve, each homotopy stage begins from the converged state of the previous stage, so the friction is removed by a sequence of easy corrections rather than a single hard solve.
+Within a solve, each continuation stage begins from the converged state of the previous stage, so the friction is removed by a sequence of easy corrections rather than a single hard solve.
 Across the reacting recovery, the equilibrium solve at each edge is warm-started from a cache of its previous composition and temperature, so the innermost thermodynamic iteration converges in a few steps rather than from a cold guess.
 Because a warm start only supplies an initial iterate and never enters a residual, it changes the *cost* of a solve but not its *result* — the converged state is invariant to the warm start, a property checked directly so that the caches can never silently perturb the answer.
 

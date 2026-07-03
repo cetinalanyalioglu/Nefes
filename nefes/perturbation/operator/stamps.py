@@ -36,7 +36,7 @@ from .characteristics import dx_to_char, dq_to_dx
 from .matrices import partition
 from .verify import duct_nodes, verify_acoustic
 from .terminals import find_terminals
-from ...solver.control import states_table
+from ...solver.report import states_table
 from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
 from ...elements.ids import (
     CAVITY,

@@ -66,7 +66,7 @@ $$
 $$
 
 where $a$ and $b$ are the two non-negative quantities above and $\varepsilon$ is a small, fixed smoothing.
-On the smoothed root manifold $2ab = \varepsilon^2$, so the inactive branch is pinned to a quadratically small bias, and $\varepsilon$ must be kept small and fixed — the bias $\tfrac{1}{2}\varepsilon^2 p_t$ is a fictitious total-pressure loss that must stay far below the smallest driving pressure difference in the network, which is why $\varepsilon$ is *not* relaxed along the friction homotopy of [well-posedness](well-posedness.md).
+On the smoothed root manifold $2ab = \varepsilon^2$, so the inactive branch is pinned to a quadratically small bias, and $\varepsilon$ must be kept small and fixed — the bias $\tfrac{1}{2}\varepsilon^2 p_t$ is a fictitious total-pressure loss that must stay far below the smallest driving pressure difference in the network, which is why $\varepsilon$ is *not* relaxed along the artificial-resistance continuation of [well-posedness](well-posedness.md).
 The same complementarity governs a converging pressure outlet, whose exit chokes at exactly $M = 1$ and whose static pressure then detaches *upward* from the specification — the underexpanded discharge of a choked orifice, whose expansion to the ambient occurs outside the network (test: `test_choked_nozzle_outlet_critical_mass_flux`).
 
 ## The validated operating map

@@ -1,42 +1,45 @@
-"""Newton control loop with nondimensionalization, globalization, and homotopy.
+"""Newton control loop with nondimensionalization, globalization, and continuation.
 
-The solve runs a short vanishing-friction homotopy in the coefficient ``kappa``
-(kappa): stages ``kappa in (0.1, 0.01, 0.0)`` each warm-started from the previous,
-with the smoothing width ``eps = max(0.3*kappa, 1e-4) * mdot_ref``.  ``kappa`` scales
-an artificial friction (a pressure drop proportional to mass flow) stamped into the
-interior pressure rows; driving it to zero recovers the exact equations.  Each stage
-is a damped Newton: a
-sparse-LU step with backtracking line search on the scaled residual norm, and a
-Levenberg-Marquardt fallback when the LU step stalls or the Jacobian is singular.
-The final stage solves the exact equations (kappa = 0).
+The solve runs a short artificial-resistance continuation in the coefficient ``kappa``:
+stages ``kappa in (0.1, 0.01, 0.0)``, each warm-started from the previous, with the
+smoothing width ``eps = max(0.3*kappa, 1e-4) * mdot_ref``.  ``kappa`` scales an artificial
+resistance (a fictitious pressure drop proportional to mass flow) stamped into the interior
+pressure rows; it injects first-order flow sensitivity that regularizes the otherwise
+singular Jacobian of the ``|mdot|*mdot`` pressure-loss law at rest, and driving it to zero
+recovers the exact equations.  Each stage is a damped Newton: a sparse-LU step with a
+backtracking line search on the scaled residual norm, and a Levenberg-Marquardt fallback
+when the LU step stalls or the Jacobian is singular.  The final stage solves the exact
+equations (``kappa = 0``).
+
+See ``docs/design/solver.md`` for the full account and references (Allgower & Georg,
+*Numerical Continuation Methods*; Todini & Pilati's global gradient algorithm for the
+zero-flow singularity of hydraulic-network solvers).
 """
 
+import warnings
 from dataclasses import dataclass, field
 from typing import List
 
 import numpy as np
 
 from ..assembly.assemble import residual, jacobian
-from ..elements.ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    MASS_SOURCE,
-    KIND_MASS,
-    KIND_PRESSURE,
-    KIND_NAMES,
-    RESIDUAL_NAMES,
-    row_kind_tags,
-)
+from ..elements.ids import MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE
 from ..thermo.api import EQ_KERNEL, PERFECT_GAS
 from ..assembly.scaling import compose_scales, measure_inflow_scales
-from .linear import newton_step, lm_step, scaled_system, col_scale
+from .linear import newton_step, lm_step, scaled_system, col_scale, unflatten
+from .report import _Reporter
 
+# Fischer-Burmeister smoothing width for the choking complementarity residual
+# (``fischer_burmeister(a, b, EPS_FB)`` in the area-change / pressure-outlet kernels).
+# Its arguments are dimensionless margins -- a relative Mach deficit ``1 - M`` and a
+# relative pressure gap ``(p - p_spec) / p_spec`` -- so a small fixed floor rounds the
+# regime-switch corner equally well at any flow scale.  Unlike the continuation ``eps`` it
+# does not taper with the schedule; it only regularizes the branch, never the equations.
 EPS_FB = 1e-5
 
 
 def _stage_eps(mdot_ref, kappa):
-    """Complementarity smoothing width for a homotopy stage (vanishes with ``kappa``)."""
+    """Complementarity smoothing width for a continuation stage (vanishes with ``kappa``)."""
     return max(0.3 * kappa, 1e-4) * mdot_ref
 
 
@@ -46,7 +49,7 @@ def domain_max_dp(prob):
     The span between the highest and lowest absolute-pressure boundary reference
     (``total_pressure_inlet`` / ``pressure_outlet``).  Returns ``0.0`` when fewer than
     two such references exist -- a mass-driven network whose real pressure drop is not
-    known until the flow is solved.  Used to scale the homotopy friction (and, later,
+    known until the flow is solved.  Used to scale the artificial resistance (and, later,
     the adaptive residual scales) to the real driving pressure differential.
 
     Parameters
@@ -66,14 +69,6 @@ def domain_max_dp(prob):
     if len(refs) < 2:
         return 0.0
     return max(refs) - min(refs)
-
-
-def flatten(x2d):
-    return np.ascontiguousarray(x2d).T.ravel()
-
-
-def unflatten(flat, n_edges, n_solve=3):
-    return np.ascontiguousarray(flat.reshape(n_edges, n_solve).T)
 
 
 def initial_guess(prob, mdot0=None, p0=None, h0=None, z0=None):
@@ -104,27 +99,38 @@ def initial_guess(prob, mdot0=None, p0=None, h0=None, z0=None):
     return x
 
 
-def auto_initial_guess(prob, mdot0=None, p0=None):
-    """Physically-seeded per-edge state by propagating the feeds through the graph.
+def auto_initial_guess(prob, mdot0=None, p0=None, max_sweeps=1000):
+    """Physically-seeded per-edge initial guess by mixing the feeds through the graph.
 
-    A reacting network spans a wide enthalpy range -- an unburnt air edge sits at
-    ``h_t ~ +1.9e3`` J/kg while CH4-laden / burnt edges sit at ``~ -2.2e5`` J/kg
-    (the formation-inclusive datum, D-1) -- so a single uniform guess strands the
-    frozen ``h -> T`` inversion or the burnt equilibrium far from any root.  This
-    builds each edge's seed by **mass-weighted mixing along the network**, with no
-    case-specific tuning:
+    Nefes carries absolute (formation-inclusive) enthalpies rather than sensible ones, so
+    total enthalpy can differ enormously between edges -- an unburnt air edge and a burnt
+    edge sit at very different ``h_t`` -- and a single uniform enthalpy guess is often too
+    far from any root for a robust solve.  This routine performs a mass-weighted mixing
+    estimate across the network to seed each edge's mass flow, total enthalpy, and reacting
+    scalars: it propagates the feed mass flows (inlets/sources inject, junctions sum,
+    splitters divide) and blends the advected scalars (``h_t`` and the feed mixture
+    fractions) mass-weighted by that flow.  Because conserved scalars mix linearly, each
+    edge lands at its adiabatic-mixing ``(h_t, xi)``, from which the closure recovers the
+    temperature.
 
-    1. propagate the edge mass flow (inlets/sources inject; junctions sum; splitters
-       divide), giving each edge a conserved ``mdot`` estimate;
-    2. blend the advected scalars -- total enthalpy ``h_t`` and the feed-stream
-       mixture fractions ``xi`` -- mass-weighted by that ``mdot``.
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled reacting network.
+    mdot0 : float, optional
+        Reference mass flow for the propagation (default: the compiled ``mdot`` scale); also
+        the assumed inflow at total-pressure inlets, whose ``mdot`` is not yet known.
+    p0 : float, optional
+        Uniform pressure seed (default: the compiled pressure scale).
+    max_sweeps : int, optional
+        Maximum relaxation sweeps for each of the two graph propagations (default 1000).  A
+        warning is emitted, and the last iterate returned, if either propagation has not
+        converged within this many sweeps (e.g. a very large or strongly cyclic network).
 
-    Because every feed enters with its own ``h_t`` (formation + sensible at its
-    injection ``T``) and ``xi = e_stream``, the blend lands each edge at exactly the
-    adiabatic-mixing ``(h_t, xi)``: the burnt edge inherits the fuel+air mixture
-    enthalpy automatically, and the equilibrium solve turns it into the flame
-    temperature.  Conserved scalars mix linearly, so this is the right basin
-    regardless of how negative the formation enthalpies are.
+    Returns
+    -------
+    ndarray
+        Initial state, shape ``(n_solve, n_edges)``.
     """
     N = prob.n_nodes
     E = prob.n_edges
@@ -161,11 +167,12 @@ def auto_initial_guess(prob, mdot0=None, p0=None):
 
     out_count = np.zeros(N)
     np.add.at(out_count, tail, 1.0)
-    max_sweeps = min(N + 5, 1000)
 
-    # (1) propagate the edge mass flow
+    # (1) propagate the edge mass flow; a topological propagation converges in at most the
+    # longest path length, so the allclose break normally exits well before max_sweeps.
     edge_mdot = np.full(E, md)
     has_out = out_count[tail] > 0
+    mdot_converged = False
     for _ in range(max_sweeps):
         node_in = inj_mdot * has_inj
         np.add.at(node_in, head, edge_mdot)
@@ -173,6 +180,7 @@ def auto_initial_guess(prob, mdot0=None, p0=None):
         new[has_out] = (node_in[tail] / np.maximum(out_count[tail], 1.0))[has_out]
         if np.allclose(new, edge_mdot, rtol=1e-12, atol=1e-12 * md):
             edge_mdot = new
+            mdot_converged = True
             break
         edge_mdot = new
 
@@ -184,6 +192,7 @@ def auto_initial_guess(prob, mdot0=None, p0=None):
         default = inj_scal[inj_nodes[0]].copy()
     edge_scal = np.tile(default, (E, 1))
     inj_w = inj_mdot * has_inj
+    scal_converged = False
     for _ in range(max_sweeps):
         node_num = (inj_w[:, None] * inj_scal).copy()
         node_den = inj_w.copy()
@@ -197,8 +206,17 @@ def auto_initial_guess(prob, mdot0=None, p0=None):
         new[valid] = node_mix[tail][valid]
         if np.allclose(new, edge_scal, rtol=1e-12, atol=1e-12):
             edge_scal = new
+            scal_converged = True
             break
         edge_scal = new
+
+    if not (mdot_converged and scal_converged):
+        warnings.warn(
+            f"auto_initial_guess: graph propagation did not converge within max_sweeps={max_sweeps} "
+            f"(mdot converged={mdot_converged}, scalars converged={scal_converged}); "
+            "returning the last iterate as the seed.",
+            stacklevel=2,
+        )
 
     x = np.zeros((n_solve, E))
     x[0, :] = edge_mdot
@@ -227,65 +245,6 @@ class SolveResult:
         )
 
 
-@dataclass
-class _Reporter:
-    """Newton-progress printer (see ``solve``'s ``verbose``/``progress_interval``).
-
-    ``level`` 0 is silent; 1 prints a one-line gross-residual summary per homotopy
-    stage; 2 additionally prints the scaled residual broken down by equation kind
-    (mass, pressure, energy, then each composition scalar) every ``interval``
-    iterations within a stage -- a column header once per stage, then the per-group
-    2-norms on each iteration line.
-    """
-
-    level: int = 0
-    interval: int = 1
-    prob: object = None
-    _grp: tuple = None  # cached (labels, ids, header, widths) for the per-iteration group table
-    _IT_W: int = 4  # width of the leading iteration-index column
-
-    def _groups(self):
-        if self._grp is None:
-            labels, ids = residual_groups(self.prob)
-            header = labels + ["total"]  # trailing column: the gross ||R_hat|| (groups in quadrature)
-            widths = [max(len(lab), 9) for lab in header]  # 9 fits a "-1.234e-05" magnitude
-            self._grp = (labels, ids, header, widths)
-        return self._grp
-
-    def _row(self, first, cells, widths):
-        parts = [first.rjust(self._IT_W)] + [c.rjust(w) for c, w in zip(cells, widths)]
-        return "  " + "  ".join(parts)
-
-    def stage_start(self, kappa, eps):
-        if self.level >= 2:
-            print(f"[kappa={kappa:<5g} eps={eps:.2e}]")
-            _labels, _ids, header, widths = self._groups()
-            print(self._row("it", header, widths))
-
-    def iteration(self, it, R):
-        if self.level < 2 or (it % self.interval != 0):
-            return
-        labels, ids, _header, widths = self._groups()
-        if R is None:
-            print(self._row(str(it), ["(non-physical)"], [len("(non-physical)")]))
-            return
-        R_hat = R / self.prob.res_scale
-        cells = [f"{float(np.linalg.norm(R_hat[ids == g])):.3e}" for g in range(len(labels))]
-        cells.append(f"{float(np.linalg.norm(R_hat)):.3e}")  # the gross norm (matches stage_end)
-        print(self._row(str(it), cells, widths))
-
-    def stage_end(self, kappa, it, norm, converged):
-        if self.level >= 1:
-            print(f"kappa={kappa:<5g} -> {it:3d} iters, ||R_hat||={norm:.3e}, converged={converged}")
-
-    def failure(self, prob, x2d, kappa, top=10):
-        """Dump the worst-converged equations after a failed solve (verbose >= 1)."""
-        if self.level >= 1:
-            shown = min(top, prob.n_eq)
-            print(f"did not converge; {shown} largest residual(s) (equation-by-equation):")
-            print(format_residuals(prob, x2d, kappa=kappa, top=top))
-
-
 def _merit(prob, x2d, eps, kappa, res_scale):
     """Scaled residual 2-norm; +inf if the state is non-physical.
 
@@ -311,9 +270,68 @@ def _merit(prob, x2d, eps, kappa, res_scale):
     return float(np.linalg.norm(R_hat)), R
 
 
+# Globalization tuning for the damped Newton in ``_solve_stage``.  These are standard,
+# solver-agnostic line-search / Levenberg-Marquardt defaults, not physics: the exact values
+# only trade robustness against a few extra residual evaluations on hard iterates.
+_LS_MAX_BACKTRACK = 30  # cap on step halvings in the Armijo line search (alpha down to ~2^-30)
+_LS_SHRINK = 0.5  # step-length reduction per backtrack (alpha *= this)
+_LS_ARMIJO = 1e-4  # Armijo sufficient-decrease coefficient
+_LM_MAX_TRIES = 40  # cap on damping trials in the Levenberg-Marquardt fallback
+_LM_INIT = 1e-3  # initial LM damping
+_LM_INCREASE = 4.0  # damping growth when an LM trial is rejected (shorter, safer step)
+_LM_DECREASE = 0.5  # damping relaxation after any accepted step (toward Gauss-Newton)
+_LM_MIN = 1e-12  # damping floor
+_LM_MAX = 1e8  # damping ceiling
+
+
 def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, res_scale, var_scale, reporter=None):
-    vcol = col_scale(var_scale, prob.n_edges)
-    lam = 1e-3
+    """Drive one continuation stage to convergence with a globalized damped Newton.
+
+    Solves the nondimensional system at fixed ``(eps, kappa)`` down to ``tol`` on the scaled
+    residual 2-norm (the merit ``||R_hat||``, computed by :func:`_merit`).  Each iteration
+    assembles the complex-step Jacobian, scales the linear system, and takes a step by two
+    tiers:
+
+    1. the full sparse-LU Newton step, with an Armijo backtracking line search on its length
+       ``alpha`` (``alpha = 1`` is the full step) until the merit decreases sufficiently;
+    2. if no Newton step is accepted -- the LU factorization failed / was singular, or every
+       backtrack still increased the merit -- a Levenberg-Marquardt fallback whose damping
+       ``lam`` is grown until a trial reduces the merit, giving a short, safe step out of the
+       stall.  ``lam`` interpolates the step between Gauss-Newton (small ``lam``) and
+       steepest descent (large ``lam``); it is relaxed on success and grown on rejection.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+    x2d : ndarray
+        Current state, shape ``(n_solve, n_edges)`` (warm-started from the previous stage).
+    eps, kappa : float
+        Smoothing width and artificial-friction coefficient, held fixed for this stage.
+    tol : float
+        Convergence tolerance on the scaled residual 2-norm.
+    max_iter : int
+        Maximum Newton iterations.
+    history : list of float
+        Appended in place with the merit at each iteration.
+    res_scale, var_scale : ndarray
+        Residual / variable nondimensionalization used to scale the linear system.
+    reporter : _Reporter, optional
+        Progress printer.
+
+    Returns
+    -------
+    x2d : ndarray
+        The stage's final state.
+    converged : bool
+        Whether the merit fell below ``tol``.
+    it : int
+        Iterations taken.
+    norm : float
+        Final scaled residual 2-norm.
+    """
+    vcol = col_scale(var_scale, prob.n_edges)  # per-column variable scale (edge-major)
+    lam = _LM_INIT
     norm, R = _merit(prob, x2d, eps, kappa, res_scale)
     for it in range(max_iter):
         history.append(norm)
@@ -331,33 +349,34 @@ def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, res_scale, var_s
             return x2d, False, it, norm
         J_hat, R_hat = scaled_system(J, R, vcol, res_scale)
 
+        # (1) full Newton step, then an Armijo backtracking line search on its length alpha.
         dy = newton_step(J_hat, R_hat)
         accepted = False
         if dy is not None:
             dx = unflatten(vcol * dy, prob.n_edges, prob.n_solve)
             alpha = 1.0
-            for _ in range(30):
+            for _ in range(_LS_MAX_BACKTRACK):
                 x_try = x2d + alpha * dx
                 n_try, R_try = _merit(prob, x_try, eps, kappa, res_scale)
-                if n_try < (1.0 - 1e-4 * alpha) * norm:
+                if n_try < (1.0 - _LS_ARMIJO * alpha) * norm:  # sufficient-decrease test
                     x2d, norm, R = x_try, n_try, R_try
                     accepted = True
-                    lam = max(lam * 0.5, 1e-12)
+                    lam = max(lam * _LM_DECREASE, _LM_MIN)  # a good full step -> relax LM damping
                     break
-                alpha *= 0.5
+                alpha *= _LS_SHRINK  # shorten the step and retry
 
+        # (2) Levenberg-Marquardt fallback with adaptive damping, when no Newton step helped.
         if not accepted:
-            # Levenberg-Marquardt fallback with adaptive damping.
-            for _ in range(40):
+            for _ in range(_LM_MAX_TRIES):
                 dy = lm_step(J_hat, R_hat, lam)
                 x_try = x2d + unflatten(vcol * dy, prob.n_edges, prob.n_solve)
                 n_try, R_try = _merit(prob, x_try, eps, kappa, res_scale)
-                if n_try < norm:
+                if n_try < norm:  # accept any decrease; the step is already damped
                     x2d, norm, R = x_try, n_try, R_try
                     accepted = True
-                    lam = max(lam * 0.5, 1e-12)
+                    lam = max(lam * _LM_DECREASE, _LM_MIN)
                     break
-                lam = min(lam * 4.0, 1e8)
+                lam = min(lam * _LM_INCREASE, _LM_MAX)  # stronger damping -> shorter, safer step
             if not accepted:
                 return x2d, False, it, norm
     return x2d, norm < tol, max_iter, norm
@@ -385,9 +404,9 @@ def solve(
     tol : float, optional
         Convergence tolerance on the scaled residual 2-norm.
     max_iter : int, optional
-        Maximum Newton iterations per homotopy stage.
+        Maximum Newton iterations per continuation stage.
     kappa_stages : sequence of float, optional
-        Vanishing-friction homotopy schedule (dimensionless), warm-started in order.
+        Artificial-resistance continuation schedule (dimensionless), warm-started in order.
     kappa_scale : {"dp", "absolute"}, optional
         How the schedule's artificial-friction coefficient is sized.  ``"dp"`` (default)
         multiplies each ``kappa`` by the friction resistance ``min(domain_max_dp(prob) /
@@ -402,14 +421,14 @@ def solve(
         ``kappa``.
     adaptive_scale : bool, optional
         When ``True`` (default), the residual / variable scales are re-measured from the
-        realized inflow at each homotopy stage (total inlet ``mdot`` for the mass rows, the
+        realized inflow at each continuation stage (total inlet ``mdot`` for the mass rows, the
         mass-weighted mean inlet ``|h_t|`` for the energy rows) instead of the fixed compiled
         references -- so the nondimensionalization tracks the actual flow and the user need not
         supply ``mdot_ref`` / ``h_ref``.  The quiescent ``mdot = 0`` case falls back to the seed
         scales.  ``False`` uses the compiled ``prob.res_scale`` / ``prob.var_scale``.
     verbose : int or bool, optional
         Progress verbosity.  ``0``/``False`` is silent; ``1``/``True`` prints a
-        one-line gross-residual summary per homotopy stage; ``2`` additionally prints
+        one-line gross-residual summary per continuation stage; ``2`` additionally prints
         the scaled residual broken down by equation kind (mass, pressure, energy, then
         each composition scalar) every ``progress_interval`` iterations within a stage.
     progress_interval : int, optional
@@ -453,7 +472,7 @@ def solve(
     converged = False
     norm = np.inf
     # seed scales from the compiled references; the adaptive path re-measures them from the
-    # realized inflow at each homotopy stage (kept constant within a stage).
+    # realized inflow at each continuation stage (kept constant within a stage).
     seed_mass, p_scale, seed_h = float(prob.var_scale[0]), float(prob.var_scale[1]), float(prob.var_scale[2])
     degrees = np.diff(prob.row_ptr)
     for kappa in kappa_stages:
@@ -475,309 +494,3 @@ def solve(
             reporter.failure(prob, x2d, kappa)
             break
     return SolveResult(x=x2d, converged=converged, iterations=total_it, residual_norm=norm, history=history)
-
-
-def states_table(prob, x2d):
-    """Recover the full edge-state table (NS_EST, E) for diagnostics/output."""
-    from ..assembly.derive import recover_all, NS_EST
-
-    est = np.zeros((NS_EST, prob.n_edges))
-    nj_cache = np.zeros((prob.n_edges, 0))  # diagnostics: no warm start (single pass, robust uniform)
-    marker_row = int(getattr(prob, "marker_row", -1))
-    recover_all(
-        prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, marker_row, est, nj_cache
-    )
-    return est
-
-
-def _states_columns(prob, x2d, edges=None, precision=5):
-    """Shared column extraction for the state-table formatters.
-
-    Returns ``(headers, rows)`` where ``headers`` is the list of column titles
-    (``"edge"`` followed by ``"<label> [<unit>]"`` per quantity) and ``rows`` is a
-    list of pre-formatted string cells, one list per edge.
-    """
-    from ..assembly.derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
-
-    # (label, est-row index, unit) in edge-state-table column order
-    cols = (
-        ("mdot", ES_MDOT, "kg/s"),
-        ("p", ES_P, "Pa"),
-        ("h_t", ES_HT, "J/kg"),
-        ("rho", ES_RHO, "kg/m^3"),
-        ("u", ES_U, "m/s"),
-        ("T", ES_T, "K"),
-        ("c", ES_C, "m/s"),
-        ("M", ES_M, "-"),
-        ("p_t", ES_PT, "Pa"),
-        ("area", ES_AREA, "m^2"),
-    )
-    est = states_table(prob, x2d)
-    if edges is None:
-        edges = range(prob.n_edges)
-    edges = [int(e) for e in edges]
-
-    headers = ["edge"] + [f"{label} [{unit}]" for label, _idx, unit in cols]
-    rows = [[str(e)] + [f"{est[idx, e]:.{precision}g}" for _label, idx, _unit in cols] for e in edges]
-    return headers, rows
-
-
-def format_states(prob, x2d, edges=None, precision=5):
-    """Return a fixed-width table of the recovered per-edge mean-flow states.
-
-    One row per edge (indexed by edge number) with the recovered flow quantities as columns:
-    ``mdot``, ``p``, ``h_t``, ``rho``, ``u``, ``T``, ``c``, ``M``, ``p_t``, ``area``.
-
-    Parameters
-    ----------
-    prob : CompiledProblem
-        The compiled problem whose edges are tabulated.
-    x2d : ndarray
-        A converged (or trial) mean-flow state, shape ``(3 + n_elem, n_edges)``.
-    edges : sequence of int, optional
-        Edge indices to include, in the given order (default: every edge, ``0 .. n_edges - 1``).
-    precision : int, optional
-        Number of significant digits printed per value (default 5).
-
-    Returns
-    -------
-    str
-        A newline-joined, column-aligned table ready to print.
-    """
-    headers, rows = _states_columns(prob, x2d, edges=edges, precision=precision)
-    widths = [max([len(headers[c])] + [len(r[c]) for r in rows]) for c in range(len(headers))]
-
-    def _row(cells):
-        return "  ".join(s.rjust(widths[c]) for c, s in enumerate(cells))
-
-    lines = [_row(headers), _row(["-" * w for w in widths])] + [_row(r) for r in rows]
-    return "\n".join(lines)
-
-
-def format_states_html(prob, x2d, edges=None, precision=5):
-    """Return an HTML ``<table>`` of the recovered per-edge mean-flow states.
-
-    Same columns as :func:`format_states`, rendered as an HTML table for rich
-    display in notebook environments.  See :func:`format_states` for the parameters.
-
-    Returns
-    -------
-    str
-        An HTML ``<table>`` element ready to hand to :class:`IPython.display.HTML`.
-    """
-    from html import escape
-
-    headers, rows = _states_columns(prob, x2d, edges=edges, precision=precision)
-    th = "; ".join(["text-align:right", "padding:2px 10px", "border-bottom:1px solid currentColor"])
-    td = "; ".join(["text-align:right", "padding:2px 10px", "font-family:monospace"])
-    head = "".join(f"<th style='{th}'>{escape(h)}</th>" for h in headers)
-    body = "".join("<tr>" + "".join(f"<td style='{td}'>{escape(c)}</td>" for c in r) + "</tr>" for r in rows)
-    return f"<table style='border-collapse:collapse'><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
-
-
-def _in_notebook():
-    """Return ``True`` when running inside a Jupyter/IPython kernel that renders HTML.
-
-    Detects the ZMQ-based interactive shell used by Jupyter notebooks, JupyterLab and
-    qtconsole; a plain IPython terminal or a bare interpreter returns ``False``.
-    """
-    try:
-        from IPython import get_ipython
-
-        return get_ipython().__class__.__name__ == "ZMQInteractiveShell"
-    except Exception:
-        return False
-
-
-def print_states(prob, x2d, edges=None, precision=5, file=None):
-    """Print the per-edge mean-flow state table to the screen.
-
-    Thin wrapper over :func:`format_states`; see it for the column layout and parameters.
-    In a notebook (and when ``file`` is not given) the table is rendered as rich HTML via
-    :func:`format_states_html`; otherwise the fixed-width text table is forwarded to
-    :func:`print` (``file`` defaults to ``sys.stdout``).
-    """
-    if file is None and _in_notebook():
-        from IPython.display import display, HTML
-
-        display(HTML(format_states_html(prob, x2d, edges=edges, precision=precision)))
-        return
-    print(format_states(prob, x2d, edges=edges, precision=precision), file=file)
-
-
-def residual_labels(prob):
-    """Human-readable label for every residual equation, in row order.
-
-    The residual vector is laid out as the element (node) equations first -- each
-    element contributes its band-1 algebraic rows (a mass balance plus pressure
-    couplings for an interior element, or a single boundary row) -- followed by the
-    per-edge advected-scalar transport equations (total enthalpy ``h_t`` for every
-    edge, then each composition scalar for every edge).  This returns one label per
-    row so a residual vector can be read equation-by-equation.
-
-    Parameters
-    ----------
-    prob : CompiledProblem
-        The compiled problem whose equation layout is described.
-
-    Returns
-    -------
-    list of str
-        ``prob.n_eq`` labels, in residual-row order.
-    """
-    names = prob.node_names or ()
-    scalars = prob.scalar_names or ()
-    nrp = prob.node_row_ptr
-    labels = []
-    for n in range(prob.n_nodes):
-        rid = int(prob.node_rid[n])
-        deg = int(nrp[n + 1] - nrp[n])
-        type_name = RESIDUAL_NAMES.get(rid, f"residual#{rid}")
-        label = names[n] if n < len(names) and names[n] else f"#{n}"
-        for tag in row_kind_tags(rid, deg):
-            labels.append(f"node {n} [{label}] {type_name}: {KIND_NAMES[tag]}")
-    E = prob.n_edges
-    for s in range(prob.n_solve - 2):
-        if s == 0:
-            field = "h_t"  # the s=0 transport row carries total enthalpy
-        elif (s - 1) < len(scalars) and scalars[s - 1]:
-            field = scalars[s - 1]
-        else:
-            field = f"scalar#{s - 1}"
-        for e in range(E):
-            labels.append(f"edge {e} transport: {field}")
-    return labels
-
-
-def residual_groups(prob):
-    """Group the residual rows by equation kind, for compact reporting.
-
-    The per-equation residual is coarsened into a handful of physically meaningful
-    groups: ``mass`` (every mass-balance / mass-flux row), ``pressure`` (every
-    pressure / absolute-pressure row), ``energy`` (the per-edge total-enthalpy
-    ``h_t`` transport rows), then one group per composition scalar (named by the
-    feed-stream / mixture-fraction labels).  Each group's scaled-residual 2-norm
-    combines in quadrature to the global convergence norm.
-
-    Parameters
-    ----------
-    prob : CompiledProblem
-        The compiled problem whose equation layout is grouped.
-
-    Returns
-    -------
-    labels : list of str
-        One label per group, in group-index order.
-    ids : ndarray of int
-        Length ``n_eq``; the group index of each residual row.
-    """
-    group_of_kind = {KIND_MASS: 0, KIND_PRESSURE: 1}
-    nrp = prob.node_row_ptr
-    ids = np.empty(prob.n_eq, dtype=np.int64)
-    for n in range(prob.n_nodes):
-        rid = int(prob.node_rid[n])
-        r0 = int(nrp[n])
-        for j, tag in enumerate(row_kind_tags(rid, int(nrp[n + 1] - nrp[n]))):
-            ids[r0 + j] = group_of_kind[tag]
-    # advected-scalar transport rows: s=0 is the energy (h_t) group, s>=1 the scalars
-    E = prob.n_edges
-    base = prob.transport_row0
-    for s in range(prob.n_solve - 2):
-        ids[base + s * E : base + (s + 1) * E] = 2 + s
-    scalars = prob.scalar_names or ()
-    labels = ["mass", "pressure", "energy"]
-    for s in range(prob.n_solve - 3):  # one column per composition scalar
-        labels.append(scalars[s] if s < len(scalars) and scalars[s] else f"scalar#{s}")
-    return labels, ids
-
-
-def residual_breakdown(prob, x2d, kappa=0.0, eps=None):
-    """Per-equation residual: ``(labels, R, R_hat)``.
-
-    ``R`` is the raw residual in physical units; ``R_hat = R / res_scale`` is the
-    nondimensional residual whose 2-norm the solver tests for convergence.  Together
-    with :func:`residual_labels` this resolves the single global residual norm into
-    its contribution from every equation.
-
-    Parameters
-    ----------
-    prob : CompiledProblem
-        The compiled problem to evaluate.
-    x2d : ndarray
-        A converged (or trial) mean-flow state, shape ``(n_solve, n_edges)``.
-    kappa : float, optional
-        Vanishing-friction homotopy parameter (default ``0.0``, the exact equations).
-    eps : float, optional
-        Complementarity smoothing width.  Defaults to the homotopy-stage width for
-        ``kappa`` (``max(0.3*kappa, 1e-4) * mdot_ref``), matching what the solver used.
-
-    Returns
-    -------
-    labels : list of str
-        Per-row equation labels (see :func:`residual_labels`).
-    R : ndarray
-        Raw residual, length ``n_eq``.
-    R_hat : ndarray
-        Scaled residual, length ``n_eq``.
-    """
-    if eps is None:
-        eps = _stage_eps(prob.var_scale[0], kappa)
-    R = residual(prob, x2d, eps, EPS_FB, kappa)
-    R_hat = R / prob.res_scale
-    return residual_labels(prob), R, R_hat
-
-
-def format_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precision=4):
-    """Return a fixed-width table of the residual, equation-by-equation.
-
-    One row per equation: its index, label, raw residual (physical units), and scaled
-    residual (the nondimensional value the convergence test sums).  A trailing summary
-    line reports the scaled residual 2-norm so the global figure is still available.
-
-    Parameters
-    ----------
-    prob : CompiledProblem
-        The compiled problem to evaluate.
-    x2d : ndarray
-        A converged (or trial) mean-flow state, shape ``(n_solve, n_edges)``.
-    kappa, eps : float, optional
-        Homotopy parameter and smoothing width; see :func:`residual_breakdown`.
-    sort : bool, optional
-        If ``True`` (default), order rows by descending ``|scaled residual|`` so the
-        worst-converged equations come first; otherwise keep natural row order.
-    top : int, optional
-        Show only the first ``top`` rows after ordering (default: all rows).
-    precision : int, optional
-        Significant digits printed per residual value (default 4).
-
-    Returns
-    -------
-    str
-        A newline-joined, column-aligned table ready to print.
-    """
-    labels, R, R_hat = residual_breakdown(prob, x2d, kappa=kappa, eps=eps)
-    order = np.argsort(-np.abs(R_hat)) if sort else np.arange(len(R_hat))
-    if top is not None:
-        order = order[: int(top)]
-
-    headers = ["row", "equation", "residual", "scaled"]
-    rows = [[str(int(i)), labels[i], f"{R[i]:.{precision}e}", f"{R_hat[i]:.{precision}e}"] for i in order]
-    widths = [max([len(headers[c])] + [len(r[c]) for r in rows]) for c in range(len(headers))]
-    # left-justify the text columns (row index, equation label), right-justify the numbers
-    just = (str.ljust, str.ljust, str.rjust, str.rjust)
-
-    def _row(cells):
-        return "  ".join(just[c](s, widths[c]) for c, s in enumerate(cells))
-
-    lines = [_row(headers), _row(["-" * w for w in widths])] + [_row(r) for r in rows]
-    lines.append(f"||R_hat|| = {float(np.linalg.norm(R_hat)):.{precision}e}  ({len(R_hat)} equations)")
-    return "\n".join(lines)
-
-
-def print_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precision=4, file=None):
-    """Print the residual broken down equation-by-equation.
-
-    Thin wrapper over :func:`format_residuals`; see it for the column layout and
-    parameters.  ``file`` is forwarded to :func:`print` (default ``sys.stdout``).
-    """
-    print(format_residuals(prob, x2d, kappa=kappa, eps=eps, sort=sort, top=top, precision=precision), file=file)

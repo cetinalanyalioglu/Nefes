@@ -17,8 +17,8 @@ The test names are the actual functions in the suite, so an entry can be run dir
 | A sudden expansion loses the Borda–Carnot total pressure | momentum balance | `test_expansion_unaffected_by_cc` |
 | A sudden contraction loss follows $K_c = (1/C_c - 1)^2$ | vena-contracta model | `test_contraction_loss_matches_Kc`, `test_contraction_lossless_default_conserves_pt` |
 | Element residuals are invariant to an edge-arrow flip | direction-convention algebra | `test_edge_direction_invariance` |
-| A long chain converges from exactly zero flow | homotopy well-posedness | `test_long_serial_chain_cold_start` |
-| A pressure-driven quiescent network converges | vanishing-friction homotopy | `test_quiescent_cold_start_converges` |
+| A long chain converges from exactly zero flow | continuation well-posedness | `test_long_serial_chain_cold_start` |
+| A pressure-driven quiescent network converges | artificial-resistance continuation | `test_quiescent_cold_start_converges` |
 | A symmetric branching network resolves its split | Levenberg–Marquardt damping | `test_many_parallel_branches_converge` |
 | Choking saturates the mass flow at the sonic value | critical mass flux | `test_choked_nozzle_saturates_mass_flow` |
 | The critical pressure ratio is the knee of the operating map | $p^\ast/p_t \approx 0.528$ | `test_critical_pressure_ratio_is_the_knee` |

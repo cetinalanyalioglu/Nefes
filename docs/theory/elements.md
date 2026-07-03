@@ -24,7 +24,7 @@ where the sum runs over the edges incident to element $P$, $\dot m_e$ is the sig
 This row is exact, linear, and independent of the edge-arrow convention: flipping an edge's arrow flips both $\sigma_{P,e}$ and the sign of $\dot m_e$ at the solution, so the physical outflow $\sigma_{P,e}\dot m_e$ — and hence the balance — is unchanged.
 
 **The stabilization term.**
-Every interior *pressure-type* row additionally carries a small linear resistance $-\,\kappa\,\dot m^{\text{out}}_{P,\text{port}}$, with $\kappa$ the vanishing-friction coefficient and $\dot m^{\text{out}}_{P,\text{port}} = \sigma_{P,e}\dot m_e$ the outflow at that port.
+Every interior *pressure-type* row additionally carries a small linear resistance $-\,\kappa\,\dot m^{\text{out}}_{P,\text{port}}$, with $\kappa$ the artificial-resistance coefficient and $\dot m^{\text{out}}_{P,\text{port}} = \sigma_{P,e}\dot m_e$ the outflow at that port.
 Its role is to regularize the early solver stages, and it is driven to exactly zero before convergence, so that the equations actually satisfied at the operating point are the exact ones.
 The term is therefore written but not repeated in the discussion of each element; its purpose and its harmlessness are the subject of [well-posedness](well-posedness.md), and it is denoted $\kappa$-term below.
 
@@ -198,7 +198,7 @@ An important remark is that the matrix is a frequency-domain relation between th
 
 ## The stabilization term
 
-During the early solver stages only, every interior pressure-type row carries the vanishing-friction resistance noted in the common template, given as:
+During the early solver stages only, every interior pressure-type row carries the artificial-resistance term noted in the common template, given as:
 
 $$
 R_{1+i} \;\mathrel{-}=\; \kappa\,\dot m^{\text{out}}_{P,\text{port }i},
@@ -208,6 +208,6 @@ $$
 
 where $\kappa$ is the stabilization coefficient built from a reference pressure and mass flow and $\text{stab}$ a dimensionless schedule.
 It is a small fictitious friction between port $0$ and port $i$, signed as the second law dictates, and its necessity — it removes a zero-flow degeneracy that would otherwise strand the solver — is argued in [well-posedness](well-posedness.md).
-It is harmless because the final solver stage sets $\text{stab} = 0$, so the equations satisfied at convergence are the exact constitutive relations of this document rather than their stabilized surrogates (test: `test_long_serial_chain_cold_start`, converging from rest through the staged homotopy to $\kappa = 0$).
+It is harmless because the final solver stage sets $\text{stab} = 0$, so the equations satisfied at convergence are the exact constitutive relations of this document rather than their stabilized surrogates (test: `test_long_serial_chain_cold_start`, converging from rest through the staged continuation to $\kappa = 0$).
 
 With every element's residual rows in hand, the next question is why these particular forms are chosen over the more obvious flux-form or hard-switch alternatives — the subject of [well-posedness](well-posedness.md).

@@ -42,7 +42,7 @@ from nefes.perturbation.operator.characteristics import edge_caloric, char_to_dx
 from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
 from nefes.assembly.assemble import residual
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.thermo.configure import equilibrium
 from nefes.assembly.derive import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M

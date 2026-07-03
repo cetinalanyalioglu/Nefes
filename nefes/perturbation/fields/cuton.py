@@ -227,7 +227,7 @@ def duct_cuton_frequencies(prob, x, *, section="circular", aspect=1.0, names=Non
         raise ValueError(f"section must be one of {_SECTIONS}; got {section!r}")
     if section == "rectangular":
         _check_aspect(aspect)
-    from ...solver.control import states_table
+    from ...solver.report import states_table
 
     est = states_table(prob, x)
     ducts = []

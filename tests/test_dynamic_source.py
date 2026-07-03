@@ -30,7 +30,7 @@ from nefes.perturbation.operator.characteristics import dq_to_dx
 from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
 from nefes.perturbation import eigenmodes
 from nefes.solver import solve
-from nefes.solver.control import states_table
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_MDOT, ES_U, ES_RHO, ES_P, ES_AREA
 from nefes.thermo.configure import perfect_gas
 

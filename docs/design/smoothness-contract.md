@@ -32,7 +32,7 @@ Every residual switch in the framework is built from these, so that the whole as
 Regularizing a switch is not free: it biases the solution by pinning the inactive side of a switch to a small nonzero value rather than exactly zero.
 The bias is *quadratically* small in the smoothing width relative to the state, of order $\mathcal{O}(\delta^2/x^2)$ at a converged state with $|x| \gg \delta$, where $\delta$ is the regularization width and $x$ the relevant flow scale.
 With the default widths — a smoothing of order $10^{-4}$ of a reference mass flow, and a fixed complementarity smoothing of order $10^{-5}$ — the imprint on the solution sits near the $10^{-8}$ relative level, far below any engineering tolerance and below the Newton convergence tolerance itself.
-An important discipline follows for the choking complementarity: its smoothing must stay *small and fixed* rather than being relaxed along the solver's homotopy, because its bias is a fictitious total-pressure loss that must remain far below the smallest driving pressure difference in the network, and widening it breaks weakly driven cases (see [the solver](solver.md)).
+An important discipline follows for the choking complementarity: its smoothing must stay *small and fixed* rather than being relaxed along the solver's continuation, because its bias is a fictitious total-pressure loss that must remain far below the smallest driving pressure difference in the network, and widening it breaks weakly driven cases (see [the solver](solver.md)).
 
 ## The roll-call
 

@@ -1,10 +1,10 @@
-"""Stress test of the vanishing-friction homotopy on large networks.
+"""Stress test of the artificial-resistance continuation on large networks.
 
 The solver warm-starts through ``kappa in (0.1, 0.01, 0.0)`` with a vanishing
 smoothing width.  These tests scale the element count far past the handful in
 ``test_solver`` -- long serial chains, many parallel branches, and a long run of
 sudden area changes (whose momentum<->contraction smooth switch is the most
-homotopy-sensitive kernel) -- and assert the homotopy still lands a converged,
+continuation-sensitive kernel) -- and assert the continuation still lands a converged,
 physical (subsonic, positive, mass-conserving) steady state, including from a
 quiescent (zero-flow) cold start.
 """
@@ -15,7 +15,8 @@ import pytest
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.solver import solve
-from nefes.solver.control import states_table, initial_guess
+from nefes.solver.control import initial_guess
+from nefes.solver.report import states_table
 from nefes.assembly.derive import ES_MDOT, ES_P, ES_M, ES_T
 
 R_AIR, GAMMA = 287.0, 1.4
@@ -62,7 +63,7 @@ def test_long_serial_chain_converges():
 
 
 def test_long_serial_chain_cold_start():
-    # The homotopy must reach the same state from a dead-stop (mdot = 0) guess.
+    # The continuation must reach the same state from a dead-stop (mdot = 0) guess.
     prob, mdot = _long_chain(n_blocks=30)
     res = solve(prob, x0=initial_guess(prob, mdot0=0.0))
     est = _assert_physical(prob, res)
@@ -100,7 +101,7 @@ def test_many_parallel_branches_converge():
     assert np.all(np.diff(branch_mdot) < 0.0)
 
 
-# -- long run of sudden area changes (the homotopy-sensitive kernel) ---------
+# -- long run of sudden area changes (the continuation-sensitive kernel) ---------
 
 
 def _sac_chain(n_sac, A0=0.25, A1=0.18, mdot=12.0):

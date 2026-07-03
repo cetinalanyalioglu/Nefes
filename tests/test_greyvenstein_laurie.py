@@ -224,7 +224,7 @@ def test_network_shape():
 def test_converges(solved):
     sol, _ = solved
     # a pure pressure-driven mesh (14 junctions, no fixed mass flow) -- the regime the
-    # vanishing-friction homotopy targets; it should converge tightly.
+    # artificial-resistance continuation targets; it should converge tightly.
     assert sol.converged
     assert sol.residual_norm < 1e-8
 

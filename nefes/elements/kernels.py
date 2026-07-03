@@ -4,7 +4,7 @@ Ported from the prototype ``elements.py`` into a single switch on
 ``residual_id``.  Every residual is smooth in the flow state (only
 ``nefes.smooth`` primitives; the lone ``.real`` comparisons are on areas, which
 are fixed real parameters, never flow state).  ``kappa`` (kappa) is the
-vanishing-friction homotopy coefficient: it stamps an artificial pressure drop
+artificial-resistance continuation coefficient: it stamps an artificial pressure drop
 ``kappa * mdot`` into interior pressure rows and is driven to zero by the solver.
 """
 

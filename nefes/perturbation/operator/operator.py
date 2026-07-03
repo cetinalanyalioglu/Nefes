@@ -20,7 +20,7 @@ import numpy as np
 import scipy.sparse as sp
 
 from ...assembly.assemble import jacobian
-from ...solver.control import states_table
+from ...solver.report import states_table
 from .characteristics import edge_caloric
 from .terminals import find_terminals
 from .stamps import (

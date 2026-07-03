@@ -1,6 +1,6 @@
 # Well-posedness of the mean-flow system
 
-The variable choice of [state and recovery](state-and-recovery.qmd), the fixed equation split of [equation structure](equation-structure.md), the smooth upwinding of [transport](transport.qmd), and the vanishing-friction term of [elements](elements.md) are not matters of taste.
+The variable choice of [state and recovery](state-and-recovery.qmd), the fixed equation split of [equation structure](equation-structure.md), the smooth upwinding of [transport](transport.qmd), and the artificial-resistance term of [elements](elements.md) are not matters of taste.
 Each repairs a *structural* singularity that defeats a formulation which is physically correct yet numerically hopeless — a set of equations that state the right physics and still cannot be solved from a general starting point.
 This document collects those failure modes, because each is a property of compressible-network equations rather than a tuning problem, and understanding them is what justifies the design decisions taken earlier.
 
@@ -60,10 +60,10 @@ Its sensitivity to the flow, $\partial(p_t - p)/\partial\dot m \propto \dot m$, 
 In a network driven *only* by pressure boundary conditions — with no mass-flow specification anywhere — the pressure residuals thus have zero first-order sensitivity to every flow unknown at the quiescent state.
 Newton's method, which moves entirely on first-order sensitivities, sees a flat landscape and no reason to set the flows in motion: zero flow is a stationary point, and descent-type iterations stall on or near it.
 
-The cure must inject first-order flow sensitivity without altering the converged answer, which is exactly what the vanishing-friction homotopy of [elements](elements.md) does.
+The cure must inject first-order flow sensitivity without altering the converged answer, which is exactly what the artificial-resistance continuation of [elements](elements.md) does.
 With the fictitious friction $\kappa$ active, each pressure relation acquires a term linear in the flow, so the network behaves like a pipe-resistance circuit in which pressure differences push directly on the flows — as a voltage drives a current through a resistor — and the solver locates the correct flow pattern readily.
 The friction is then reduced to zero over a short sequence of stages, $\kappa$ stepping through a schedule such as $(0.1,\ 0.01,\ 0)$ with each stage warm-started from the previous solution, so that the final stage solves the exact, friction-free equations (test: `test_quiescent_cold_start_converges`).
-An important remark is that this is a continuation in a *physical* parameter, not a numerical fudge: every intermediate problem is a well-posed resistive network, and only the limit $\kappa \to 0$ restores the original equations, whose solution the homotopy reaches by a path that is nonsingular throughout.
+An important remark is that this is a continuation in a *physical* parameter, not a numerical fudge: every intermediate problem is a well-posed resistive network, and only the limit $\kappa \to 0$ restores the original equations, whose solution the continuation reaches by a path that is nonsingular throughout.
 
 ## A milder, physical indeterminacy
 
@@ -72,5 +72,5 @@ In a perfectly symmetric branching network at rest, the *split* of the flow betw
 This is a physical indeterminacy: the symmetric problem truly has a one-parameter family of incipient splits, resolved only by whatever breaks the symmetry.
 Rather than rewrite the equations, the solver regularizes the step through Levenberg–Marquardt damping (see [the solver](../design/solver.md)), which replaces the singular $\mathbf{J}$ by $\mathbf{J} + \lambda\mathbf{I}$ near a rank deficiency and so takes a small, well-defined step that the following iterations refine (test: `test_many_parallel_branches_converge`).
 
-Taken together, these repairs are why the mean-flow system is solvable from any admissible cold start: the transport form removes the energy degeneracy, the fixed split and smooth upwinding remove the switch discontinuities, the friction homotopy removes the pressure-driven stationarity, and the damping absorbs the residual symmetric indeterminacy.
+Taken together, these repairs are why the mean-flow system is solvable from any admissible cold start: the transport form removes the energy degeneracy, the fixed split and smooth upwinding remove the switch discontinuities, the artificial-resistance continuation removes the pressure-driven stationarity, and the damping absorbs the residual symmetric indeterminacy.
 The next document turns from the mean-flow system to the wave language of characteristic variables — the natural coordinates of the acoustics, and the setting in which the same operating-point Jacobian is reused (see [characteristics](characteristics.md)).

@@ -21,7 +21,7 @@ the entropy seat and the duct entropy-phase row follow the flow rather than the
 element geometry (see ``response._seats_entropy`` and ``stamps.build_duct_stamps``).
 """
 
-from ...solver.control import states_table
+from ...solver.report import states_table
 from ...assembly.derive import ES_M
 from ...elements.ids import ACOUSTIC_DUCT
 

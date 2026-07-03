@@ -1,6 +1,6 @@
-"""dP-scaled homotopy start: size the artificial-friction coefficient to the domain dP.
+"""dP-scaled continuation start: size the artificial-friction coefficient to the domain dP.
 
-The vanishing-friction homotopy stamps an artificial pressure drop ``kappa * R_art * mdot``
+The artificial-resistance continuation stamps an artificial pressure drop ``kappa * R_art * mdot``
 into the interior pressure rows.  Historically ``R_art = 1`` (an absolute coefficient), which
 over-perturbs low-``dP`` / high-``mdot`` networks.  ``kappa_scale="dp"`` (the default) sets
 ``R_art = min(domain_max_dp / mdot_ref, 1)`` so the injected drop is capped at a fraction

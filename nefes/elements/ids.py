@@ -1,7 +1,7 @@
 """Element residual-type ids and per-type metadata (Python-side constants).
 
-The integer ``residual_id`` is the @njit dispatch key (a big switch that
-constant-folds).  Supersonic boundaries are reserved but not implemented in v1.
+The integer ``residual_id`` is the dispatch key the compiled (``@njit``) kernels
+branch on to select an element's residual and donor.
 """
 
 MASS_FLOW_INLET = 0
@@ -27,10 +27,9 @@ FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (
 PIPE = 20  # 2-port length-bearing pipe: Darcy-Weisbach friction (Pt drop K = f*L/D) + the duct acoustic phase
 TRANSFER_MATRIX = 21  # 2-port element: mean flow == isentropic area change; perturbation uses a user transfer matrix
 
-# Acoustic-face ids (implementation-plan.md s8.3): which acoustic stamp an
-# element overrides its default CSD face with.  DUCT (P), VOLUME (storage M) and
-# FLAME (sources S) are active; the dynamic-source S is carried on the element's
-# DynamicSource descriptor rather than this tag.
+# Acoustic-face ids: the acoustic stamp an element uses in place of its default
+# CSD face.  The dynamic-source S is carried on the element's DynamicSource
+# descriptor, not this tag.
 ACOUSTIC_DEFAULT = 0  # contributes only through J_alg (the CSD linearization)
 ACOUSTIC_DUCT = 1  # phase-propagation stamp P(omega)
 ACOUSTIC_VOLUME = 2  # finite-volume storage stamp M (the cavity compliance)
@@ -46,10 +45,13 @@ KIND_NAMES = {KIND_MASS: "mass", KIND_PRESSURE: "pressure", KIND_ENTHALPY: "enth
 
 
 def row_kind_tags(rid, deg):
-    """Equation-kind tag (``KIND_*``) for each band-1 residual row of an element.
+    """Equation-kind tag (``KIND_*``) for each balance row an element emits.
 
-    The single source of truth for the per-row kinds; both the residual-row scaling
-    (:func:`nefes.elements.catalog._row_kinds`) and the per-equation residual report
+    An element emits one balance row per incident edge (its *band-1* rows -- the mass
+    / pressure / enthalpy balances the solver carries, as distinct from the *band-2*
+    thermodynamic fields the recovery reconstructs).  This is the single source of
+    truth for their kinds; both the residual-row scaling
+    (:func:`nefes.shell.build._row_kinds`) and the per-equation residual report
     (:func:`nefes.solver.report.residual_labels`) derive from it, so they cannot drift.
 
     Parameters
@@ -57,7 +59,7 @@ def row_kind_tags(rid, deg):
     rid : int
         The element's ``residual_id``.
     deg : int
-        The element's degree (its number of band-1 residual rows = its port count).
+        The element's degree (its number of balance rows = its port count).
 
     Returns
     -------
@@ -76,7 +78,8 @@ def row_kind_tags(rid, deg):
     return [KIND_MASS] + [KIND_PRESSURE] * (deg - 1)
 
 
-# Fixed n_ports for fixed-arity elements (None -> variable: junction/splitter).
+# Port count of each element with a fixed number of ports (absent from this map ->
+# variable port count: the junction / splitter manifolds).
 FIXED_NPORTS = {
     MASS_FLOW_INLET: 1,
     PT_INLET: 1,
@@ -97,18 +100,11 @@ FIXED_NPORTS = {
     TRANSFER_MATRIX: 2,
 }
 
-# Whether an element permits an area change across it (its incident edges may
-# carry different areas).  Most elements are area-agnostic: the dedicated
-# area-change elements carry the static<->dynamic conversion, and the concentrated
-# loss reconstructs each port's static state from that port's own area, so it may
-# straddle an area change (the loss rides on top of an isentropic area change; its
-# K is pinned to a definite port via catalog.loss's ref_port).  The duct alone is
-# truly constant-area (theory.md s12.3): its mean face is equal-area continuity,
-# so its two ports must share one area.  Junctions/splitters are manifolds and
-# impose no area-equality constraint.  Single-port boundaries are exempt (one
-# edge, nothing to compare).  Elements absent from this map default to True
-# (unconstrained); add an entry here when a new element type needs the equal-area
-# rule enforced.
+# Whether an element permits an area change across it (its incident edges may carry
+# different areas).  Most elements are area-agnostic; the exceptions are the ones
+# whose mean face assumes equal-area continuity -- the constant-area duct / pipe and
+# the compact flames / mass source.  Elements absent from this map default to ``True``
+# (unconstrained); add an entry when a new element type needs the equal-area rule.
 ALLOWS_AREA_CHANGE = {
     MASS_FLOW_INLET: True,
     PT_INLET: True,
@@ -133,7 +129,7 @@ ALLOWS_AREA_CHANGE = {
 }
 
 # Human-readable element-type names, for validation / reporting messages.
-RESIDUAL_NAMES = {
+ELEMENT_TYPE_NAMES = {
     MASS_FLOW_INLET: "MassFlowInlet",
     PT_INLET: "TotalPressureInlet",
     P_OUTLET: "PressureOutlet",
@@ -157,3 +153,8 @@ RESIDUAL_NAMES = {
     PIPE: "Pipe",
     TRANSFER_MATRIX: "TransferMatrixElement",
 }
+
+# Elements that introduce a feed stream (a distinct injected composition): the boundaries
+# and the mass source.  Shared by the builder (stream discovery) and the post-solve
+# per-edge chemistry recovery.
+STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)

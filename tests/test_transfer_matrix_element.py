@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
@@ -38,7 +39,7 @@ def _build(mid):
         cat.pressure_outlet(101325.0, 300.0),
     ]
     edges = [(0, 1, A1), (1, 2, A1), (2, 3, A2), (3, 4, A2)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x

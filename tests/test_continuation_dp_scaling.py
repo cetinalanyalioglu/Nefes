@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.control import domain_max_dp
@@ -25,7 +26,7 @@ H_REF = CP * 300.0
 
 def _duct(pt, p_out, mdot_ref, area=0.1, length=0.5):
     els = [cat.total_pressure_inlet(pt, 300.0), cat.duct(length), cat.pressure_outlet(p_out, 300.0)]
-    return cat.build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot_ref, 101325.0, H_REF)
+    return build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot_ref, 101325.0, H_REF)
 
 
 def _r_art(prob, mode="dp"):
@@ -52,14 +53,14 @@ def test_domain_max_dp_uses_widest_pair():
         cat.pressure_outlet(1.05e5, 300.0),
         cat.pressure_outlet(0.98e5, 300.0),
     ]
-    prob = cat.build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1), (1, 3, 0.1)], 10.0, 101325.0, H_REF)
+    prob = build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1), (1, 3, 0.1)], 10.0, 101325.0, H_REF)
     assert domain_max_dp(prob) == pytest.approx(1.10e5 - 0.98e5)
 
 
 def test_domain_max_dp_zero_when_mass_driven():
     # a single pressure reference (mass-flow inlet + one outlet) -> no a-priori drop.
     els = [cat.mass_flow_inlet(8.0, 300.0), cat.duct(0.5), cat.pressure_outlet(1.0e5, 300.0)]
-    prob = cat.build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 8.0, 101325.0, H_REF)
+    prob = build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 8.0, 101325.0, H_REF)
     assert domain_max_dp(prob) == 0.0
 
 
@@ -90,7 +91,7 @@ def test_dp_scaling_is_noop_for_healthy_dp():
 
 def test_mass_driven_falls_back_to_absolute():
     els = [cat.mass_flow_inlet(8.0, 300.0), cat.duct(0.5), cat.pressure_outlet(1.0e5, 300.0)]
-    prob = cat.build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 8.0, 101325.0, H_REF)
+    prob = build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 8.0, 101325.0, H_REF)
     assert _r_art(prob, "dp") == 1.0  # no a-priori dP -> absolute coefficient
 
 

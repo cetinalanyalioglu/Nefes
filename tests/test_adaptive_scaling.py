@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 from nefes.shell.network import Network
 from nefes.solver import solve
@@ -22,7 +23,7 @@ CP = 1.4 * 287.0 / 0.4
 
 def _duct_prob(pt=1.2e5, p_out=1.0e5, mdot_ref=10.0, area=0.1):
     els = [cat.total_pressure_inlet(pt, 300.0), cat.duct(0.5), cat.pressure_outlet(p_out, 300.0)]
-    return cat.build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot_ref, 101325.0, CP * 300.0)
+    return build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot_ref, 101325.0, CP * 300.0)
 
 
 # --------------------------------------------------------------------------- #
@@ -38,7 +39,7 @@ def test_compose_scales_reproduces_compiled_references():
 
 def test_measure_inflow_scales_reads_the_realized_flow():
     els = [cat.mass_flow_inlet(7.0, 300.0), cat.duct(), cat.pressure_outlet(1.0e5, 300.0)]
-    prob = cat.build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 7.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 7.0, 101325.0, CP * 300.0)
     res = solve(prob)
     mass, h = measure_inflow_scales(prob, res.x, prob.var_scale[0], prob.var_scale[2])
     assert mass == pytest.approx(7.0, rel=1e-6)  # the inlet mass flow

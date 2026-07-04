@@ -1,29 +1,18 @@
-"""Element catalog and CompiledProblem builder (Python, parse-time).
+"""Element catalog (Python, parse-time): the factory functions for network elements.
 
-An ``ElementSpec`` names an element's residual id and its ordered float
-parameters (the order the @njit kernels expect).  ``build_problem`` turns a list
-of element specs plus directed edges into the immutable CompiledProblem.
+Each factory returns an ``ElementSpec`` naming an element's residual id and its ordered
+float parameters (the order the ``@njit`` kernels expect).  The CompiledProblem builder
+that assembles these specs into a solvable problem lives in :mod:`nefes.shell.build`.
 """
-# CA: Why would we keep CompiledProblem builder here? What does it have to do with the elements catalog?
-# We should probably move it to the shell module. Same goes for connectivity related routines, this is 
-# part of the core functonality as well and probably belongs to the shell module.
 
 import inspect
 import math
 import sys
-from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
-import numpy as np
-
-from ..chem.composition import build_streams, enthalpy_mass, species_mass_fractions
-from ..graph.connectivity import connectivity_from_directed_edges, build_jacobian_pattern, Connectivity
-from ..graph.problem import CompiledProblem
-from .composite import CompositeElementSpec, expand_composites
-from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
-from ..thermo.configure import ThermoConfig
+from .composite import CompositeElementSpec
 from .ids import (
     MASS_FLOW_INLET,
     PT_INLET,
@@ -35,17 +24,10 @@ from .ids import (
     JUNCTION,
     SPLITTER,
     FORCED_SPLITTER,
-    FLAME_EQUILIBRIUM,
     MASS_SOURCE,
     ACOUSTIC_DEFAULT,
     ACOUSTIC_DUCT,
     ACOUSTIC_VOLUME,
-    FIXED_NPORTS,
-    ALLOWS_AREA_CHANGE,
-    RESIDUAL_NAMES,
-    KIND_MASS,
-    KIND_PRESSURE,
-    row_kind_tags,
 )
 
 # Relative tolerance for the equal-area check on constant-area elements.
@@ -71,50 +53,32 @@ def _storage_block(name, l_up, l_down, end_correction):
 
 @dataclass
 class ElementSpec:
-    """One network element: residual type + ordered float parameters.
+    """One network element: its residual type and the ordered parameters its kernel reads.
 
-    ``acoustic_id`` (implementation-plan.md s8.3) declares the optional acoustic
-    face that overrides the default CSD linearization; ``ACOUSTIC_DEFAULT`` means
-    the element contributes only through ``J_alg``.
-
-    ``eps`` optionally overrides this element's smoothing width (the smooth-step /
-    complementarity regularization, in mass-flow units, i.e. ~ a fraction of
-    ``mdot_ref``).  ``None`` follows the global solve-time ``eps``.  Settable at
-    creation or mutated later (``spec.eps = ...``) before ``build_problem``; a
-    sharper value makes the frozen perturbation linearization track the exact
-    (un-regularized) jump -- see the ``SUDDEN_AREA_CHANGE`` note in ``kernels.py``.
+    The immutable parse-time building block that ``build_problem`` assembles (with the
+    directed edges) into a :class:`~nefes.graph.problem.CompiledProblem`.  The mean-flow
+    solve needs only ``residual_id`` and ``fparams``; the remaining fields are optional
+    acoustic / reacting / perturbation extras, one line each below.
     """
 
-    residual_id: int
-    fparams: List[float] = field(default_factory=list)
-    name: str = ""
-    acoustic_id: int = ACOUSTIC_DEFAULT
+    residual_id: int  # element type (an ``ids`` constant); the @njit kernel dispatch key
+    fparams: List[float] = field(default_factory=list)  # ordered float params, in kernel order
+    name: str = ""  # human-readable label (reporting / plotting)
+    acoustic_id: int = ACOUSTIC_DEFAULT  # acoustic-face override; ACOUSTIC_DEFAULT -> only J_alg
+    # smoothing-width override in mass-flow units; None follows the global solve-time eps
     eps: Optional[float] = None
     perturbation_bc: Optional[object] = None  # PerturbationBC (None -> inherit)
-    # Composition of the stream this element introduces (inlets, mass sources) or
-    # would draw on backflow (outlets).  For the equilibrium model it is a named
-    # species mixture -- ``{species: fraction}`` (or a full species array) in
-    # ``basis`` units (``"mole"`` or ``"mass"``) -- resolved to the transported
-    # elemental ``Z`` (and the ``Tt -> h_t`` datum) at build time.  For a perfect
-    # gas with passive scalars it is the raw scalar values.  ``None`` -> zeros.
+    # stream this element introduces / draws on backflow: a named species mixture
+    # {species: fraction} in ``basis`` units, or raw passive scalars for a perfect gas
     composition_spec: object = None
-    basis: str = "mole"
-    # optional dynamic-source descriptor (nefes.elements.dynamic_source.DynamicSource);
-    # a forward-compatibility provision for the S(omega) perturbation phase -- the
-    # mean flow ignores it.
-    dynamic_source: object = None
-    # optional transfer-matrix descriptor for a TRANSFER_MATRIX element: a
-    # nefes.perturbation.matrix.TransferMatrix (or an UnknownTransferMatrix marker for
-    # identification).  Read only by the perturbation layer; the mean flow (an
-    # isentropic area change) ignores it.
-    transfer_matrix: object = None
-    # burnt-marker value injected at an inflow/source boundary (the last advected
-    # scalar of the marker-gated reacting closure).  ``0.0`` is fresh reactant
-    # (default); ``1.0`` is fully burnt gas (e.g. exhaust-gas recirculation as a feed),
-    # which forces the equilibrium closure on the downstream edge.  Only meaningful on
-    # a marker-gated network (an equilibrium-flame reacting net with no explicit
-    # per-edge closure); a non-zero value elsewhere is rejected at build time.
+    basis: str = "mole"  # units of composition_spec: "mole" or "mass"
+    dynamic_source: object = None  # DynamicSource for the S(omega) face; mean flow ignores it
+    transfer_matrix: object = None  # TransferMatrix for a TRANSFER_MATRIX element; perturbation-only
+    # injected burnt marker at an inflow/source (0 fresh, 1 burnt); marker-gated networks only
     marker: float = 0.0
+    # ambient back pressure [Pa] a choked_nozzle_outlet discharges into; diagnostic only
+    # (never read by a kernel), used post-solve to warn if the nozzle would not actually choke
+    back_pressure: Optional[float] = None
 
 
 def _validate_marker(marker, name):
@@ -132,22 +96,47 @@ def _validate_marker(marker, name):
 def mass_flow_inlet(mdot, Tt, composition=None, basis="mole", name="inlet", perturbation_bc=None, marker=0.0):
     """Prescribed mass-flow inlet feeding a stream of the given ``composition``.
 
-    ``composition`` is a named species mixture (``{species: fraction}``) for the
-    equilibrium model -- e.g. air as ``{"O2": 0.21, "N2": 0.79}`` with
-    ``basis="mole"`` -- resolved to the transported elemental ``Z`` and the feed
-    enthalpy at ``Tt`` during ``build_problem``.
+    ``Tt`` is the **total** (stagnation) temperature.  The transported total enthalpy
+    is ``h_t = h(Tt)`` -- the mixture's enthalpy evaluated at ``Tt`` -- so the static
+    temperature ``T < Tt`` is recovered on the edge from ``h = h_t - u^2/2``; no kinetic
+    energy is double-counted.  ``composition`` is a named species mixture
+    (``{species: fraction}``) for the equilibrium model -- e.g. dry air as
+    ``{"O2": 0.21, "N2": 0.79}`` with ``basis="mole"`` -- resolved to the transported
+    feed streams and this ``h_t`` at ``build_problem``.
 
     This is an **inflow boundary**: ``mdot`` must be non-negative (``>= 0``).  A
     positive value injects the feed stream; ``mdot = 0`` is a quiescent (closed) inlet.
     Reverse flow (a negative prescribed mass rate, i.e. suction out through the inlet)
-    is not permitted -- use a :func:`pressure_outlet`, which models ingestion/backflow,
-    for a boundary that may reverse.
+    is not permitted -- use a :func:`mass_flow_outlet` for an outflow with a prescribed
+    mass flow rate.
 
     ``marker`` (default ``0.0``, fresh reactant) is the injected burnt-marker value of
     the marker-gated reacting closure; set ``1.0`` to feed already-burnt gas (e.g.
     exhaust-gas recirculation), forcing the equilibrium closure downstream.  It is only
     accepted on a marker-gated network (equilibrium-flame reacting, no explicit per-edge
     closure); a non-zero value elsewhere is rejected at build time.
+
+    Parameters
+    ----------
+    mdot : float
+        Prescribed inflow mass rate [kg/s] (``>= 0``).
+    Tt : float
+        Total (stagnation) temperature [K] of the feed.
+    composition : dict or array_like, optional
+        Feed composition -- a named species mixture ``{species: fraction}`` for the
+        equilibrium model, or raw passive-scalar values for a perfect gas.  ``None`` -> zeros.
+    basis : {"mole", "mass"}, optional
+        Units of ``composition`` (default ``"mole"``).
+    name : str, optional
+        Element label.
+    perturbation_bc : PerturbationBC, optional
+        Acoustic termination; ``None`` inherits the linearized inlet reflection.
+    marker : float, optional
+        Injected burnt marker (``0.0`` fresh, default; ``1.0`` burnt); marker-gated networks only.
+
+    Returns
+    -------
+    ElementSpec
     """
     if float(mdot) < 0.0:
         raise ValueError(
@@ -170,6 +159,27 @@ def total_pressure_inlet(pt, Tt, composition=None, basis="mole", name="pt-inlet"
 
     ``marker`` injects the burnt-marker value (``0.0`` fresh, default; ``1.0`` burnt --
     e.g. recirculated exhaust gas as a feed); see :func:`mass_flow_inlet`.
+
+    Parameters
+    ----------
+    pt : float
+        Prescribed total (stagnation) pressure [Pa].
+    Tt : float
+        Total (stagnation) temperature [K] of the feed.
+    composition : dict or array_like, optional
+        Feed composition; see :func:`mass_flow_inlet`.
+    basis : {"mole", "mass"}, optional
+        Units of ``composition`` (default ``"mole"``).
+    name : str, optional
+        Element label.
+    perturbation_bc : PerturbationBC, optional
+        Acoustic termination; ``None`` inherits the linearized inlet reflection.
+    marker : float, optional
+        Injected burnt marker (``0.0`` fresh, default; ``1.0`` burnt); marker-gated networks only.
+
+    Returns
+    -------
+    ElementSpec
     """
     return ElementSpec(
         PT_INLET,
@@ -185,10 +195,32 @@ def total_pressure_inlet(pt, Tt, composition=None, basis="mole", name="pt-inlet"
 def pressure_outlet(
     p, Tt_backflow=300.0, composition=None, basis="mole", name="outlet", perturbation_bc=None, marker=0.0
 ):
-    """Static-pressure outlet; ``composition`` is the backflow stream (on ingestion).
+    """Static-pressure outlet; becomes a total-pressure inlet on backflow, feeding ``composition`` at ``Tt_backflow``
+    and a total pressure of ``pt_backflow = p``.
 
     ``marker`` is the burnt-marker value of the backflow stream drawn in on ingestion
     (``0.0`` fresh, default; ``1.0`` burnt); see :func:`mass_flow_inlet`.
+
+    Parameters
+    ----------
+    p : float
+        Prescribed static (and backflow total) pressure [Pa].
+    Tt_backflow : float, optional
+        Total temperature [K] of gas drawn in on ingestion (default ``300.0``).
+    composition : dict or array_like, optional
+        Backflow composition; see :func:`mass_flow_inlet`.
+    basis : {"mole", "mass"}, optional
+        Units of ``composition`` (default ``"mole"``).
+    name : str, optional
+        Element label.
+    perturbation_bc : PerturbationBC, optional
+        Acoustic termination; ``None`` inherits the linearized outlet reflection.
+    marker : float, optional
+        Backflow burnt marker (``0.0`` fresh, default; ``1.0`` burnt); marker-gated networks only.
+
+    Returns
+    -------
+    ElementSpec
     """
     return ElementSpec(
         P_OUTLET,
@@ -206,14 +238,10 @@ def mass_flow_outlet(mdot, name="outlet", perturbation_bc=None):
 
     The static pressure floats (it is whatever the interior produces); useful for a
     metered exhaust or as the mean-flow partner of a downstream choked throat whose
-    critical mass flow is known.  Left at ``perturbation_bc=None`` the acoustic
-    termination is the *inherited* linearization of this row, ``mdot' = 0`` -- the
-    constant-mass-flow acoustic boundary condition (also available standalone as
-    :meth:`~nefes.perturbation.operator.boundary_bc.PerturbationBC.constant_mass_flow`).
+    critical mass flow is known.
 
-    This is an **outflow-only** boundary: ``mdot`` must be positive and the element does
-    not model ingestion (use a :func:`pressure_outlet`, which models backflow, for a
-    boundary that may reverse).
+    This is an **outflow-only** boundary: ``mdot`` must be positive (positive means
+    leaving the domain per element definition).
 
     Parameters
     ----------
@@ -232,18 +260,17 @@ def mass_flow_outlet(mdot, name="outlet", perturbation_bc=None):
     return ElementSpec(MASS_FLOW_OUTLET, [float(mdot)], name, perturbation_bc=perturbation_bc)
 
 
-def choked_nozzle_outlet(throat_area, name="outlet", perturbation_bc=None):
+def choked_nozzle_outlet(throat_area, back_pressure=None, name="outlet", perturbation_bc=None):
     """Compact choked-nozzle outlet of throat area ``throat_area`` lumped downstream.
 
     Models a sonic (M=1) throat just beyond the outlet plane: the outflow is the
     critical mass flux for the interior stagnation state and the throat area, so the
     static pressure floats (the choked mass flow is set by the upstream total state, not
     a back-pressure).  Because the nozzle is *compact* (lumped), the application plane
-    stays **subsonic** -- the sonic point is in the throat, not the domain -- so the
-    acoustic operator is non-degenerate.  Left at ``perturbation_bc=None`` the acoustic
-    termination is the *inherited* linearization of the critical-mass-flux row, which is
-    the compact choked-nozzle (Marble--Candel) reflection with its entropy -> acoustic
-    coupling -- no separately specified boundary condition needed.
+    stays **subsonic** (the sonic point is in the throat, not explicitly in the domain).
+    Left at ``perturbation_bc=None`` the acoustic termination is the *inherited* linearization
+    of the critical-mass-flux row, which is the compact choked-nozzle (Marble-Candel) reflection
+    with its entropy -> acoustic coupling -- no separately specified boundary condition needed.
 
     Use it when the convergent section is acoustically compact; resolving the higher-Mach
     part of the contraction explicitly and lumping only the near-throat remainder makes
@@ -253,8 +280,8 @@ def choked_nozzle_outlet(throat_area, name="outlet", perturbation_bc=None):
 
     This element **asserts** the nozzle is choked: it imposes the critical mass flux
     unconditionally (the mass flow scales with the interior total pressure and stays
-    sonic-throat-consistent at any total pressure -- there is no back-pressure to detect
-    unchoking).  ``throat_area`` must be smaller than the outlet edge area (a contraction;
+    sonic-throat-consistent at any total pressure, i.e. there is no back-pressure to detect
+    unchoking.  ``throat_area`` must be smaller than the outlet edge area (a contraction;
     enforced at build time).  If the nozzle may be unchoked at low pressure ratio, use
     :func:`pressure_outlet` instead -- its emergent complementarity handles the
     choked/unchoked transition against a prescribed back-pressure.
@@ -264,6 +291,12 @@ def choked_nozzle_outlet(throat_area, name="outlet", perturbation_bc=None):
     throat_area : float
         Sonic-throat area ``A*`` [m^2] of the lumped nozzle (``A* < A_outlet`` so the
         approach stays subsonic).  Must be > 0.
+    back_pressure : float, optional
+        Ambient (discharge) pressure [Pa] the nozzle exhausts into.  Purely a diagnostic:
+        no kernel reads it, but when given, the solve checks it against the throat's
+        critical (sonic) pressure at the converged state and warns if it is too high for the
+        nozzle to choke (i.e. the compact choked-nozzle model would not apply).  ``None``
+        (default) skips the check.  See :meth:`~nefes.shell.network.Solution.unchoked_nozzles`.
     name : str, optional
         Element label.
     perturbation_bc : PerturbationBC, optional
@@ -271,7 +304,12 @@ def choked_nozzle_outlet(throat_area, name="outlet", perturbation_bc=None):
     """
     if not float(throat_area) > 0.0:
         raise ValueError(f"choked_nozzle_outlet throat area must be > 0 (got {throat_area})")
-    return ElementSpec(CHOKED_NOZZLE_OUTLET, [float(throat_area)], name, perturbation_bc=perturbation_bc)
+    if back_pressure is not None and not float(back_pressure) > 0.0:
+        raise ValueError(f"choked_nozzle_outlet back_pressure must be > 0 (got {back_pressure})")
+    bp = None if back_pressure is None else float(back_pressure)
+    return ElementSpec(
+        CHOKED_NOZZLE_OUTLET, [float(throat_area)], name, perturbation_bc=perturbation_bc, back_pressure=bp
+    )
 
 
 def wall(name="wall", perturbation_bc=None):
@@ -282,6 +320,17 @@ def wall(name="wall", perturbation_bc=None):
     hard wall (``u' = 0``, ``R = +1``) -- which at the wall's ``M = 0`` state is
     identical to the inherited ``mdot' = 0`` row.  Pass ``perturbation_bc`` to model
     a non-rigid termination (e.g. a liner impedance) instead.
+
+    Parameters
+    ----------
+    name : str, optional
+        Element label.
+    perturbation_bc : PerturbationBC, optional
+        Acoustic termination; ``None`` (default) is a rigid hard wall.
+
+    Returns
+    -------
+    ElementSpec
     """
     from ..perturbation.operator.boundary_bc import PerturbationBC
 
@@ -301,14 +350,14 @@ def cavity(volume, name="cavity"):
     :func:`duct`) off a :func:`junction`, it forms a Helmholtz resonator with
     ``omega_0 = c * sqrt(A_neck / (V * l_eff))`` (see :func:`helmholtz_resonator`).
 
-    The cavity is *not* a boundary terminal: its acoustic response is the compliance
-    itself (a reflection set by the storage), so the perturbation layer leaves its
-    inherited ``mdot' = 0`` row in place and lets ``M`` add the storage onto it -- it is
-    never neutralized or stamped with a reflection coefficient.
+    Although it is a terminal element (single-port), the cavity is *not* a boundary terminal:
+    its acoustic response is the compliance itself (a reflection set by the storage),
+    so the perturbation layer leaves its inherited ``mdot' = 0`` row in place and lets ``M``
+    add the storage onto it. It is never neutralized or stamped with a reflection coefficient.
 
     The mean state of the cavity gas is slaved to its face (the local ``p``, ``T``,
     composition), so ``c`` is the local sound speed. An independently-stated cavity
-    (a cold purge or a different gas) is a later provision.
+    is currently not supported.
 
     Parameters
     ----------
@@ -329,14 +378,15 @@ def cavity(volume, name="cavity"):
 
 
 def isentropic_area_change(name="iac", l_up=0.0, l_down=0.0, end_correction=0.0):
-    """A smooth (lossless) contraction or diffuser; optionally length-bearing.
+    """A smooth (lossless) contraction or diffuser; optionally length-bearing to model
+    acoustic inertance and compliance (**not** propagation).
 
     By default a lengthless jump.  A real diffuser/nozzle has axial extent, so the
     optional ``l_up``/``l_down`` (the passage half-lengths on the port-0 / port-1 sides)
     give it acoustic **compliance** (each side stores ``l_i * A_i`` of gas) and
     **inertance** (series effective length ``l_up + l_down + end_correction``,
     referenced to the throat).  These populate the storage block ``M`` and are inert in
-    the mean flow.  See ``scratch/inertance-end-correction-theory.md``.
+    the mean flow.
 
     Parameters
     ----------
@@ -354,15 +404,15 @@ def isentropic_area_change(name="iac", l_up=0.0, l_down=0.0, end_correction=0.0)
 
 
 def transfer_matrix_element(tm=None, name="tm"):
-    """A 2-port whose acoustics are a **user-supplied transfer matrix**.
+    """A 2-port whose acoustic response is a **user-supplied transfer matrix**.
 
     In the mean flow this element is an :func:`isentropic_area_change` -- it conserves
     mass and energy, is isentropic, and permits an area change across it -- so it seats a
     well-defined mean state on both faces.  In the perturbation network it does **not**
-    inherit the linearized area-change jump: its acoustic rows are overwritten with the
-    relation ``w_down = TM(omega) . w_up`` carried by ``tm`` (theory.md s12.7), letting a
-    measured / prescribed 2-port response stand in for an element that has no closed-form
-    model.
+    inherit the linearized area-change jump: only its acoustic rows are overwritten, with
+    the relation ``w_down = TM(omega) . w_up`` carried by ``tm``, letting a measured /
+    prescribed 2-port response stand in for an element that has no closed-form model.  The
+    mean state is unaffected by ``tm``.
 
     Parameters
     ----------
@@ -671,6 +721,17 @@ def splitter(name="splitter", volume=0.0):
 
     As :func:`junction`, a non-zero ``volume`` adds the chamber compliance to ``M`` (inert in
     the mean flow); a branch neck is modeled as an explicit neck :func:`duct`, not here.
+
+    Parameters
+    ----------
+    name : str, optional
+        Element label.
+    volume : float, optional
+        Chamber volume [m^3] for the acoustic compliance (default ``0.0``, a lengthless split).
+
+    Returns
+    -------
+    ElementSpec
     """
     return ElementSpec(SPLITTER, _manifold_block("splitter", volume), name)
 
@@ -738,9 +799,20 @@ def forced_splitter(fractions, name="splitter"):
 def duct(length=0.0, name="duct"):
     """A length-bearing, lossless, constant-area duct.
 
-    The mean face is equal-area continuity (length-independent); ``length`` is
-    inert in the steady residual and read only by the acoustic phase stamp
-    (theory.md s12.3).  It rides ``fparams[0]`` as ordinary acoustic metadata.
+    The mean face is equal-area continuity (length-independent); ``length`` is inert in the
+    steady residual and read only by the acoustic phase stamp.  It rides ``fparams[0]`` as
+    ordinary acoustic metadata.
+
+    Parameters
+    ----------
+    length : float, optional
+        Duct length [m] for the acoustic phase (default ``0.0``, a lengthless jump).
+    name : str, optional
+        Element label.
+
+    Returns
+    -------
+    ElementSpec
     """
     from .ids import DUCT
 
@@ -1171,13 +1243,6 @@ def tapered_duct(area, length=None, n_segments=None, name="taper") -> CompositeE
     )
 
 
-def _node_label(n: int, el: ElementSpec) -> str:
-    """Human-readable identifier for an element, for validation messages."""
-    typ = RESIDUAL_NAMES.get(el.residual_id, f"residual {el.residual_id}")
-    name = f" {el.name!r}" if el.name else ""
-    return f"element {n}{name} ({typ})"
-
-
 def ensure_unique_names(elements: List[ElementSpec]) -> None:
     """Make element display names unique, in place, by suffixing clashes.
 
@@ -1210,9 +1275,22 @@ def unique_name(name: str, taken, always_number: bool = False) -> str:
 
     If ``name`` is free it is returned unchanged, unless ``always_number`` is set, in which case the
     first free ``<name>-1``, ``<name>-2``, ... is returned instead (so a lone factory default still
-    reads ``inlet-1``).  ``taken`` is any container of used names; the result is *not* added to it --
-    the caller records it, which keeps this usable both for a running build and for a one-shot pass
-    over a finished list.
+    reads ``inlet-1``).
+
+    Parameters
+    ----------
+    name : str
+        The desired base name.
+    taken : container of str
+        The names already in use.  The result is *not* added to it -- the caller records it,
+        which keeps this usable both for a running build and for a one-shot pass over a list.
+    always_number : bool, optional
+        Force a ``-k`` suffix even when ``name`` is free (default ``False``).
+
+    Returns
+    -------
+    str
+        A name not present in ``taken``.
     """
     if not always_number and name not in taken:
         return name
@@ -1240,509 +1318,3 @@ def default_name_bases() -> frozenset:
         if param is not None and isinstance(param.default, str) and param.default:
             bases.add(param.default)
     return frozenset(bases)
-
-
-def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.ndarray) -> None:
-    """Check structural and area-consistency invariants before compiling.
-
-    Also normalizes element display names to be unique (see
-    :func:`ensure_unique_names`) -- duplicates, common with the factory defaults,
-    are suffixed in place rather than rejected.
-
-    Raises ``ValueError`` (naming the offending element) on the first violation:
-
-    * every edge area is finite and strictly positive;
-    * each element's port count matches its arity -- exactly ``FIXED_NPORTS`` for
-      fixed-arity elements, ``>= 2`` for the variable junction/splitter;
-    * elements that do not permit an area change (``ALLOWS_AREA_CHANGE`` is
-      ``False`` -- the constant-area duct) carry one shared area across all their
-      incident edges.  An intended area change at an area-agnostic element (e.g. a
-      sudden expansion) must use an ``isentropic_area_change`` or
-      ``sudden_area_change`` element.
-
-    Parameters
-    ----------
-    elements : list of ElementSpec
-        The network elements, in node order.
-    conn : Connectivity
-        The compiled connectivity (per-node incident edges and degrees).
-    area : ndarray
-        Per-edge cross-sectional area, indexed by global edge id.
-    """
-    ensure_unique_names(elements)
-    area = np.asarray(area, dtype=np.float64)
-    if area.size != conn.n_edges:
-        raise ValueError(f"area has {area.size} entries but the network has {conn.n_edges} edges")
-    bad = np.nonzero(~(np.isfinite(area) & (area > 0.0)))[0]
-    if bad.size:
-        raise ValueError(f"edge areas must be finite and positive; offending edge id(s): {bad.tolist()}")
-    if len(elements) != conn.n_nodes:
-        raise ValueError(f"{len(elements)} elements but the connectivity has {conn.n_nodes} nodes")
-
-    for n, el in enumerate(elements):
-        rid = el.residual_id
-        deg = conn.degree(n)
-        label = _node_label(n, el)
-
-        expected = FIXED_NPORTS.get(rid)
-        if expected is not None:
-            if deg != expected:
-                raise ValueError(f"{label} expects {expected} port(s) but is connected to {deg} edge(s)")
-        elif rid in (JUNCTION, SPLITTER):
-            if deg < 2:
-                raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
-        elif rid == FORCED_SPLITTER:
-            if deg < 3:
-                raise ValueError(
-                    f"{label} is a forced splitter and needs >= 3 ports (1 inflow + >= 2 outflows) "
-                    f"but is connected to {deg} edge(s)"
-                )
-            n_frac = len(el.fparams)
-            if n_frac != deg - 2:
-                raise ValueError(
-                    f"{label}: a forced splitter with {deg} ports (1 inflow + {deg - 1} outflows) needs "
-                    f"{deg - 2} split fraction(s) -- one per controlled outflow, the last outflow being the "
-                    f"remainder -- but {n_frac} were given"
-                )
-
-        if rid == CHOKED_NOZZLE_OUTLET:
-            # the compact choked nozzle is a *contraction* to a sonic throat; the throat
-            # area A* must be smaller than the outlet edge area so the approach plane stays
-            # subsonic (A_out/A* > 1 has a unique subsonic area-Mach root).  A* >= A_out has
-            # no subsonic choked solution (that is a converging-diverging / supersonic case).
-            a_out = float(area[conn.incident_edges(n)[0]])
-            a_star = float(el.fparams[0])
-            if not a_star < a_out:
-                raise ValueError(
-                    f"{label}: choked-nozzle throat area A* = {a_star:g} m^2 must be smaller than "
-                    f"the outlet area {a_out:g} m^2 (a contraction). A* >= A_out has no subsonic "
-                    "choked approach; a converging-diverging (supersonic) nozzle is out of v1 scope."
-                )
-
-        if not ALLOWS_AREA_CHANGE.get(rid, True) and deg >= 2:
-            inc = conn.incident_edges(n)
-            a0 = float(area[inc[0]])
-            for e in inc[1:]:
-                ae = float(area[e])
-                if abs(ae - a0) > _AREA_RTOL * max(abs(a0), abs(ae)):
-                    raise ValueError(
-                        f"{label} does not permit an area change but its ports carry different "
-                        f"areas ({a0:g} vs {ae:g} m^2); model the area change with an "
-                        f"isentropic_area_change or sudden_area_change element"
-                    )
-
-    _check_pressure_reference(elements)
-
-
-# Boundaries that fix an *absolute pressure* (total_pressure_inlet, pressure_outlet) or tie
-# the pressure level via a flow<->pressure relation (choked_nozzle_outlet).  At least one is
-# needed or the mean-flow pressure level is a free gauge.
-_PRESSURE_REFERENCE_RIDS = (PT_INLET, P_OUTLET, CHOKED_NOZZLE_OUTLET)
-
-
-def _check_pressure_reference(elements: List[ElementSpec]) -> None:
-    """Reject a boundary set with no absolute-pressure reference (a singular gauge).
-
-    The steady residual fixes pressure only through *differences* (momentum, area-change
-    and loss rows) plus the absolute pin a pressure boundary supplies.  If **every**
-    boundary merely prescribes a mass flow (``mass_flow_inlet`` / ``mass_flow_outlet`` /
-    ``wall``), the pressure level is undetermined: adding a constant to every pressure
-    leaves the residual unchanged to leading order, so the Jacobian is singular and the
-    solve cannot converge.  A ``total_pressure_inlet`` or ``pressure_outlet`` pins the
-    level directly; a ``choked_nozzle_outlet`` pins it via its critical-mass-flux
-    relation (the interior stagnation pressure is fixed once the flow is).
-    """
-    if any(el.residual_id in _PRESSURE_REFERENCE_RIDS for el in elements):
-        return
-    raise ValueError(
-        "ill-posed boundary conditions: the network has no absolute-pressure reference. "
-        "Every boundary fixes a mass flow (mass_flow_inlet / mass_flow_outlet / wall), so the "
-        "pressure level is a free gauge and the steady solve is singular. Add a pressure_outlet "
-        "or total_pressure_inlet (an absolute-pressure pin), or a choked_nozzle_outlet "
-        "(a flow<->pressure relation), to set the level."
-    )
-
-
-def _row_kinds(rid: int, deg: int, mdot_ref, p_ref):
-    """Residual-row scale magnitudes for one element (derived from its kind tags)."""
-    scale = {KIND_MASS: mdot_ref, KIND_PRESSURE: p_ref}
-    return [scale[tag] for tag in row_kind_tags(rid, deg)]
-
-
-def _onehot(k: int, n: int):
-    """Mixture-fraction unit vector: all mass from stream ``k`` (``[]`` if ``n==0``)."""
-    xi = [0.0] * n
-    if 0 <= k < n:
-        xi[k] = 1.0
-    return xi
-
-
-def _boundary_scalars(thermo: ThermoConfig, el: ElementSpec, Tt: float, n_elem: int, label: str, stream: int):
-    """Resolve a boundary's advected-scalar params ``[h_t, xi_0, ..., xi_{n_elem-1}]``.
-
-    Converts the element's total temperature to the absolute total-enthalpy datum
-    (D-1) and tags the stream it introduces with the mixture-fraction unit vector
-    ``xi = e_stream``.  For a perfect gas ``h_t = cp*Tt`` and the composition (if
-    any) is the raw passive-scalar values; for the equilibrium model the
-    composition is a named species mixture whose own enthalpy at ``Tt`` is used.
-    """
-    if thermo.model_id == PERFECT_GAS:
-        h_t = float(thermo.tf[0]) * Tt  # cp * Tt
-        if n_elem == 0:
-            return [h_t]
-        comp = el.composition_spec
-        if comp is None:
-            return [h_t] + [0.0] * n_elem
-        zvals = [float(c) for c in comp]
-        if len(zvals) != n_elem:
-            raise ValueError(f"{label} carries {len(zvals)} scalar(s) but the model has {n_elem}")
-        return [h_t] + zvals
-
-    # equilibrium / reacting backend: an explicit species composition is required
-    # for any stream that introduces mass (inlets, mass sources); an outlet may
-    # omit it (its backflow scalars are used only on ingestion).
-    comp = el.composition_spec
-    if comp is None:
-        if el.residual_id in (MASS_FLOW_INLET, PT_INLET):
-            raise ValueError(
-                f"{label}: the equilibrium model requires an explicit species composition "
-                f"(e.g. composition={{'O2': 0.21, 'N2': 0.79}})"
-            )
-        return [0.0] + [0.0] * n_elem  # inert backflow placeholder
-    Y = species_mass_fractions(thermo.library, comp, el.basis)
-    h_t = enthalpy_mass(thermo.library, Y, Tt)
-    return [h_t] + _onehot(stream, n_elem)
-
-
-def _mass_source_params(thermo: ThermoConfig, el: ElementSpec, n_elem: int, label: str, stream: int):
-    """Resolve a mass source's params ``[mdot_src, u_inj, h_t_src, xi_src_0, ...]``.
-
-    The injected total enthalpy carries the stream's enthalpy at ``T_src`` plus the
-    injection kinetic energy ``0.5 u_inj^2`` (D-1 datum); the injected composition is
-    the mixture-fraction unit vector of its feed stream (kernel donor index
-    ``pb+2+s``).
-    """
-    mdot_src = float(el.fparams[0])
-    u_inj = float(el.fparams[1])
-    T_src = float(el.fparams[2])
-    ke = 0.5 * u_inj * u_inj
-    if thermo.model_id == PERFECT_GAS:
-        h_t_src = float(thermo.tf[0]) * T_src + ke
-        if n_elem == 0:
-            return [mdot_src, u_inj, h_t_src]
-        comp = el.composition_spec
-        zvals = [float(c) for c in comp] if comp is not None else [0.0] * n_elem
-        if len(zvals) != n_elem:
-            raise ValueError(f"{label} carries {len(zvals)} scalar(s) but the model has {n_elem}")
-        return [mdot_src, u_inj, h_t_src] + zvals
-
-    comp = el.composition_spec
-    if comp is None:
-        raise ValueError(
-            f"{label}: a mass source must specify its injected species composition "
-            f"(e.g. composition={{'CH4': 1.0}})"
-        )
-    Y = species_mass_fractions(thermo.library, comp, el.basis)
-    h_t_src = enthalpy_mass(thermo.library, Y, T_src) + ke
-    return [mdot_src, u_inj, h_t_src] + _onehot(stream, n_elem)
-
-
-# elements that introduce a feed stream (a distinct injected composition)
-_STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
-
-
-def _burnt_seed(conn: Connectivity, flame_nodes) -> np.ndarray:
-    """Per-edge burnt-marker initial guess ``(0 fresh / 1 burnt)`` by a topology flood-fill.
-
-    Seeds ``b = 1`` on every edge leaving an equilibrium flame (along the *declared* tail->head
-    arrows) and floods it downstream.  This is only the marker transport's **initial guess** --
-    the signed-mass-flow transport self-corrects a backward-drawn flame at convergence -- so its
-    job is purely to warm the start (a correct drawing converges in one shot).
-    """
-    n_edges = int(conn.n_edges)
-    tail = np.asarray(conn.tail_node)
-    head = np.asarray(conn.head_node)
-    out_edges = defaultdict(list)  # node -> outgoing edges (declared tail -> head)
-    for e in range(n_edges):
-        out_edges[int(tail[e])].append(e)
-    burnt = np.zeros(n_edges, dtype=np.float64)
-    stack = []
-    for e in range(n_edges):  # seed: every edge leaving a flame is burnt
-        if int(tail[e]) in flame_nodes:
-            burnt[e] = 1.0
-            stack.append(int(head[e]))
-    while stack:  # flood downstream; each edge is marked at most once -> terminates on cycles
-        for e in out_edges[stack.pop()]:
-            if burnt[e] == 0.0:
-                burnt[e] = 1.0
-                stack.append(int(head[e]))
-    return burnt
-
-
-def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec]):
-    """Discover the network's feed streams and pack the equilibrium bundle.
-
-    For the reacting (``EQ_KERNEL``) model the **streams are the distinct injected
-    compositions** of the network's inlets, mass sources and (backflow-bearing)
-    outlets.  This scans them in node order, auto-merges identical compositions, and
-    packs the per-stream forward-blend maps -- so the user only ever names species at
-    the elements that introduce them, and the transported scalar count equals the
-    number of distinct feeds (never the chemical-element count, never the product
-    species).  The deferred ``equilibrium(library)`` config is finalized here.
-
-    Returns
-    -------
-    thermo : ThermoConfig
-        The finalized config (unchanged for a perfect gas / passive-scalar model).
-    node_stream : dict or None
-        ``node -> stream index`` for every stream-introducing node (``-1`` if that
-        element carries no composition, e.g. an inert-backflow outlet); ``None`` for
-        a non-reacting model.
-    """
-    if thermo.model_id != EQ_KERNEL or thermo.library is None:
-        return thermo, None
-
-    from ..thermo.equilibrium import pack_equilibrium
-
-    comps = []
-    comp_nodes = []
-    for n, el in enumerate(elements):
-        if el.residual_id in _STREAM_INTRODUCING:
-            comps.append((el.composition_spec, el.basis))
-            comp_nodes.append(n)
-    stream_Y, assignment = build_streams(thermo.library, comps)
-    node_stream = {comp_nodes[i]: assignment[i] for i in range(len(comp_nodes))}
-
-    # label each stream by the first element that introduces it (for reporting)
-    K = stream_Y.shape[0]
-    labels = [f"stream{k}" for k in range(K)]
-    for i, k in enumerate(assignment):
-        if k >= 0 and labels[k] == f"stream{k}":
-            nm = elements[comp_nodes[i]].name
-            if nm:
-                labels[k] = nm
-
-    tf, ti = pack_equilibrium(thermo.library, stream_Y, thermo.t_init, thermo.t_init_frozen)
-    finalized = ThermoConfig(
-        model_id=EQ_KERNEL,
-        tf=tf,
-        ti=ti,
-        element_names=labels,
-        species_names=thermo.species_names,
-        library=thermo.library,
-        t_init=thermo.t_init,
-        t_init_frozen=thermo.t_init_frozen,
-    )
-    return finalized, node_stream
-
-
-def build_problem(
-    thermo: ThermoConfig,
-    elements: List[ElementSpec],
-    edges: List[Tuple[int, int, float]],
-    mdot_ref: float,
-    p_ref: float,
-    h_ref: float,
-    edge_models=None,
-) -> CompiledProblem:
-    """Assemble a CompiledProblem from elements and directed (tail, head, area) edges.
-
-    This is the lower-level functional builder; the user-facing path is
-    :class:`nefes.shell.network.Network`, whose constructor accepts the same ``nodes`` /
-    ``edges`` lists (and auto-derives the reference scales), then ``.solve()``.
-
-    Ports are auto-assigned in attachment order.  Use
-    ``build_problem_from_connectivity`` to supply explicit ports (e.g. a UI
-    export where the port ordinals carry meaning).  ``edge_models`` optionally
-    overrides the per-edge thermo model id (default: the config's model on every
-    edge) -- e.g. frozen upstream, equilibrium downstream of a flame.
-    """
-    # expand any composite elements (build-time graph transform) into atomic elements +
-    # internal edges; a composite-free network passes through unchanged (composite_map None).
-    elements, edges, composite_map = expand_composites(elements, edges)
-    n_nodes = len(elements)
-    directed = [(t, h) for (t, h, _a) in edges]
-    area = np.array([a for (_t, _h, a) in edges], dtype=np.float64)
-    conn = connectivity_from_directed_edges(n_nodes, directed)
-    return build_problem_from_connectivity(
-        thermo, elements, conn, area, mdot_ref, p_ref, h_ref, edge_models=edge_models, composite_map=composite_map
-    )
-
-
-def build_problem_from_connectivity(
-    thermo: ThermoConfig,
-    elements: List[ElementSpec],
-    conn: Connectivity,
-    area: np.ndarray,
-    mdot_ref: float,
-    p_ref: float,
-    h_ref: float,
-    edge_models=None,
-    composite_map=None,
-) -> CompiledProblem:
-    """Assemble a CompiledProblem from elements and a prebuilt Connectivity.
-
-    The connectivity carries explicit per-edge ports (``tail_port``/
-    ``head_port``), so port-ordering conventions are preserved exactly.
-    ``composite_map`` (set by :func:`build_problem` when the network carried composite
-    elements) bridges the user-facing ids to the expanded ones; ``None`` otherwise.
-    """
-    n_nodes = len(elements)
-    area = np.ascontiguousarray(area, dtype=np.float64)
-    validate_network(elements, conn, area)
-
-    # discover the feed streams from the network and finalize the (reacting) thermo
-    # bundle: the transported mixture fractions are the distinct injected compositions.
-    thermo, node_stream = finalize_thermo(thermo, elements)
-
-    degrees = [conn.degree(n) for n in range(n_nodes)]
-    node_rid = np.array([el.residual_id for el in elements], dtype=np.int64)
-    node_acoustic_id = np.array([el.acoustic_id for el in elements], dtype=np.int64)
-
-    # Marker-gated reacting closure (the default/auto reacting path): a reacting network with at
-    # least one equilibrium flame and no explicit per-edge override runs EQ_MARKER on every edge
-    # and transports one extra "burnt" marker scalar (the last advected scalar) that gates the
-    # frozen/equilibrium blend.  The marker rides the *signed* mass flow, so it labels "downstream
-    # of a flame" robustly regardless of how the edges were drawn -- demoting the old topology
-    # flood-fill to the marker's initial guess.  An explicit ``edge_models`` keeps the hard
-    # per-edge closure (EQ_FROZEN/EQ_KERNEL, no marker), the power-user escape hatch.
-    flame_nodes = {n for n in range(n_nodes) if int(node_rid[n]) == FLAME_EQUILIBRIUM}
-    marker_gated = thermo.model_id == EQ_KERNEL and bool(flame_nodes) and edge_models is None
-    n_marker = 1 if marker_gated else 0
-
-    # A user-set inflow marker only has a transport scalar to ride when the network is
-    # marker-gated; reject a non-zero marker elsewhere rather than silently dropping it.
-    if not marker_gated:
-        stray = [el.name or f"node {n}" for n, el in enumerate(elements) if float(getattr(el, "marker", 0.0)) != 0.0]
-        if stray:
-            raise ValueError(
-                "a non-zero burnt marker requires a marker-gated reacting network (an equilibrium-flame "
-                "reacting model with no explicit per-edge closure); marker was set on: " + ", ".join(stray)
-            )
-
-    # pack node float params in node order.  A boundary element that prescribes
-    # advected scalars carries [base, h_t, Z_el...]: slot 0 is the prescribed
-    # mdot/pt/p, slot 1 the absolute total enthalpy datum (converted from Tt), and
-    # the remaining n_elem slots the feed/backflow elemental composition -- so the
-    # donor kernel indexes npar_f[pb + 1 + s] for advected scalar s (s = 0 is h_t).
-    n_elem = thermo.n_elem
-    # boundaries that prescribe an advected-scalar (h_t + composition) donor on ingestion.
-    # The mass-flow / choked-nozzle outlets are outflow-only (no backflow), so they carry no
-    # such donor -- their edge inherits the interior scalars (scalar-transparent, see node_donor).
-    boundary_rids = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
-    # The burnt marker is the *last* advected scalar, so its donor param sits after the
-    # composition.  A fresh feed/backflow enters with marker = 0 (the default); a boundary
-    # may set ``marker = 1`` to inject already-burnt gas (e.g. exhaust-gas recirculation).
-    # Appended only when the network is marker-gated.
-    npar_f = []
-    npar_fptr = np.zeros(n_nodes + 1, dtype=np.int64)
-    for n, el in enumerate(elements):
-        fp = list(el.fparams)
-        k = -1 if node_stream is None else node_stream.get(n, -1)
-        marker_param = [float(el.marker)] if n_marker else []
-        if el.residual_id in boundary_rids and len(fp) >= 2:
-            base, Tt = float(fp[0]), float(fp[1])
-            fp = [base] + _boundary_scalars(thermo, el, Tt, n_elem, _node_label(n, el), k) + marker_param
-        elif el.residual_id == MASS_SOURCE:
-            fp = _mass_source_params(thermo, el, n_elem, _node_label(n, el), k) + marker_param
-        npar_f.extend(fp)
-        npar_fptr[n + 1] = npar_fptr[n] + len(fp)
-    npar_f = np.array(npar_f, dtype=np.float64)
-
-    # per-element smoothing-eps override (< 0 -> follow the global solve-time eps)
-    node_eps = np.array([el.eps if el.eps is not None else -1.0 for el in elements], dtype=np.float64)
-
-    # per-node perturbation BC (Python objects; read only by the perturbation layer)
-    node_bc = tuple(getattr(el, "perturbation_bc", None) for el in elements)
-
-    # per-node human-readable name (label); for plotting / reporting only
-    node_names = tuple(getattr(el, "name", "") or "" for el in elements)
-
-    # per-node dynamic-source descriptor (S(omega) provision; mean flow ignores it)
-    node_dynamic_source = tuple(getattr(el, "dynamic_source", None) for el in elements)
-
-    # per-node transfer-matrix descriptor (TRANSFER_MATRIX element; mean flow ignores it)
-    node_transfer_matrix = tuple(getattr(el, "transfer_matrix", None) for el in elements)
-
-    n_scalars = thermo.n_elem + n_marker  # composition mixture fractions + the optional burnt marker
-    n_solve = 3 + n_scalars
-    marker_row = (3 + thermo.n_elem) if marker_gated else -1  # the marker is the last band-1 row
-    pat = build_jacobian_pattern(conn, degrees, n_solve=n_solve)
-
-    # residual scales: node rows, then the advected-scalar transport rows (h_t for every edge,
-    # then each composition scalar for every edge, then the marker for every edge).  Composition
-    # mixture fractions and the marker are O(1) (in [0, 1]), so their scale = 1.
-    z_scale = 1.0
-    res_scale = []
-    for n, el in enumerate(elements):
-        res_scale.extend(_row_kinds(el.residual_id, degrees[n], mdot_ref, p_ref))
-    res_scale.extend([h_ref] * conn.n_edges)
-    for _ in range(n_scalars):
-        res_scale.extend([z_scale] * conn.n_edges)
-    res_scale = np.array(res_scale, dtype=np.float64)
-
-    var_scale = np.array([mdot_ref, p_ref, h_ref] + [z_scale] * n_scalars, dtype=np.float64)
-
-    # per-edge thermo model: marker-gated -> EQ_MARKER everywhere; explicit override -> verbatim;
-    # otherwise the config's model on every edge.
-    if edge_models is None:
-        edge_model = np.full(conn.n_edges, EQ_MARKER if marker_gated else thermo.model_id, dtype=np.int64)
-    else:
-        edge_model = np.ascontiguousarray(edge_models, dtype=np.int64)
-        if edge_model.shape[0] != conn.n_edges:
-            raise ValueError(f"edge_models has {edge_model.shape[0]} entries but the network has {conn.n_edges} edges")
-
-    # an unburnt (EQ_FROZEN) or marker-gated (EQ_MARKER, which runs the frozen leg) edge
-    # reconstructs species from the feed streams; at least one stream must exist (an inlet /
-    # mass source must inject a composition).
-    if thermo.model_id != PERFECT_GAS and np.any((edge_model == EQ_FROZEN) | (edge_model == EQ_MARKER)):
-        n_streams = int(thermo.ti[5]) if thermo.ti.shape[0] > 5 else 0
-        if n_streams == 0:
-            raise ValueError(
-                "the network has frozen / marker-gated (unburnt-capable) edges but no feed streams "
-                "were found; an inlet or mass source must inject an explicit species composition "
-                "for the frozen closure to reconstruct from"
-            )
-
-    # burnt-marker initial guess: the old topology flood-fill, demoted to the marker's seed
-    # (b = 1 downstream of a flame along the declared arrows, b = 0 elsewhere).  Correctness no
-    # longer depends on it -- the transport self-corrects a backward-drawn flame -- it only warms
-    # the start.  None when the network carries no marker.
-    marker_seed = _burnt_seed(conn, flame_nodes) if marker_gated else None
-
-    return CompiledProblem(
-        model_id=thermo.model_id,
-        tf=thermo.tf,
-        ti=thermo.ti,
-        n_elem=thermo.n_elem,
-        n_solve=n_solve,
-        n_nodes=n_nodes,
-        n_edges=conn.n_edges,
-        n_eq=pat.n_eq,
-        area=area,
-        row_ptr=conn.row_ptr,
-        col_edge=conn.col_edge,
-        orient=conn.orient.astype(np.int64),
-        tail_node=conn.tail_node,
-        head_node=conn.head_node,
-        node_rid=node_rid,
-        node_acoustic_id=node_acoustic_id,
-        npar_f=npar_f,
-        npar_fptr=npar_fptr,
-        node_row_ptr=pat.node_row_ptr,
-        transport_row0=pat.transport_row0,
-        indptr=pat.indptr,
-        indices=pat.indices,
-        var_scale=var_scale,
-        res_scale=res_scale,
-        edge_model=edge_model,
-        node_eps=node_eps,
-        node_bc=node_bc,
-        node_names=node_names,
-        node_dynamic_source=node_dynamic_source,
-        node_transfer_matrix=node_transfer_matrix,
-        scalar_names=tuple(thermo.element_names),
-        marker_row=marker_row,
-        marker_seed=marker_seed,
-        composite_map=composite_map,
-    )

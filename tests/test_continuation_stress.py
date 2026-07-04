@@ -14,6 +14,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.control import initial_guess
 from nefes.solver.report import states_table
@@ -47,7 +48,7 @@ def _long_chain(n_blocks, area=0.30, K=0.6, mdot=10.0):
         elements += [cat.loss(K), cat.duct()]
     elements += [cat.pressure_outlet(P_REF)]
     edges = [(i, i + 1, area) for i in range(len(elements) - 1)]
-    return cat.build_problem(cfg, elements, edges, mdot_ref=mdot, p_ref=P_REF, h_ref=CP * 300.0), mdot
+    return build_problem(cfg, elements, edges, mdot_ref=mdot, p_ref=P_REF, h_ref=CP * 300.0), mdot
 
 
 def test_long_serial_chain_converges():
@@ -85,7 +86,7 @@ def _parallel_branches(n_branch, area=0.20, mdot=15.0):
     for i in range(n_branch):
         edges += [(1, 2 + i, area), (2 + i, j, area)]
     edges += [(j, j + 1, area)]
-    return cat.build_problem(cfg, elements, edges, mdot_ref=mdot, p_ref=P_REF, h_ref=CP * 300.0), mdot, Ks
+    return build_problem(cfg, elements, edges, mdot_ref=mdot, p_ref=P_REF, h_ref=CP * 300.0), mdot, Ks
 
 
 def test_many_parallel_branches_converge():
@@ -111,7 +112,7 @@ def _sac_chain(n_sac, A0=0.25, A1=0.18, mdot=12.0):
     elements += [cat.sudden_area_change(cc=0.8) for _ in range(n_sac)]
     elements += [cat.pressure_outlet(P_REF)]
     edges = [(i, i + 1, A0 if i % 2 == 0 else A1) for i in range(len(elements) - 1)]
-    return cat.build_problem(cfg, elements, edges, mdot_ref=mdot, p_ref=P_REF, h_ref=CP * 300.0), mdot
+    return build_problem(cfg, elements, edges, mdot_ref=mdot, p_ref=P_REF, h_ref=CP * 300.0), mdot
 
 
 def test_sudden_area_change_chain_converges():

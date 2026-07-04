@@ -56,12 +56,15 @@ As project matures, these documents should serve more as a guideline than of a r
 - Keep responses short. No preamble. Get to the output.
 - If a task is ambiguous, ask one clarifying question — not five.
 - Do NOT assume anything if not entirely clear - you are encouraged to ask.
+- Do NOT use the word such as "first-class" to describe anything related to this codebase.
 
 ## Coding style
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
 - NEVER include in the docstring references in a historical context: e.g. previous state of codebase, an earlier bug, an improvement etc.
 - Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
+- Use capital letters for absolute constants and define them before any function/class definitions in a file.
+- Where appropriate (you judge), include brief "Examples" and "See also" in the docstrings.
 
 ## Markdown files
 

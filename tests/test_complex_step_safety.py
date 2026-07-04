@@ -33,6 +33,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.ids import (
     MASS_FLOW_INLET,
     PT_INLET,
@@ -56,9 +57,10 @@ from nefes.elements.ids import (
     TRANSFER_MATRIX,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
-    RESIDUAL_NAMES,
+    ELEMENT_TYPE_NAMES,
 )
 from nefes.assembly.assemble import residual, jacobian
+from nefes.elements.kernels import node_donor
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_M
@@ -140,7 +142,7 @@ def _all_elements_network(inlet):
         (6, 7, A2),  # e7  junction -> outlet
         (2, 8, A1),  # e8  splitter -> wall  (dead leg, mdot = 0)
     ]
-    return cat.build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
+    return build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
 
 
 INLETS = [
@@ -244,23 +246,23 @@ H_REF = CP * TT
 def _probe_mass_flow_inlet():
     # mass_flow_inlet -> duct -> outlet
     els = [cat.mass_flow_inlet(18.0, TT), cat.duct(), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_pt_inlet():
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_p_outlet():
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_isen_area_change():
     # gentle contraction so the small (downstream) edge stays subsonic at near-choke
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.isentropic_area_change(), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_transfer_matrix():
@@ -268,33 +270,33 @@ def _probe_transfer_matrix():
     # (its transfer matrix acts only in the perturbation layer, above the @njit line), so
     # the same gentle contraction sweep exercises its kernel through near-choke flow.
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.transfer_matrix_element(), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.85 * PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_sudden_area_change():
     # forward flow expands (Borda), reverse flow contracts (vena-contracta) --
     # the sweep's sign flip exercises BOTH branches of the momentum<->loss switch
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.sudden_area_change(cc=0.7), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.85 * PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.85 * PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_loss():
     # loss straddling an area change, referenced to the downstream (smaller) port:
     # exercises the ref_port branch and the orientation-signed through-flow.
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.loss(2.5, ref_port=1), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.8 * PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, 0.8 * PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_duct():
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(0.5), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_linear_resistance():
     # linear total-pressure drop Pt0 - Pt1 = R * mdot; linear in the flow state, so the
     # complex-step Jacobian is exact across forward / reverse / near-zero through-flow.
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.linear_resistance(250.0), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_pipe():
@@ -302,7 +304,7 @@ def _probe_pipe():
     # the smooth-abs floor must stay analytic through forward / reverse / near-zero /
     # near-choke flow (the same signed quadratic as LOSS, here with K = f*L/D).
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.pipe(0.5, 0.3, 0.02), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_junction():
@@ -314,14 +316,14 @@ def _probe_junction():
         cat.pressure_outlet(P_OUT),
     ]
     edges = [(0, 2, PA), (1, 2, PA), (2, 3, PA)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
 def _probe_splitter():
     # one inflow splitting into two legs (splitter: shared total pressure)
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.pressure_outlet(P_OUT)]
     edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
 def _probe_forced_splitter():
@@ -336,14 +338,14 @@ def _probe_forced_splitter():
         cat.pressure_outlet(P_OUT),
     ]
     edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
 def _probe_wall():
     # wall on a dead leg off a splitter (mdot = 0 at the wall edge)
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.wall()]
     edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
 def _probe_cavity():
@@ -351,21 +353,21 @@ def _probe_cavity():
     # its mean residual is the wall's, so the complex-step sweep covers the same kernel.
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.cavity(2.0e-3)]
     edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
 def _probe_heat_release_flame():
     # heat-addition flame (constant area): the smooth-abs |mdot| floor in the
     # h_t donor must stay analytic through the reverse / near-zero flow sweep.
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.heat_release_flame(5.0e5), cat.pressure_outlet(P_OUT)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_mass_flow_outlet():
     # prescribed-mass-flow outlet: R = mdot_out - mdot_spec (linear, but the sweep still
     # exercises the recovery on its edge through reverse / near-zero / near-choke flow).
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.mass_flow_outlet(18.0)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_choked_nozzle_outlet():
@@ -373,7 +375,7 @@ def _probe_choked_nozzle_outlet():
     # ratios stag^p and (2/(g+1))^p that must stay analytic through reverse / near-zero /
     # near-choke flow (stag = 1 + (g-1)/2 M^2 > 0 for any sign of M).  Throat < outlet area.
     els = [cat.total_pressure_inlet(PT_BC, TT), cat.duct(), cat.choked_nozzle_outlet(0.7 * PA)]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 def _probe_mass_source():
@@ -386,7 +388,7 @@ def _probe_mass_source():
         cat.mass_source(6.0, 320.0, None, u_inj=40.0),
         cat.pressure_outlet(P_OUT),
     ]
-    return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
 # focus element type -> minimal probe network
@@ -420,7 +422,7 @@ DEFERRED_RIDS = {SUPERSONIC_INLET, SUPERSONIC_OUTLET}
 # states) cannot drive it.  It is complex-step-validated against a real
 # finite-difference Jacobian at the converged operating point in tests/test_flame.py.
 REACTIVE_RIDS = {FLAME_EQUILIBRIUM}
-IMPLEMENTED_RIDS = set(RESIDUAL_NAMES) - DEFERRED_RIDS - REACTIVE_RIDS
+IMPLEMENTED_RIDS = set(ELEMENT_TYPE_NAMES) - DEFERRED_RIDS - REACTIVE_RIDS
 
 
 def _sweep_states(prob):
@@ -457,10 +459,10 @@ def test_every_element_kernel_is_swept():
     for build in PROBES.values():
         covered |= set(int(r) for r in build().node_rid.tolist())
     missing = IMPLEMENTED_RIDS - covered
-    assert not missing, "no complex-step sweep covers: " + ", ".join(RESIDUAL_NAMES[r] for r in sorted(missing))
+    assert not missing, "no complex-step sweep covers: " + ", ".join(ELEMENT_TYPE_NAMES[r] for r in sorted(missing))
 
 
-@pytest.mark.parametrize("rid", sorted(PROBES), ids=lambda r: RESIDUAL_NAMES[r])
+@pytest.mark.parametrize("rid", sorted(PROBES), ids=lambda r: ELEMENT_TYPE_NAMES[r])
 def test_kernel_complex_step_safe_across_regimes(rid):
     prob = PROBES[rid]()
     peak_subsonic_M = 0.0
@@ -474,8 +476,97 @@ def test_kernel_complex_step_safe_across_regimes(rid):
 
         Jcs = _scaled(prob, jacobian(prob, x, EPS, EPS_FB).toarray())
         Jfd = _scaled(prob, _fd_jacobian(prob, x, EPS, EPS_FB))
-        assert np.allclose(Jcs, Jfd, rtol=1e-5, atol=1e-6), f"{RESIDUAL_NAMES[rid]} CS!=FD at mdot={x[0]}"
+        assert np.allclose(Jcs, Jfd, rtol=1e-5, atol=1e-6), f"{ELEMENT_TYPE_NAMES[rid]} CS!=FD at mdot={x[0]}"
 
     # the sweep must actually have reached a high-subsonic (choke-sensitive)
     # state, else "passing" would just mean we never stressed the kernel
-    assert peak_subsonic_M > 0.8, f"{RESIDUAL_NAMES[rid]} sweep never reached near-choke (maxM={peak_subsonic_M:.2f})"
+    assert peak_subsonic_M > 0.8, f"{ELEMENT_TYPE_NAMES[rid]} sweep never near-choke (maxM={peak_subsonic_M:.2f})"
+
+
+# --------------------------------------------------------------------------
+# Burnt-marker transport: the sticky noisy-OR donor.  This is a scalar-branch of
+# node_donor (keyed on ``s == marker_s``), not a distinct element rid, so it cannot
+# ride the per-rid PROBES sweep above -- it gets its own complex-step check here.
+# --------------------------------------------------------------------------
+
+
+def _marker_donor(mdot, phi, rid=JUNCTION, npar_f=None):
+    """``node_donor`` for the burnt marker at one node whose ``deg`` ports all feed it.
+
+    ``orient = -1`` makes the node the head of every port, so a port with ``mdot > 0`` is
+    an inflow (``mdot_in = +mdot``).  ``s = marker_s = 0`` forces the noisy-OR marker
+    branch (the ``0.5``-centered gate lives elsewhere; this is the transport law).
+    """
+    deg = mdot.shape[0]
+    row_ptr = np.array([0, deg], dtype=np.int64)
+    col_edge = np.arange(deg, dtype=np.int64)
+    orient = -np.ones(deg, dtype=np.int64)
+    if npar_f is None:
+        npar_f = np.zeros(0, dtype=mdot.dtype)
+    npar_fptr = np.array([0, npar_f.shape[0]], dtype=np.int64)
+    tf = np.zeros((1, 1), dtype=mdot.dtype)  # unused by the marker donor
+    return node_donor(0, rid, 0, 0, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, EPS, mdot, phi)
+
+
+def test_marker_noisy_or_donor_complex_step_matches_fd():
+    # The sticky burnt-marker donor b_out = 1 - prod_i (1 - theta_i * b_i) must be
+    # complex-analytic in every marker b_i AND every mass flow m_i (theta rides mdot),
+    # through forward / reverse / near-zero flow and at intermediate marker values.
+    H, d = 1e-30, 1e-6
+    flow_sets = [
+        np.array([30.0, 18.0, -25.0]),  # two in, one out
+        np.array([1e-3, -1e-3, 12.0]),  # near-zero, both signs
+        np.array([-30.0, -18.0, -9.0]),  # all reverse (all out)
+        np.array([22.0, 0.0, 7.0]),  # a dead (mdot = 0) port
+    ]
+    marker_sets = [
+        np.array([1.0, 0.0, 0.0]),  # bimodal: a burnt port meets fresh ones
+        np.array([0.3, 0.7, 0.5]),  # intermediate (the transient regime)
+        np.array([0.0, 0.0, 0.0]),  # all fresh (endpoint: must give exactly 0)
+    ]
+    for m in flow_sets:
+        for b in marker_sets:
+            if np.all(b == 0.0):  # endpoint exactness: no numerical creep off zero
+                assert abs(_marker_donor(m.copy(), b.copy())) < 1e-14
+            for j in range(3):
+                unit = np.eye(3)[j]
+                phic = b.astype(np.complex128)
+                phic[j] += 1j * H
+                cs_b = _marker_donor(m.astype(np.complex128), phic).imag / H
+                fd_b = (_marker_donor(m, b + d * unit) - _marker_donor(m, b - d * unit)) / (2 * d)
+                assert cs_b == pytest.approx(fd_b, rel=1e-6, abs=1e-9), f"d/db_{j} at m={m}, b={b}"
+                mc = m.astype(np.complex128)
+                mc[j] += 1j * H
+                cs_m = _marker_donor(mc, b.astype(np.complex128)).imag / H
+                fd_m = (_marker_donor(m + d * unit, b) - _marker_donor(m - d * unit, b)) / (2 * d)
+                assert cs_m == pytest.approx(fd_m, rel=1e-6, abs=1e-9), f"d/dm_{j} at m={m}, b={b}"
+
+
+def test_marker_mass_source_donor_is_sticky_and_analytic():
+    # A mass source injecting FRESH gas (b_src = 0) into a burnt interior stream must not
+    # dilute the marker (b_out -> 1); injecting burnt gas (b_src = 1, e.g. EGR) sets it.
+    # npar_f = [msrc, u_inj, b_src] and s = 0 -> the branch reads b_src at pb + 2.
+    H, d = 1e-30, 1e-6
+    m = np.array([20.0])  # one interior incoming port
+    fresh = np.array([0.0, 0.0, 0.0])  # injected b_src = 0
+    burnt = np.array([0.0, 0.0, 1.0])  # injected b_src = 1
+    # A burnt port lands b = 1 only to within the smooth-upwind floor O(eps^2/mdot^2)
+    # (here ~1e-6); the marker is bimodal to eps, like a converged solve.  The all-fresh
+    # cases below are exact (no floor), which is the no-creep guarantee that matters.
+    burnt_floor = 2e-6
+    # burnt interior + fresh injection stays burnt (the RQL quench case)
+    assert _marker_donor(m, np.array([1.0]), MASS_SOURCE, fresh) == pytest.approx(1.0, abs=burnt_floor)
+    # fresh interior + fresh injection stays fresh (exact)
+    assert abs(_marker_donor(m, np.array([0.0]), MASS_SOURCE, fresh)) < 1e-14
+    # fresh interior + injected burnt gas turns it burnt
+    assert _marker_donor(m, np.array([0.0]), MASS_SOURCE, burnt) == pytest.approx(1.0, abs=1e-12)
+    # analytic in the interior marker
+    bi = 0.4
+    phic = np.array([bi], dtype=np.complex128)
+    phic[0] += 1j * H
+    cs = _marker_donor(m.astype(np.complex128), phic, MASS_SOURCE, fresh.astype(np.complex128)).imag / H
+    fd = (
+        _marker_donor(m, np.array([bi + d]), MASS_SOURCE, fresh)
+        - _marker_donor(m, np.array([bi - d]), MASS_SOURCE, fresh)
+    ) / (2 * d)
+    assert cs == pytest.approx(fd, rel=1e-6, abs=1e-9)

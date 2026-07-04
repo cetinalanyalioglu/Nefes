@@ -52,6 +52,15 @@
   compositional noise — that the hand-written closure silently drops (the
   `CompositionalNoiseWarning`), all from the same complex step that gives `R` and
   the entropy noise `R_s`. Closes with the `M = 1` subsonic-scope note.
+- **`acoustic_refinement.ipynb`** — **when discretization matters for acoustics.** A
+  `tapered_duct` horn's **mean flow is exact at any segment count** `N` (an area change is a
+  state-function relation), but its **scattering matrix is not**: a compact area jump reflects
+  strongly with no transit phase, while a refined (distributed) horn is a gradual impedance
+  match. Sweeps the inlet-outlet scattering matrix over frequency for several `N` (the compact
+  `|S11|` is far off and frequency-flat; it collapses ~an order of magnitude as the horn is
+  resolved), shows the ~`O(1/N)` first-order convergence, and drives `grid_refine` / `auto_refine`
+  on both a mean-flow quantity (converges in **one** doubling) and an acoustic one (needs
+  **several**). `plotly`.
 - **`entropy_generator.ipynb`** — a **validation** notebook replicating De Domenico,
   Rolland & Hochgreb (2019, *JSV* 440), "nozzles with losses", at the Cambridge
   Entropy Generator geometry. Builds the orifice-plate / isentropic / non-isentropic
@@ -97,6 +106,16 @@
   (flame jump then dilution cooling), and sweeps fuel flow (equivalence ratio) and
   dilution air against the flame / turbine-inlet temperatures. Tweak `mdot_fuel`,
   `mdot_dilution`, `Tair`, `p`.
+- **`rql_combustor.ipynb`** — a **rich-quench-lean (staged) combustor**: a fuel-rich
+  primary zone (`φ ≈ 1.6`, oxygen-limited, so its equilibrium carries CO and H₂) →
+  **quench-air** mass source → a **lean** burnout zone that re-equilibrates and oxidizes the
+  leftover CO / H₂. The lean gas is downstream of the flame yet mixes with fresh air, so it
+  exercises the **sticky burnt marker** (a reachability label transported by a noisy-OR): the
+  quench air cannot dilute the burnt label, so the auto marker-gated path re-equilibrates the
+  lean zone with **no per-edge closure** and reproduces the hand-wired hard closure. Shows the
+  marker staying `b = 1` where a mass-average would fall below the gate, the axial CO/CO₂/O₂
+  profiles, the rich-vs-lean speciation, and a fixed-overall air-split sweep of primary flame
+  temperature and primary NO (the RQL low-NOx lever). `plotly`.
 - **`flame_identification.ipynb`** — **identifying a flame's dynamic response** from a
   network-wide measurement. A **branched** combustor (single air inlet → plenum split into
   swirler / liner-cooling / dilution passages → **equilibrium flame** on the swirler branch →

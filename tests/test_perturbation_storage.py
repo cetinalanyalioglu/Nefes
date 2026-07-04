@@ -15,6 +15,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_MDOT, ES_C
@@ -31,7 +32,7 @@ def _cavity_on_a_duct(volume=1.0e-3, area=1.0e-3, l_neck=0.02):
     cfg = perfect_gas(R_AIR, GAMMA)
     els = [cat.total_pressure_inlet(P0, TT), cat.duct(l_neck), cat.cavity(volume)]
     edges = [(0, 1, area), (1, 2, area)]
-    prob = cat.build_problem(cfg, els, edges, 1.0, P0, CP * TT)
+    prob = build_problem(cfg, els, edges, 1.0, P0, CP * TT)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -63,7 +64,7 @@ def test_no_storage_element_gives_empty_M():
     # a network without a cavity has an all-zero storage block.
     cfg = perfect_gas(R_AIR, GAMMA)
     els = [cat.total_pressure_inlet(P0, TT), cat.duct(0.3), cat.pressure_outlet(P0, Tt_backflow=TT)]
-    prob = cat.build_problem(cfg, els, [(0, 1, 1e-3), (1, 2, 1e-3)], 1.0, P0, CP * TT)
+    prob = build_problem(cfg, els, [(0, 1, 1e-3), (1, 2, 1e-3)], 1.0, P0, CP * TT)
     res = solve(prob)
     blocks = build_acoustic_blocks(prob, res.x)
     assert blocks.M.nnz == 0
@@ -115,7 +116,7 @@ def _side_branch_hr(volume, neck_area, l_neck, main_area=3.0e-3, l_main=0.05):
         (2, 5, neck_area),
         (5, 6, neck_area),
     ]
-    prob = cat.build_problem(cfg, els, edges, 1.0, P0, CP * TT)
+    prob = build_problem(cfg, els, edges, 1.0, P0, CP * TT)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -170,7 +171,7 @@ def _quiescent_inline(el, area=1.0e-3):
     """inlet -> (el under test) -> outlet, a still uniform medium at P0/TT."""
     cfg = perfect_gas(R_AIR, GAMMA)
     els = [cat.total_pressure_inlet(P0, TT), el, cat.pressure_outlet(P0, Tt_backflow=TT)]
-    prob = cat.build_problem(cfg, els, [(0, 1, area), (1, 2, area)], 1.0, P0, CP * TT)
+    prob = build_problem(cfg, els, [(0, 1, area), (1, 2, area)], 1.0, P0, CP * TT)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -205,7 +206,7 @@ def test_lengths_are_inert_in_the_mean_flow():
 
     def solve_with(el):
         els = [cat.mass_flow_inlet(0.4, TT), el, cat.pressure_outlet(P0, Tt_backflow=TT)]
-        prob = cat.build_problem(cfg, els, [(0, 1, 2e-3), (1, 2, 2e-3)], 0.4, P0, CP * TT)
+        prob = build_problem(cfg, els, [(0, 1, 2e-3), (1, 2, 2e-3)], 0.4, P0, CP * TT)
         res = solve(prob)
         assert res.converged
         return res.x
@@ -228,7 +229,7 @@ def test_manifold_volume_is_a_compliance():
         cat.pressure_outlet(P0, Tt_backflow=TT),
     ]
     edges = [(0, 1, 2e-3), (1, 2, 2e-3), (2, 3, 2e-3), (3, 4, 2e-3)]
-    prob = cat.build_problem(cfg, els, edges, 1.0, P0, CP * TT)
+    prob = build_problem(cfg, els, edges, 1.0, P0, CP * TT)
     res = solve(prob)
     assert res.converged
     blocks = build_acoustic_blocks(prob, res.x)
@@ -266,7 +267,7 @@ def _hr_with_inline_neck(volume, neck_area, l_neck, main_area=3.0e-3, l_main=0.0
         (2, 5, neck_area),
         (5, 6, neck_area),
     ]
-    prob = cat.build_problem(cfg, els, edges, 1.0, P0, CP * TT)
+    prob = build_problem(cfg, els, edges, 1.0, P0, CP * TT)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -306,7 +307,7 @@ def test_inline_inertance_sign_is_orientation_invariant():
         # the two neck edges, wired forward or reversed
         neck = [(5, 2, AN), (6, 5, AN)] if flip else [(2, 5, AN), (5, 6, AN)]
         edges = [(0, 1, main_area), (1, 2, main_area), (2, 3, main_area), (3, 4, main_area)] + neck
-        prob = cat.build_problem(cfg, els, edges, 1.0, P0, CP * TT)
+        prob = build_problem(cfg, els, edges, 1.0, P0, CP * TT)
         res = solve(prob)
         assert res.converged
         return prob, res.x
@@ -328,7 +329,7 @@ def test_inline_storage_fast_path_matches_reference(with_boundaries):
         cat.isentropic_area_change(l_up=0.03, l_down=0.02, end_correction=0.005),
         cat.pressure_outlet(P0, Tt_backflow=TT),
     ]
-    prob = cat.build_problem(cfg, els, [(0, 1, 3e-3), (1, 2, 1.5e-3)], 0.5, P0, CP * TT)
+    prob = build_problem(cfg, els, [(0, 1, 3e-3), (1, 2, 1.5e-3)], 0.5, P0, CP * TT)
     res = solve(prob)
     assert res.converged
     blocks = build_acoustic_blocks(prob, res.x)

@@ -3,10 +3,9 @@
 A :class:`CompositeElementSpec` presents to the user as a *single* element but
 expands, at build time, into a small graph of atomic :class:`~nefes.elements.catalog.ElementSpec`
 sub-elements joined by internal edges.  The expansion (:func:`expand_composites`) is a
-pure **graph transformation** run once at the top of
-:func:`nefes.elements.catalog.build_problem`: the solver, Jacobian assembly and
-perturbation layers never see a composite, so at solve time the expanded graph is
-indistinguishable from a hand-built one (no new kernels, no solver changes).
+pure **graph transformation** run once at the top of :func:`nefes.shell.build.build_problem`:
+the solver, Jacobian assembly and perturbation layers never see a composite, so at solve time the
+expanded graph is indistinguishable from a hand-built one (no new kernels, no solver changes).
 
 The machinery is deliberately **element-agnostic** -- it knows nothing about what its
 sub-elements are, only their connectivity -- so one expander serves every composite,
@@ -17,11 +16,10 @@ sub-network.
 Index policy: **append, never insert.**  A composite's first sub-element keeps the
 composite's own node id; the rest are appended at the tail, and internal edges are
 appended after the user edges.  So every *user* node and edge id keeps its exact
-meaning after expansion -- and because the whole user-facing API is edge-indexed
+meaning after expansion. Because the whole user-facing API is edge-indexed
 (``states_table``, ``transfer_matrix``, ``scattering_matrix``), captured indices stay
 valid for free.  (SuperLU re-permutes internally, so the tail append costs nothing at
-solve time; a bandwidth-aware renumber is a deferred refinement -- see
-``scratch/composite-elements.md`` Part III.)
+solve time; a bandwidth reduction is not attempted therefore).
 """
 
 from dataclasses import dataclass, field
@@ -29,7 +27,7 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import numpy as np
 
-from .ids import FIXED_NPORTS, RESIDUAL_NAMES
+from .ids import FIXED_NPORTS, ELEMENT_TYPE_NAMES
 
 
 @dataclass
@@ -151,7 +149,17 @@ class CompositeView:
 
 
 def is_composite(el) -> bool:
-    """True if ``el`` is a :class:`CompositeElementSpec` (vs an atomic element spec)."""
+    """True if ``el`` is a :class:`CompositeElementSpec` (vs an atomic element spec).
+
+    Parameters
+    ----------
+    el : object
+        An element spec (atomic ``ElementSpec`` or a ``CompositeElementSpec``).
+
+    Returns
+    -------
+    bool
+    """
     return isinstance(el, CompositeElementSpec)
 
 
@@ -159,9 +167,9 @@ def is_composite(el) -> bool:
 class GridRefinement:
     """The result of refining a discretization composite from ``N`` to ``2N`` segments.
 
-    A converged refinement *is* the verification of a Class-2 composite: if the quantities of
-    interest barely move when the segment count doubles, the chain has resolved the
-    continuous element (theory: ``scratch/composite-elements.md`` "Choosing N").
+    A converged refinement verifies that the segment chain has resolved the continuous
+    element it discretizes: if the quantities of interest barely move when the segment
+    count doubles, the discretization is fine enough.
 
     Attributes
     ----------
@@ -194,7 +202,7 @@ def grid_refine(build, n_coarse, probe):
 
     The principled way to pick ``N`` for a :func:`~nefes.elements.catalog.fanno_pipe` /
     :func:`~nefes.elements.catalog.tapered_duct`: solve at two resolutions and watch the
-    quantities of interest settle.  Element-agnostic -- it only calls the supplied callables.
+    quantities of interest settle.  Element-agnostic, it only calls the supplied callables.
 
     Parameters
     ----------
@@ -214,6 +222,94 @@ def grid_refine(build, n_coarse, probe):
     fine = dict(probe(build(2 * int(n_coarse))))
     rel = {k: abs(float(fine[k]) - float(coarse[k])) / (abs(float(fine[k])) + 1e-300) for k in coarse}
     return GridRefinement(n_coarse=int(n_coarse), n_fine=2 * int(n_coarse), coarse=coarse, fine=fine, rel_change=rel)
+
+
+@dataclass(frozen=True)
+class AutoRefinement:
+    """The outcome of :func:`auto_refine`: the doubling history and whether it converged.
+
+    Attributes
+    ----------
+    steps : list of GridRefinement
+        One entry per doubling, oldest first; ``steps[i]`` compares the ``i``-th resolution
+        to the next.  Empty only if ``max_refine`` was ``0`` (not allowed).
+    converged : bool
+        ``True`` if every probed quantity settled below the tolerance within ``max_refine``
+        doublings; ``False`` if the cap was reached first.
+    n_final : int
+        The finest segment count actually solved.
+    final : dict
+        The probed quantities at ``n_final``.
+    """
+
+    steps: List["GridRefinement"]
+    converged: bool
+    n_final: int
+    final: dict
+
+    @property
+    def n_refine(self) -> int:
+        """Number of doublings performed."""
+        return len(self.steps)
+
+    @property
+    def worst(self) -> float:
+        """The largest relative change at the final doubling (``0`` if no step ran)."""
+        return self.steps[-1].worst if self.steps else 0.0
+
+
+def auto_refine(build, n_start, probe, *, tol: float = 1e-2, max_refine: int = 6) -> AutoRefinement:
+    """Refine a discretization composite until its quantities of interest stop moving.
+
+    Repeatedly doubles the segment count -- ``n_start, 2*n_start, 4*n_start, ...`` -- and
+    solves each resolution, stopping when every probed quantity changes by less than ``tol``
+    (relative) from the previous resolution.  This automates the manual :func:`grid_refine`
+    sweep, at the cost of one solve per doubling.
+
+    Because a stubborn composite can demand an impractical number of segments before it
+    settles, the loop is capped at ``max_refine`` doublings; if the cap is reached first the
+    result is returned with ``converged = False`` (and :attr:`AutoRefinement.worst` reports how
+    far it still was), so the caller can decide whether the accuracy is worth the cost.
+
+    Parameters
+    ----------
+    build : callable
+        ``build(N)`` -> a solved object (e.g. a ``Solution``) for ``N`` segments.
+    n_start : int
+        The coarsest segment count (``>= 1``).
+    probe : callable
+        ``probe(solved)`` -> a mapping of scalar quantities of interest (e.g. exit Mach,
+        choke back-pressure).
+    tol : float, optional
+        Relative-change convergence tolerance (default ``1e-2``).
+    max_refine : int, optional
+        Maximum number of doublings to attempt (default ``6``, i.e. up to ``64 * n_start``).
+
+    Returns
+    -------
+    AutoRefinement
+    """
+    n_start = int(n_start)
+    if n_start < 1:
+        raise ValueError(f"n_start must be >= 1; got {n_start}")
+    if int(max_refine) < 1:
+        raise ValueError(f"max_refine must be >= 1; got {max_refine}")
+
+    prev_n = n_start
+    prev = dict(probe(build(prev_n)))
+    steps = []
+    converged = False
+    for _ in range(int(max_refine)):
+        n = prev_n * 2
+        cur = dict(probe(build(n)))
+        rel = {k: abs(float(cur[k]) - float(prev[k])) / (abs(float(cur[k])) + 1e-300) for k in cur}
+        step = GridRefinement(n_coarse=prev_n, n_fine=n, coarse=prev, fine=cur, rel_change=rel)
+        steps.append(step)
+        prev_n, prev = n, cur
+        if step.converged(tol):
+            converged = True
+            break
+    return AutoRefinement(steps=steps, converged=converged, n_final=prev_n, final=prev)
 
 
 def _implied_degree(spec: CompositeElementSpec, sub: int) -> int:
@@ -242,7 +338,12 @@ def validate_composite(spec: CompositeElementSpec):
     Errors name the composite (not a cryptic expanded node).  Checks: >= 2 atomic
     sub-elements (no nesting); ``internal_edges`` and ``upstream``/``downstream`` indices
     in range and areas positive; and that each sub-element's implied wired degree matches
-    its fixed arity (``FIXED_NPORTS``) under the serial recipe.
+    its fixed port count (``FIXED_NPORTS``) under the serial recipe.
+
+    Parameters
+    ----------
+    spec : CompositeElementSpec
+        The composite recipe to validate.
 
     Raises
     ------
@@ -270,13 +371,13 @@ def validate_composite(spec: CompositeElementSpec):
     down = spec.downstream_sub if spec.downstream_sub >= 0 else n - 1
     if not 0 <= down < n:
         raise ValueError(f"{label}: downstream_sub {spec.downstream_sub} out of range [0, {n})")
-    # each sub-element's implied wired degree must match its fixed arity, if it has one
+    # each sub-element's implied wired degree must match its fixed port count, if it has one
     for k, sub in enumerate(spec.sub_elements):
         expected = FIXED_NPORTS.get(int(sub.residual_id))
         if expected is not None:
             deg = _implied_degree(spec, k)
             if deg != expected:
-                tname = RESIDUAL_NAMES.get(int(sub.residual_id), f"residual#{sub.residual_id}")
+                tname = ELEMENT_TYPE_NAMES.get(int(sub.residual_id), f"residual#{sub.residual_id}")
                 raise ValueError(
                     f"{label}: sub-element {k} ({tname}) is wired to {deg} port(s) under the recipe "
                     f"but is a {expected}-port element -- check internal_edges / upstream_sub / downstream_sub"
@@ -286,12 +387,14 @@ def validate_composite(spec: CompositeElementSpec):
 def expand_composites(elements, edges):
     """Expand every composite in ``elements`` into atomic elements + internal edges.
 
-    A pure build-time graph transformation (plain Python, no flow state -- complex-step
-    safety is a non-issue).  The first sub-element of each composite keeps the composite's
-    node id; the remaining sub-elements are appended at the tail, and internal edges are
-    appended after the user edges.  External edges are rewired by **orientation**: an edge
+    A pure build-time graph transformation.  The first sub-element of each composite keeps
+    the composite's node id; the remaining sub-elements are appended at the tail, and internal
+    edges are appended after the user edges.  External edges are rewired by **orientation**: an edge
     whose *head* is a composite enters at that composite's ``upstream_sub``; an edge whose
-    *tail* is a composite leaves from its ``downstream_sub``.
+    *tail* is a composite leaves from its ``downstream_sub``.  Each expanded edge is emitted with
+    **explicit flow-aligned ports** -- a fixed 2-port sub-element takes its inflow on port 0 and
+    its outflow on port 1 -- so wiring matches a hand-built network regardless of edge index (the
+    tail-appended internal edges would otherwise mis-order a sub-element's ports).
 
     Parameters
     ----------
@@ -303,9 +406,11 @@ def expand_composites(elements, edges):
     Returns
     -------
     (list, list, CompositeMap or None)
-        The expanded ``(elements, edges)`` -- an ordinary atomic pair ready for
-        :func:`build_problem` -- and a :class:`CompositeMap` (``None`` when the network
-        carries no composite, the zero-overhead fast path).
+        The expanded ``elements`` and ``edges``, ready for :func:`build_problem`, plus a
+        :class:`CompositeMap` (``None`` when the network carries no composite -- the
+        zero-overhead fast path that returns the inputs unchanged).  When a composite is
+        present the edges are port-explicit 5-tuples ``(tail, head, area, tail_port, head_port)``;
+        otherwise they are the input ``(tail, head, area)`` triples verbatim.
     """
     if not any(is_composite(el) for el in elements):
         return elements, edges, None
@@ -349,6 +454,27 @@ def expand_composites(elements, edges):
         for ts, hs, a in el.internal_edges:
             internal_edge_ids.add(len(new_edges))
             new_edges.append((slots[i][ts], slots[i][hs], a))
+
+    # Wire explicit ports, exactly as a user connecting a serial chain by hand: a fixed 2-port
+    # element takes its inflow (the edge it heads) on port 0 and its outflow (the edge it tails)
+    # on port 1, so the flow axis is always port 0 -> port 1.  This is load-bearing because the
+    # internal edges are appended at the tail: without pinning, a sub-element's inflow edge can
+    # outrank its outflow edge by index and land on the wrong port -- which then trips the
+    # acoustic flow-alignment check on an internal duct.  Every other node auto-assigns its ports
+    # in attachment order, identical to the bare-edge path.
+    def _two_port(n):
+        return FIXED_NPORTS.get(int(out_elements[n].residual_id)) == 2
+
+    next_port = [0] * len(out_elements)
+
+    def _auto(n):
+        p = next_port[n]
+        next_port[n] += 1
+        return p
+
+    new_edges = [
+        (t, h, a, (1 if _two_port(t) else _auto(t)), (0 if _two_port(h) else _auto(h))) for (t, h, a) in new_edges
+    ]
 
     cmap = CompositeMap(
         user_node_to_expanded=tuple(tuple(s) for s in slots),

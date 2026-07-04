@@ -15,6 +15,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
@@ -46,7 +47,7 @@ def test_mass_flow_outlet_pins_outflow():
     """The outflow equals the prescribed rate; the static pressure floats."""
     mdot_spec = 8.0
     els = [cat.total_pressure_inlet(1.2e5, 300.0), cat.duct(0.5), cat.mass_flow_outlet(mdot_spec)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 8.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 8.0, 1e5, CP * 300.0)
     res = solve(prob)  # default guess
     assert res.converged
     est = states_table(prob, res.x)
@@ -61,7 +62,7 @@ def test_mass_flow_outlet_acoustic_row_is_mdot_zero():
         cat.duct(0.5),
         cat.mass_flow_outlet(8.0),
     ]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 8.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 8.0, 1e5, CP * 300.0)
     res = solve(prob)
     assert res.converged
     blocks = build_acoustic_blocks(prob, res.x)
@@ -86,7 +87,7 @@ def test_choked_nozzle_outlet_critical_mass_flux():
     """The outflow is the choked-throat critical mass flux; the approach stays subsonic."""
     pt, Tt, A_out, A_star = 1.2e5, 300.0, 0.05, 0.03
     els = [cat.total_pressure_inlet(pt, Tt), cat.duct(0.5), cat.choked_nozzle_outlet(A_star)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A_out), (1, 2, A_out)], 10.0, 1e5, CP * Tt)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A_out), (1, 2, A_out)], 10.0, 1e5, CP * Tt)
     res = solve(prob)  # default guess
     assert res.converged
     est = states_table(prob, res.x)
@@ -104,7 +105,7 @@ def test_choked_nozzle_outlet_rejects_throat_not_smaller_than_outlet():
     """A* >= A_out has no subsonic choked approach -> rejected at build (not a CD/supersonic nozzle)."""
     els = [cat.total_pressure_inlet(1.6e5, 300.0), cat.duct(0.5), cat.choked_nozzle_outlet(0.05)]
     with pytest.raises(ValueError, match="smaller than"):
-        cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 8.0, 1e5, CP * 300.0)
+        build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 8.0, 1e5, CP * 300.0)
 
 
 @pytest.mark.parametrize("pt", [1.05e5, 2.0e5, 5.0e5])
@@ -116,7 +117,7 @@ def test_choked_nozzle_outlet_imposes_critical_flux_at_any_total_pressure(pt):
     """
     A_out, A_star = 0.05, 0.02
     els = [cat.total_pressure_inlet(pt, 300.0), cat.duct(0.4), cat.choked_nozzle_outlet(A_star)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A_out), (1, 2, A_out)], 5.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A_out), (1, 2, A_out)], 5.0, 1e5, CP * 300.0)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)
@@ -131,12 +132,89 @@ def test_choked_nozzle_outlet_acoustic_is_non_degenerate():
         cat.duct(0.5),
         cat.choked_nozzle_outlet(0.03),
     ]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 1e5, CP * 300.0)
     res = solve(prob)
     assert res.converged
     blocks = build_acoustic_blocks(prob, res.x)
     A = assemble_acoustic(2 * np.pi * 250.0, blocks, with_boundaries=True)  # would raise at exactly M=1
     assert A.nnz > 0
+
+
+# --------------------------------------------------------------------------
+# choked_nozzle_outlet: optional back-pressure choking diagnostic
+# --------------------------------------------------------------------------
+
+
+def _nozzle_net(back_pressure):
+    from nefes.shell.network import Network
+
+    A = 0.05
+    return Network(
+        gas=perfect_gas(R_AIR, GAMMA),
+        nodes=[
+            cat.total_pressure_inlet(1.5e5, 300.0),
+            cat.choked_nozzle_outlet(0.5 * A, back_pressure=back_pressure, name="nz"),
+        ],
+        edges=[(0, 1, A)],
+    )
+
+
+def test_choked_nozzle_back_pressure_warns_when_unchoked():
+    # the critical pressure is ~0.53 * p_t <= 0.53 * 1.5e5 ~ 8e4; a 1.4e5 back pressure cannot choke it
+    with pytest.warns(UserWarning, match="would not choke"):
+        sol = _nozzle_net(1.4e5).solve()
+    assert sol.converged
+    bad = sol.unchoked_nozzles()
+    assert len(bad) == 1 and bad[0]["name"] == "nz"
+    assert bad[0]["back_pressure"] > bad[0]["critical_pressure"]
+
+
+def test_choked_nozzle_back_pressure_silent_when_choked():
+    # a 1e4 back pressure is far below the critical pressure -> genuinely choked, no warning
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # any warning would fail the test
+        sol = _nozzle_net(1e4).solve()
+    assert sol.converged
+    assert sol.unchoked_nozzles() == []
+
+
+def test_choked_nozzle_without_back_pressure_skips_the_check():
+    sol = _nozzle_net(None).solve()
+    assert sol.converged and sol.unchoked_nozzles() == []
+
+
+def test_choked_nozzle_back_pressure_must_be_positive():
+    with pytest.raises(ValueError, match="back_pressure must be > 0"):
+        cat.choked_nozzle_outlet(0.01, back_pressure=-1.0)
+
+
+def test_choked_nozzle_back_pressure_with_a_composite_upstream():
+    # a composite (fanno_pipe) upstream expands to extra nodes; the diagnostic must still find
+    # the nozzle's real node/edge -- not crash on the composite spec, not misindex.
+    from nefes.shell.network import Network
+
+    d = 0.05
+    A = np.pi * d**2 / 4.0
+    net = Network(
+        gas=perfect_gas(R_AIR, GAMMA),
+        nodes=[
+            cat.total_pressure_inlet(1.5e5, 300.0),
+            cat.fanno_pipe(2.0, d, 0.02, 6),  # composite -> extra expanded segment nodes
+            cat.choked_nozzle_outlet(0.4 * A, back_pressure=1.4e5, name="nz"),
+        ],
+        edges=[(0, 1, A), (1, 2, A)],
+    )
+    with pytest.warns(UserWarning, match="would not choke"):
+        sol = net.solve()
+    assert sol.converged
+    bad = sol.unchoked_nozzles()
+    assert len(bad) == 1 and bad[0]["name"] == "nz"
+    # the reported edge genuinely terminates at the nozzle node (correct index mapping)
+    prob = net.compile()
+    assert int(prob.head_node[bad[0]["edge"]]) == bad[0]["node"]
+    assert 0.0 < float(sol.field("M")[bad[0]["edge"]]) < 1.0
 
 
 def test_mass_flow_outlet_linearizes_to_constant_mass_flow():
@@ -151,7 +229,7 @@ def test_mass_flow_outlet_linearizes_to_constant_mass_flow():
         cat.duct(0.5),
         cat.mass_flow_outlet(6.0),
     ]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 6.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 6.0, 1e5, CP * 300.0)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)
@@ -194,20 +272,20 @@ def test_all_mass_flow_boundaries_rejected_no_pressure_reference():
     """mass-flow in + mass-flow out (the user's example) has no pressure gauge -> rejected."""
     els = [cat.mass_flow_inlet(5.0, 300.0), cat.duct(0.5), cat.mass_flow_outlet(5.0)]
     with pytest.raises(ValueError, match="pressure reference"):
-        cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, CP * 300.0)
+        build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, CP * 300.0)
 
 
 def test_mass_flow_inlet_and_wall_rejected():
     """mass-flow in feeding a wall is also all-flow-pinned (no pressure reference)."""
     els = [cat.mass_flow_inlet(5.0, 300.0), cat.duct(0.5), cat.wall()]
     with pytest.raises(ValueError, match="pressure reference"):
-        cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, CP * 300.0)
+        build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, CP * 300.0)
 
 
 def test_choked_outlet_supplies_the_pressure_reference():
     """mass-flow in + choked out is well-posed: the choke ties the pressure to the flow."""
     els = [cat.mass_flow_inlet(5.0, 300.0), cat.duct(0.5), cat.choked_nozzle_outlet(0.03)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, CP * 300.0)
     res = solve(prob)  # builds (passes validation) and converges
     assert res.converged
     assert states_table(prob, res.x)[ES_MDOT, 1] == pytest.approx(5.0, rel=1e-6)
@@ -216,7 +294,7 @@ def test_choked_outlet_supplies_the_pressure_reference():
 def test_pt_inlet_and_mass_flow_outlet_is_well_posed():
     """A pressure inlet + a mass-flow outlet is a valid pair (pressure pinned, flow pinned)."""
     els = [cat.total_pressure_inlet(1.6e5, 300.0), cat.duct(0.5), cat.mass_flow_outlet(6.0)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 6.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 6.0, 1e5, CP * 300.0)
     res = solve(prob)
     assert res.converged
 
@@ -231,7 +309,7 @@ def test_pt_inlet_linearizes_to_convective_open_end():
     ``|R| = (1-M)/(1+M)`` (so the reservoir does no net acoustic work).
     """
     els = [cat.total_pressure_inlet(2.5e5, 300.0), cat.duct(0.5), cat.choked_nozzle_outlet(0.03)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 1e5, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 1e5, CP * 300.0)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)
@@ -266,7 +344,7 @@ def test_choked_nozzle_outlet_linearizes_to_marble_candel():
         cat.duct(0.5),
         cat.choked_nozzle_outlet(A_star),
     ]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A_out), (1, 2, A_out)], 10.0, 1e5, CP * Tt)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A_out), (1, 2, A_out)], 10.0, 1e5, CP * Tt)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)

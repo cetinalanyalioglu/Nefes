@@ -21,6 +21,7 @@ perturbation recovers the exact Borda jump -- which is what these tests assert.
 import numpy as np
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
@@ -101,7 +102,7 @@ def _build(mids, areas, mdot, sac_eps=SHARP):
     """
     net = [cat.mass_flow_inlet(mdot, 300.0)] + mids + [cat.pressure_outlet(101325.0, 300.0)]
     edges = [(i, i + 1, areas[i]) for i in range(len(areas))]
-    prob = cat.build_problem(CFG, net, edges, MDOT_REF, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, MDOT_REF, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -247,7 +248,7 @@ def test_sudden_eps_sharpens_tm_but_scattering_is_robust():
             cat.sudden_area_change(eps=eps_sac),
             cat.pressure_outlet(101325.0, 300.0),
         ]
-        prob = cat.build_problem(CFG, net, [(0, 1, A1), (1, 2, AT), (2, 3, A2)], 1.0, 101325.0, CP * 300.0)
+        prob = build_problem(CFG, net, [(0, 1, A1), (1, 2, AT), (2, 3, A2)], 1.0, 101325.0, CP * 300.0)
         res = solve(prob)
         assert res.converged
         est = states_table(prob, res.x)

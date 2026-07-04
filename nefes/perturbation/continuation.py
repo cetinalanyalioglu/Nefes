@@ -1,4 +1,4 @@
-"""Analytic continuation of tabulated frequency-response data (theory.md s12.7).
+"""Analytic continuation of tabulated frequency-response data.
 
 A measured or otherwise tabulated frequency response -- a flame transfer function
 ``F(f)``, a velocity-modulated fuel-injection response, a boundary reflection
@@ -49,7 +49,7 @@ import warnings
 
 import numpy as np
 
-from .dynamic_source import TransferFunction
+from ..elements.dynamic_source import TransferFunction
 
 
 def _estimate_delay(freqs, values):

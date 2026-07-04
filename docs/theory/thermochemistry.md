@@ -83,9 +83,20 @@ Three closure flavors express this, and the network selects among them per edge.
 2. **Equilibrium** — the fully burnt state, in chemical equilibrium at the conserved $(\mathbf{Y}_{\text{el}}, h, p)$; the state downstream of a flame.
 3. **Marker-gated** — a smooth blend of the two, selected by a transported *burnt marker*.
 
-The burnt marker $b$ is itself a transported scalar, carried by the same donor–upwind relations, and it is bimodal at convergence — it settles to $b = 0$ on unburnt edges and $b = 1$ on burnt ones.
-The blend is a smooth gate $g(b)$ built so that $g(0) = 0$ and $g(1) = 1$ hold to machine precision, so a frozen edge is *purely* frozen and a burnt edge *purely* equilibrium, with the gate active only in the transient while the solver discovers which edges are burnt.
-An important remark is that the gate's slope $\mathrm{d}g/\mathrm{d}b$ is small at $b \in \{0, 1\}$, so the marker is nearly decoupled from the acoustics at the converged state — it selects the closure without contaminating the linearized operator.
+The burnt marker $b$ is itself a transported scalar, but it answers a *reachability* question — is this edge downstream of a flame? — rather than conserving a physical quantity, so it is not mass-averaged like the mixture fractions.
+Instead it rides a sticky noisy-OR of the node's ports:
+
+$$
+b = 1 - \prod_i \bigl(1 - \theta_i\, b_i\bigr),
+$$
+
+where the product runs over the ports of the node, $b_i$ is the marker on port $i$, and $\theta_i \in [0, 1]$ is the smooth upwind indicator the scalar transport already carries (unity on an inflow, zero on an outflow).
+Any burnt inflow ($\theta_i b_i \to 1$) saturates $b$ to one, while an all-fresh node returns $b = 0$ exactly (no numerical creep off zero).
+This is the behavior a mass-average cannot provide: where burnt products mix with a fresh oxidizer — the quench of a rich-quench-lean combustor, or exhaust-gas recirculation — an average would dilute the marker below the gate and wrongly freeze a zone that must re-equilibrate, whereas the OR keeps it burnt so the added air completes combustion.
+The marker is bimodal at convergence — it settles to $b = 0$ on unburnt edges and $b = 1$ on burnt ones.
+
+The blend itself is a smooth gate $g(b)$ built so that $g(0) = 0$ and $g(1) = 1$ hold to machine precision, so a frozen edge is *purely* frozen and a burnt edge *purely* equilibrium, with the gate active only in the transient while the solver discovers which edges are burnt.
+An important remark is that the gate's slope $\mathrm{d}g/\mathrm{d}b$ is small at $b \in \{0, 1\}$, so the marker is nearly decoupled from the acoustics at the converged state — it selects the closure without contaminating the linearized operator, and this holds regardless of the (nonlinear, flow-dependent) transport law that sets $b$, since $b$ reaches the physical state only through the flat gate.
 
 The marker is set, not transported into existence: an equilibrium flame element writes $b = 1$ onto its genuinely downstream edge through its donor, which makes it an orientation-robust detector of "downstream of a flame" that does not depend on how the edges were wired, and whose linearization is zero, so the marker source is acoustically silent (tests: `test_auto_reacting_network_is_marker_gated`, `test_marker_self_corrects_any_seed`, `test_mean_flow_matches_hard_closure`, `test_marker_surfaced_and_species_blended`).
 The two configurations of this machinery — equilibrium holding everywhere, and a frozen-to-equilibrium reactor element that imposes burnt products as its jump condition — are thus the same closure switched on different edges, not two separate mechanisms.

@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)
@@ -22,7 +23,7 @@ H_REF = CP * 300.0
 def _build(mid, A0, A1, name="mid"):
     """Inlet -> mid -> outlet with the two interior edges at areas A0, A1."""
     net = [cat.total_pressure_inlet(130000.0, 300.0), mid, cat.pressure_outlet(101325.0, 300.0)]
-    return cat.build_problem(CFG, net, [(0, 1, A0), (1, 2, A1)], 10.0, 101325.0, H_REF)
+    return build_problem(CFG, net, [(0, 1, A0), (1, 2, A1)], 10.0, 101325.0, H_REF)
 
 
 # -- area-change consistency ------------------------------------------------
@@ -66,7 +67,7 @@ def test_junction_and_splitter_allow_different_areas():
         cat.pressure_outlet(110000.0, 300.0),
     ]
     edges = [(0, 1, 0.03), (1, 2, 0.01), (1, 3, 0.02)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
     assert prob.n_nodes == 4
 
 
@@ -86,7 +87,7 @@ def test_two_port_element_with_one_edge_rejected():
     # an isentropic area change wired with a single incident edge
     net = [cat.total_pressure_inlet(130000.0, 300.0), cat.isentropic_area_change()]
     with pytest.raises(ValueError, match="expects 2 port"):
-        cat.build_problem(CFG, net, [(0, 1, 0.02)], 10.0, 101325.0, H_REF)
+        build_problem(CFG, net, [(0, 1, 0.02)], 10.0, 101325.0, H_REF)
 
 
 def test_boundary_with_two_edges_rejected():
@@ -94,13 +95,13 @@ def test_boundary_with_two_edges_rejected():
     net = [cat.total_pressure_inlet(200000.0, 300.0), cat.junction(), cat.pressure_outlet(120000.0, 300.0)]
     edges = [(0, 1, 0.02), (1, 2, 0.02), (2, 1, 0.02)]
     with pytest.raises(ValueError, match="expects 1 port"):
-        cat.build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
+        build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
 
 
 def test_junction_needs_two_ports():
     net = [cat.total_pressure_inlet(130000.0, 300.0), cat.junction()]
     with pytest.raises(ValueError, match=">= 2 port"):
-        cat.build_problem(CFG, net, [(0, 1, 0.02)], 10.0, 101325.0, H_REF)
+        build_problem(CFG, net, [(0, 1, 0.02)], 10.0, 101325.0, H_REF)
 
 
 # -- unique element names ---------------------------------------------------
@@ -137,6 +138,6 @@ def test_compile_normalizes_duplicate_names():
         cat.pressure_outlet(101325.0, 300.0),
     ]
     edges = [(0, 1, 0.02), (1, 2, 0.02), (2, 3, 0.02)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, H_REF)
     assert prob.node_names == ("pt-inlet-1", "duct-1", "duct-2", "outlet-1")
     assert len(set(prob.node_names)) == prob.n_nodes

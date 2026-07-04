@@ -61,10 +61,14 @@ def node_donor(n, rid, s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr
         # boundary params carry the absolute total enthalpy h_t at pb+1 (converted
         # from Tt at build time, per backend) then the feed/backflow composition.
         return npar_f[pb + 1 + s]
-    # interior: mass-weighted smooth-upwind mix of the incoming port scalar values
+    # interior: mass-weighted smooth-upwind mix of the incoming port scalar values.
+    # The burnt marker is the exception -- it is a *reachability label* ("am I downstream
+    # of a flame?"), not a conserved quantity, so it rides a sticky noisy-OR (accumulated
+    # alongside) rather than an average: a fresh stream must never dilute a burnt one.
     acc = phi_e[col_edge[base]] * 0.0
     w_sum = acc
     wphi_sum = acc
+    unburnt = acc + 1.0  # marker noisy-OR: prod_i (1 - theta_i * b_i) over the incoming ports
     for i in range(deg):
         ei = col_edge[base + i]
         si = orient[base + i]
@@ -72,27 +76,42 @@ def node_donor(n, rid, s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr
         w = smooth_pos(mdot_in, eps)
         w_sum = w_sum + w
         wphi_sum = wphi_sum + w * phi_e[ei]
+        if s == marker_s:
+            # theta in [0, 1] is the smooth upwind indicator of this port; an incoming
+            # burnt port (theta * b -> 1) drives the product to 0, so the outgoing marker
+            # saturates to 1 no matter how much fresh flow accompanies it.
+            theta = smooth_step(mdot_in, eps)
+            unburnt = unburnt * (1.0 - theta * phi_e[ei])
+
+    if s == marker_s:
+        # Sticky burnt marker.  Endpoints are exact: all-fresh incoming gives unburnt = 1
+        # -> b = 0 (no numerical creep off zero), any fully-burnt incoming gives b = 1.  The
+        # marker reaches the physical state only through the flat gate marker_gate (dg/db ~ 0
+        # at b in {0, 1}), so this transport law does not contaminate the acoustic operator.
+        if rid == FLAME_EQUILIBRIUM:
+            # Gas leaving an equilibrium flame is fully burnt: the hard b = 1 anchor.  A
+            # constant donor (zero linearization), so the marker source is acoustically silent.
+            return unburnt * 0.0 + 1.0
+        if rid == MASS_SOURCE:
+            # The injected stream is unconditionally incoming (theta = 1): fresh air
+            # (b_src = 0) leaves the OR unchanged, injected burnt gas (e.g. EGR) sets it.
+            return 1.0 - unburnt * (1.0 - npar_f[pb + 2 + s])
+        return 1.0 - unburnt
+
+    # Mass-averaged advected scalars: total enthalpy h_t (s = 0) and the conserved
+    # mixture fractions (s >= 1).
     if rid == MASS_SOURCE:
-        # Inline injection: the outflow scalar is the mass-weighted mix of the
-        # interior incoming flow and the injected stream (mass-flow npar_f[pb+0],
-        # scalar value npar_f[pb+2+s]: s=0 is the injected total enthalpy h_t,src,
-        # s>=1 the injected elemental composition Z_src[s-1]).  The injected mass is
-        # always incoming, so it adds a constant positive weight -- which conserves
-        # the advected scalar across the source: mdot_out*phi_out = mdot_in*phi_in
-        # + mdot_src*phi_src.  Complex-step-safe (npar_f are fixed real params).
+        # Inline injection: the outflow scalar is the mass-weighted mix of the interior
+        # incoming flow and the injected stream (mass-flow npar_f[pb+0], scalar value
+        # npar_f[pb+2+s]: s=0 is the injected total enthalpy h_t,src, s>=1 the injected
+        # elemental composition Z_src[s-1]).  The injected mass is always incoming, so it
+        # adds a constant positive weight -- which conserves the advected scalar across the
+        # source: mdot_out*phi_out = mdot_in*phi_in + mdot_src*phi_src.  Complex-step-safe.
         msrc = npar_f[pb + 0]
         w_sum = w_sum + msrc
         wphi_sum = wphi_sum + msrc * npar_f[pb + 2 + s]
         return wphi_sum / w_sum
     mix = wphi_sum / w_sum
-    if rid == FLAME_EQUILIBRIUM and s == marker_s:
-        # Burnt-marker source: the gas leaving an equilibrium flame is fully burnt (b = 1).
-        # The donor is a constant, so the smooth-upwind transport lands b = 1 on the genuinely
-        # downstream edge (the mdot_in > 0 side) regardless of the declared edge orientation --
-        # the orientation-robust "downstream of a flame" detector the topology flood-fill cannot
-        # be.  Its linearization is zero (b' reset to 0 downstream), so the source is
-        # acoustically silent; complex-step-safe (no flow-state dependence).
-        return mix * 0.0 + 1.0
     if rid == FLAME_HEAT_RELEASE and s == 0:
         # Heat-addition flame: raise the outflow's total enthalpy by Q_dot / |mdot|.
         # |mdot| is floored by smooth_abs so the jump stays bounded and smooth at

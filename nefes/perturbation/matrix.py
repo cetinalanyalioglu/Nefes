@@ -4,7 +4,7 @@ A great deal of the perturbation layer speaks in **complex matrices of frequency
 a 2-port transfer matrix ``T(f)``, a scattering matrix ``S(f)``, a multiport response.
 :class:`TransferMatrix` and :class:`ScatteringMatrix` wrap such a table (shape
 ``(n_f, N, N)``) with the operations that recur: evaluate / re-interpolate on a new grid,
-**analytically continue** it off the real axis (per-entry :class:`~nefes.elements.continuation.RationalFit`,
+**analytically continue** it off the real axis (per-entry :class:`~nefes.perturbation.continuation.RationalFit`,
 so it is usable in the stability eigenproblem), convert between variable **flavors**
 (``characteristics.basis_matrix``) and between the transfer and scattering forms, and plot.
 
@@ -187,13 +187,13 @@ class FreqMatrix:
     def continue_(self, **fit_kwargs):
         """A copy that evaluates at **complex** frequency via a per-entry rational fit.
 
-        Each entry is fitted with :class:`~nefes.elements.continuation.RationalFit` (AAA),
+        Each entry is fitted with :class:`~nefes.perturbation.continuation.RationalFit` (AAA),
         so the result is analytic off the real axis and usable in the stability
         eigenproblem.  ``fit_kwargs`` are forwarded to ``RationalFit`` (e.g. ``rtol`` near
         the noise floor of measured data, or ``delay="auto"`` -- the default here -- to peel
         a transport lag before fitting).
         """
-        from ..elements.continuation import RationalFit
+        from .continuation import RationalFit
 
         fit_kwargs.setdefault("delay", "auto")
         if self.freqs.size < 2:

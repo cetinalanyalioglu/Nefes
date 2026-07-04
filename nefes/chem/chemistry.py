@@ -4,8 +4,8 @@ The mean-flow solve transports the **feed-stream mixture fractions** ``xi`` (one
 distinct injected composition), not chemical species.  This module recovers the actual
 species per edge from a converged state, for diagnostics / output:
 
-* a **burnt** (``EQ_KERNEL``) edge sits at HP equilibrium -- its product-species moles
-  are captured for free by passing a sized warm-start cache to :func:`~nefes.derive.recover_all`
+* a **burnt** (``EQ_KERNEL``) edge sits at HP equilibrium, its product-species moles
+  are captured by passing a sized warm-start cache to :func:`~nefes.derive.recover_all`
   (the equilibrium kernel writes its converged composition there);
 * an **unburnt** (``EQ_FROZEN``) edge is the forward blend of the feed streams -- its
   species mass fractions are ``xi @ stream_Y`` over the network's distinct streams.
@@ -17,20 +17,15 @@ import numpy as np
 
 from ..assembly.recover import recover_all, NS_EST
 from ..thermo.api import PERFECT_GAS, EQ_KERNEL, EQ_MARKER
-from ..elements.ids import MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE
+from ..elements.ids import STREAM_INTRODUCING
 from .composition import build_streams
-
-# elements that introduce a feed stream (mirrors catalog._STREAM_INTRODUCING)
-_STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
 
 
 def product_moles(prob, x):
     """Per-edge converged product-species moles ``[mol/kg]`` for ``EQ_KERNEL`` edges.
 
-    Reuses the equilibrium warm-start write-back: a per-edge cache passed to
-    :func:`~nefes.derive.recover_all` captures each burnt edge's converged composition in
-    one recovery pass (no extra solve).  Rows for perfect-gas / frozen edges stay zero --
-    those kernels do not populate the cache.
+    Captures each burnt edge's converged composition in one recovery pass (no extra solve).
+    Rows for perfect-gas / frozen edges stay zero, those kernels do not populate the cache.
 
     Parameters
     ----------
@@ -74,7 +69,7 @@ def stream_mass_fractions(elements, library):
     ndarray
         Shape ``(K, Ns)`` -- each distinct stream's species mass fractions.
     """
-    comps = [(el.composition_spec, el.basis) for el in elements if el.residual_id in _STREAM_INTRODUCING]
+    comps = [(el.composition_spec, el.basis) for el in elements if el.residual_id in STREAM_INTRODUCING]
     stream_Y, _assignment = build_streams(library, comps)
     return stream_Y
 
@@ -95,6 +90,11 @@ def _fractions(names, moles, W, basis, threshold):
 
 def edge_species(prob, x, e, library, *, basis="mole", moles=None, stream_Y=None, threshold=1e-12):
     """Solved chemical species ``{name: fraction}`` on edge ``e``.
+
+    Selects the reconstruction that matches the edge's thermo model: the converged
+    equilibrium products for a burnt edge, or the unburnt forward blend of the feed
+    streams (``xi @ stream_Y``) for a frozen / fresh one.  A perfect-gas edge (or a
+    ``None`` library) carries no chemical species and returns an empty dict.
 
     Parameters
     ----------
@@ -129,6 +129,12 @@ def edge_species(prob, x, e, library, *, basis="mole", moles=None, stream_Y=None
     burnt = model == EQ_KERNEL
     if model == EQ_MARKER:
         marker_row = int(getattr(prob, "marker_row", -1))
+        # The marker is a sticky reachability label (a noisy-OR transport), so it stays bimodal
+        # even where burnt gas is diluted by a fresh stream -- ~1 on any edge downstream of a
+        # flame, ~0 upstream.  ``0.5`` is the crossover of ``marker_gate`` (equal frozen/equilibrium
+        # weight), so reporting the equilibrium products above it and the frozen blend below it
+        # matches the converged state.  The equilibrium solve runs on every marker-gated edge
+        # regardless (product_moles), so a burnt edge is never denied its products.
         burnt = marker_row >= 0 and float(x[marker_row, e]) >= 0.5
     if burnt:
         nj = (product_moles(prob, x) if moles is None else moles)[e]
@@ -152,5 +158,19 @@ def stream_mass_fractions_for(prob, x, library):  # pragma: no cover - convenien
 
     Requires the network elements, which a bare ``CompiledProblem`` does not carry, so the
     higher-level :class:`~nefes.shell.network.Solution` always passes ``stream_Y`` explicitly.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network (does not carry the element specs this needs).
+    x : ndarray
+        Converged state.
+    library : thermolib.SpeciesLibrary
+        The species data.
+
+    Raises
+    ------
+    ValueError
+        Always -- the caller must supply ``stream_Y`` via ``Solution.species``.
     """
     raise ValueError("frozen-edge species need the network's stream compositions; query via Solution.species")

@@ -25,6 +25,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import eigenmodes
@@ -101,7 +102,7 @@ def _pg_rijke(n, tau, mdot=0.005, dT=400.0):
         cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
     ]
     edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x, Qdot
@@ -201,7 +202,7 @@ def _reacting_rijke(n, tau, mdot=0.02, Tin=300.0, p=1.0e5):
     edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
     # unburnt approach (edges 0,1) -> burnt products (edges 2,3): the flame ignites edge 2
     edge_models = [EQ_FROZEN, EQ_FROZEN, EQ_KERNEL, EQ_KERNEL]
-    prob = cat.build_problem(
+    prob = build_problem(
         equilibrium(gas.mech), els, edges, mdot_ref=mdot, p_ref=p, h_ref=h_react, edge_models=edge_models
     )
     res = solve(prob)

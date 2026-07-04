@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import (
     NTau,
     Constant,
@@ -20,7 +21,7 @@ from nefes.elements.dynamic_source import (
     constant,
     as_transfer,
     DynamicSource,
-    FlameResponseTerm,
+    DynamicResponseTerm,
     n_tau_flame,
     heat_release_response,
     mass_flow_response,
@@ -95,16 +96,16 @@ def test_descriptor_validation():
     with pytest.raises(ValueError, match="at least one"):
         DynamicSource(terms=[])
     with pytest.raises(ValueError, match="target"):
-        DynamicSource(terms=[FlameResponseTerm((1.0, 1e-3), 0)], target="bogus")
+        DynamicSource(terms=[DynamicResponseTerm((1.0, 1e-3), 0)], target="bogus")
     with pytest.raises(ValueError, match="quantity"):
-        FlameResponseTerm((1.0, 1e-3), 0, quantity="w")
+        DynamicResponseTerm((1.0, 1e-3), 0, quantity="w")
 
 
 def test_descriptor_analytic_and_max_delay():
-    ds = DynamicSource(terms=[FlameResponseTerm(n_tau(1.0, 2e-3), 0), FlameResponseTerm(n_tau(0.5, 5e-3), 1)])
+    ds = DynamicSource(terms=[DynamicResponseTerm(n_tau(1.0, 2e-3), 0), DynamicResponseTerm(n_tau(0.5, 5e-3), 1)])
     assert ds.analytic
     assert ds.max_delay == pytest.approx(5e-3)
-    ds2 = DynamicSource(terms=[FlameResponseTerm(tabulated([1.0, 2.0], [1.0, 1.0]), 0)])
+    ds2 = DynamicSource(terms=[DynamicResponseTerm(tabulated([1.0, 2.0], [1.0, 1.0]), 0)])
     assert not ds2.analytic
 
 
@@ -130,7 +131,7 @@ def _flame_network(dynamic_source=None, mdot=0.02, Qdot=8.0e3):
         cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A), (3, 4, A)]
-    prob = cat.build_problem(perfect_gas(R, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -235,7 +236,7 @@ def _mass_source_network(dynamic_source=None, mdot_in=0.05, mdot_src=0.01, u_inj
         cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A), (3, 4, A)]
-    prob = cat.build_problem(perfect_gas(R, GAMMA), els, edges, mdot_ref=mdot_in, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R, GAMMA), els, edges, mdot_ref=mdot_in, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x

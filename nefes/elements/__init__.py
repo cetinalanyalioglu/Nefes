@@ -2,7 +2,7 @@
 
 from .dynamic_source import (
     DynamicSource,
-    FlameResponseTerm,
+    DynamicResponseTerm,
     TransferFunction,
     NTau,
     NTauLowpass,
@@ -17,25 +17,28 @@ from .dynamic_source import (
     mass_flow_response,
     n_tau_flame,
 )
-from .continuation import RationalFit, rational_fit, continuation_warning
 from .composite import (
     CompositeElementSpec,
     CompositeMap,
     GridRefinement,
+    AutoRefinement,
     expand_composites,
     is_composite,
     grid_refine,
+    auto_refine,
 )
 
 __all__ = [
     "CompositeElementSpec",
     "CompositeMap",
     "GridRefinement",
+    "AutoRefinement",
     "expand_composites",
     "is_composite",
     "grid_refine",
+    "auto_refine",
     "DynamicSource",
-    "FlameResponseTerm",
+    "DynamicResponseTerm",
     "TransferFunction",
     "NTau",
     "NTauLowpass",
@@ -49,7 +52,4 @@ __all__ = [
     "heat_release_response",
     "mass_flow_response",
     "n_tau_flame",
-    "RationalFit",
-    "rational_fit",
-    "continuation_warning",
 ]

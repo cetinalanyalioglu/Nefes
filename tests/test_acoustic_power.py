@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
 from nefes.perturbation import (
     eigenmodes,
@@ -114,7 +115,7 @@ def _rig(inlet_R):
         cat.mass_flow_outlet(2.0, name="bleed"),
     ]
     edges = [(0, 1, 0.05), (1, 2, 0.05), (2, 3, 0.03), (3, 4, 0.03), (2, 5, 0.02), (5, 6, 0.02)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=6.0, p_ref=1.5e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=6.0, p_ref=1.5e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -361,7 +362,7 @@ def _side_branch_hr(volume, neck_area, l_neck, drive, main_area=3.0e-3, l_main=0
         (2, 5, neck_area),
         (5, 6, neck_area),
     ]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 1.0, P0, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 1.0, P0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -400,7 +401,7 @@ def test_lumped_inertance_energy_matches_the_kinetic_form():
         cat.loss(0.0, end_correction=L),  # L_eff = L, no compliance (l_up = l_down = 0)
         cat.pressure_outlet(P0, Tt_backflow=300.0, perturbation_bc=bc),
     ]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A), (1, 2, A)], 1.0, P0, CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, A), (1, 2, A)], 1.0, P0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     freqs = np.linspace(60.0, 900.0, 400)

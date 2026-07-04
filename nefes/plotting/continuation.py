@@ -1,6 +1,6 @@
 """Notebook plotting for analytic continuations of tabulated frequency data.
 
-Two views over a :class:`nefes.elements.continuation.RationalFit` (or any tabulated/fit
+Two views over a :class:`nefes.perturbation.continuation.RationalFit` (or any tabulated/fit
 pair):
 
 * :func:`plot_fit` -- the continued curve over the original samples, magnitude over
@@ -44,7 +44,7 @@ def plot_fit(
     Parameters
     ----------
     fit : RationalFit or callable
-        The continuation to draw.  A :class:`~nefes.elements.continuation.RationalFit`
+        The continuation to draw.  A :class:`~nefes.perturbation.continuation.RationalFit`
         carries its own ``freqs``/``values`` (drawn as markers); any other callable is
         drawn as a line only (pass ``freqs`` to set the grid).
     freqs : array_like, optional

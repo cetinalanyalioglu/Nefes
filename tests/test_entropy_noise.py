@@ -23,6 +23,7 @@ import warnings
 import numpy as np
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import forced_response
@@ -59,7 +60,7 @@ def _rig(n, tau, dT=600.0):
             cat.choked_nozzle_outlet(A_STAR),
         ]
         edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
-        return cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=MDOT, p_ref=1e5, h_ref=CP * 300.0)
+        return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=MDOT, p_ref=1e5, h_ref=CP * 300.0)
 
     x0 = None
     for ddT in (1.0, 150.0, 300.0, 450.0, dT):

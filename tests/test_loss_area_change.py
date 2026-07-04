@@ -13,6 +13,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_MDOT, ES_RHO, ES_PT, ES_AREA
@@ -29,7 +30,7 @@ def _solve_loss(K, A0, A1, ref_port):
         cat.loss(K, ref_port=ref_port),
         cat.pressure_outlet(P_OUT, Tt_backflow=TT),
     ]
-    prob = cat.build_problem(cfg, elements, [(0, 1, A0), (1, 2, A1)], 10.0, P_OUT, CP * TT)
+    prob = build_problem(cfg, elements, [(0, 1, A0), (1, 2, A1)], 10.0, P_OUT, CP * TT)
     res = solve(prob)
     assert res.converged and res.residual_norm < 1e-9
     return states_table(prob, res.x)
@@ -78,7 +79,7 @@ def test_reverse_flow_reverses_drop():
         cat.loss(2.0, ref_port=0),
         cat.pressure_outlet(PT, Tt_backflow=TT),
     ]
-    prob = cat.build_problem(cfg, elements, [(0, 1, 0.10), (1, 2, 0.06)], 10.0, P_OUT, CP * TT)
+    prob = build_problem(cfg, elements, [(0, 1, 0.10), (1, 2, 0.06)], 10.0, P_OUT, CP * TT)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)

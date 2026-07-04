@@ -12,6 +12,7 @@ import pytest
 
 from nefes.assembly.assemble import jacobian, jacobian_dense
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.control import initial_guess
 from nefes.thermo.configure import perfect_gas_passive_scalars
@@ -33,7 +34,7 @@ def _mixing_network(tracerA, tracerB, mdotA=2.0, mdotB=1.0):
         cat.pressure_outlet(101325.0, Tt_backflow=Tt, name="out"),
     ]
     edges = [(0, 2, A), (1, 2, A), (2, 3, A)]
-    return cat.build_problem(cfg, elements, edges, mdot_ref=3.0, p_ref=101325.0, h_ref=CP * Tt)
+    return build_problem(cfg, elements, edges, mdot_ref=3.0, p_ref=101325.0, h_ref=CP * Tt)
 
 
 def test_problem_has_extra_scalar():
@@ -70,7 +71,7 @@ def test_passive_tracer_does_not_perturb_mean_flow():
         cat.pressure_outlet(101325.0, Tt_backflow=Tt, name="out"),
     ]
     edges = [(0, 2, A), (1, 2, A), (2, 3, A)]
-    prob_pg = cat.build_problem(perfect_gas(R_AIR, GAMMA), elements, edges, 3.0, 101325.0, CP * Tt)
+    prob_pg = build_problem(perfect_gas(R_AIR, GAMMA), elements, edges, 3.0, 101325.0, CP * Tt)
     res_pg = solve(prob_pg)
     assert res_tr.converged and res_pg.converged
     np.testing.assert_allclose(res_tr.x[:3], res_pg.x[:3], rtol=1e-10, atol=1e-12)

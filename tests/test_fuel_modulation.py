@@ -28,6 +28,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import mass_flow_response, n_tau, n_tau_lowpass
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import (
@@ -84,7 +85,7 @@ def _rig(La=0.4, Lb=0.4, Lc=0.5, mdot_air=0.4, mdot_fuel=0.006, pt=1.2e5, ds=Non
     ]
     edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA), (4, 5, AREA), (5, 6, AREA)]
     edge_models = [EQ_FROZEN, EQ_FROZEN, EQ_FROZEN, EQ_FROZEN, EQ_KERNEL, EQ_KERNEL]
-    prob = cat.build_problem(
+    prob = build_problem(
         equilibrium(gas.mech), els, edges, mdot_ref=mdot_air, p_ref=1e5, h_ref=h_air, edge_models=edge_models
     )
     return prob
@@ -237,7 +238,7 @@ def _nozzle_rig(nozzle_bc, *, mdot_h2=0.02, A_star=0.012):
         cat.choked_nozzle_outlet(A_star, perturbation_bc=nozzle_bc),
     ]
     edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
-    prob = cat.build_problem(
+    prob = build_problem(
         equilibrium(gas.mech), els, edges, mdot_ref=0.4, p_ref=1e5, h_ref=h_air, edge_models=[EQ_FROZEN] * 4
     )
     return prob

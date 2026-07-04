@@ -12,17 +12,7 @@ from typing import List
 
 from ...solver.report import states_table
 from ...assembly.recover import ES_MDOT
-from ...elements.ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    MASS_FLOW_OUTLET,
-    CHOKED_NOZZLE_OUTLET,
-    WALL,
-)
-
-# Residual ids that terminate one edge (one equation row, one incident edge).
-_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)
+from ...elements.ids import BOUNDARY_RIDS
 
 
 @dataclass
@@ -30,7 +20,7 @@ class Terminal:
     """A 1-port boundary edge where an incoming wave can be injected/read."""
 
     node: int  # the boundary element
-    rid: int  # its residual id (one of _BOUNDARY_RIDS)
+    rid: int  # its residual id (one of BOUNDARY_RIDS)
     edge: int  # the single incident edge
     at_tail: bool  # True if the boundary is the edge's tail (wave enters as f)
     row: int  # the boundary element's single equation row
@@ -57,7 +47,7 @@ def find_terminals(prob, x_bar=None) -> List[Terminal]:
     terms = []
     for n in range(prob.n_nodes):
         rid = int(prob.node_rid[n])
-        if rid not in _BOUNDARY_RIDS:
+        if rid not in BOUNDARY_RIDS:
             continue
         base = int(prob.row_ptr[n])
         deg = int(prob.row_ptr[n + 1]) - base

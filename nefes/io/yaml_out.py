@@ -1,4 +1,4 @@
-"""Write an Nefes network (and its results) as a UI-readable YAML case.
+"""Write a Nefes network (and its results) as a UI-readable YAML case.
 
 This is the symmetric counterpart of :mod:`nefes.io.yaml_in`.  It emits the native
 ``SaveFilePayload`` the FNetLibUI tool reads: ``version``/``timestamp``/``meta``,
@@ -62,23 +62,19 @@ from ..elements.ids import (
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
+    BOUNDARY_RIDS,
+    STREAM_INTRODUCING,
 )
 from ..elements.composite import is_composite
-from ..thermo.api import EQ_FROZEN, EQ_KERNEL
-from .yaml_in import MODEL_ID
+from ..thermo.api import EQ_KERNEL
+from .yaml_in import MODEL_ID, EDGE_CLOSURE
 
 # The UI save-file schema version this writer targets (matches yaml_in / the UI).
 SAVE_FILE_VERSION = "2.0.0"
 DEFAULT_TITLE = "Nefes case"
 
-# Single-port boundary elements that carry an acoustic boundary-condition group.
-_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)
-
-# Elements that introduce a composition (a feed / injected / backflow stream).
-_COMPOSITION_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
-
-# Per-edge thermo-model id -> UI edge closure token.
-_EDGE_CLOSURE_TOKEN = {EQ_FROZEN: "frozen", EQ_KERNEL: "equilibrium"}
+# Per-edge thermo-model id -> UI edge closure token (the inverse of the reader's map).
+_EDGE_CLOSURE_TOKEN = {v: k for k, v in EDGE_CLOSURE.items()}
 
 # Mean-flow edge field -> (UI display name, unit).  Order defines the "all" set.
 _FIELD_META = {
@@ -113,7 +109,7 @@ class MetaEntry:
     """One self-describing dataset-metadata field, rendered read-only by the UI.
 
     Mirrors the display fields of a model parameter so the UI can show it
-    generically -- as ``label : value unit`` with an optional description --
+    generically as ``label : value unit`` with an optional description
     without hardcoding any keys (the UI never needs to know the model).
 
     Attributes
@@ -652,9 +648,9 @@ def _build_model(network, prov):
         attrs = copy.deepcopy((prov_nodes.get(ids[i]) or {}).get("attributes") or {}) if prov else {}
         attrs.update(modeled)
         attrs["label"] = spec.name or attrs.get("label") or ui_type
-        if spec.residual_id in _BOUNDARY_RIDS:
+        if spec.residual_id in BOUNDARY_RIDS:
             attrs.update(_bc_to_ui(getattr(spec, "perturbation_bc", None)))
-        if reacting and spec.residual_id in _COMPOSITION_RIDS:
+        if reacting and spec.residual_id in STREAM_INTRODUCING:
             attrs.update(_composition_to_ui(spec))
         if reacting and float(getattr(spec, "marker", 0.0)) != 0.0:
             # Burnt-gas feed flag: the UI marker is a boolean, so emit a bool (True = burnt).

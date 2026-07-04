@@ -14,7 +14,7 @@ from ..elements.catalog import ElementSpec
 from .build import build_problem, build_problem_from_connectivity
 from ..elements.composite import is_composite, CompositeView
 from ..elements.ids import ELEMENT_TYPE_NAMES, CHOKED_NOZZLE_OUTLET
-from ..graph.problem import CompiledProblem
+from .problem import CompiledProblem
 from ..solver import solve as _solve
 from ..solver.control import initial_guess
 from ..solver.report import states_table, print_states, residual_breakdown, print_residuals

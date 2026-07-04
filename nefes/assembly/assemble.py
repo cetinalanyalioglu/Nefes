@@ -65,7 +65,7 @@ def assemble_residual(
     for n in range(N):
         eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
         node_residual(
-            n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps_n, eps_fb, kappa, est, R, node_row_ptr
+            n, node_rid[n], row_ptr, col_edge, orient, npar_f, npar_fptr, eps_n, eps_fb, kappa, est, R, node_row_ptr
         )
 
     # advected scalars: band-1 rows 2.. (s=0 is h_t, s>=1 are composition Z_el, marker_s is the marker)
@@ -77,7 +77,7 @@ def assemble_residual(
         # donor value seen at each node (the flux-weighted upstream mix of scalar s)
         for n in range(N):
             Hd[n] = node_donor(
-                n, node_rid[n], s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e
+                n, node_rid[n], s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, mdot_e, phi_e
             )
         # transport residual: edge scalar minus its upwind-donor value (0 at solution)
         for e in range(E):
@@ -176,7 +176,6 @@ def jacobian_fill(
                 orient,
                 npar_f,
                 npar_fptr,
-                tf,
                 eps_nt,
                 eps_fb,
                 kappa,
@@ -195,7 +194,6 @@ def jacobian_fill(
                     orient,
                     npar_f,
                     npar_fptr,
-                    tf,
                     eps_nh,
                     eps_fb,
                     kappa,
@@ -225,7 +223,6 @@ def jacobian_fill(
                             orient,
                             npar_f,
                             npar_fptr,
-                            tf,
                             eps,
                             mdot_e,
                             phi_e,
@@ -240,7 +237,6 @@ def jacobian_fill(
                             orient,
                             npar_f,
                             npar_fptr,
-                            tf,
                             eps,
                             mdot_e,
                             phi_e,

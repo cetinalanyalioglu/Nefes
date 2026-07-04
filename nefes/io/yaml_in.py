@@ -14,11 +14,12 @@ from ..elements import catalog as cat
 from ..elements.ids import FLAME_EQUILIBRIUM, MASS_FLOW_INLET, MASS_SOURCE, PT_INLET, P_OUTLET
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL
 from ..thermo.configure import equilibrium, perfect_gas
+from ..thermo.equilibrium import AUTO_REDUCE_THRESHOLD
 from .provenance import UIProvenance
 
 _PORT_RE = re.compile(r"port-(\d+)$")
 
-# The UI model id this loader targets (public/models/fns-flow-network.yaml).
+# The UI model id this loader targets TODO Update this
 MODEL_ID = "fns-flow-network"
 
 # Model-level (globalAttributes) defaults, kept in sync with the UI model.
@@ -26,8 +27,6 @@ _GLOBAL_DEFAULTS = {
     "thermoModel": "perfect_gas",
     "gasConstant": 287.0,
     "heatCapacityRatio": 1.4,
-    # ``mechanismFile`` is no longer surfaced in the UI (the packaged thermo.inp is built in);
-    # it stays here as an opt-in Python-side override for a native mechanism / explicit database.
     "mechanismFile": "",
     "species": "auto",
     "speciesReducer": "equilibrium_sampling",
@@ -122,8 +121,9 @@ _BOUNDARY_TYPES = {
 
 _DEFERRED_TYPES = {"SupersonicInlet", "SupersonicOutlet"}
 
-# Per-edge thermochemistry closure tokens (UI edge ``thermoModel``) -> model id.
-_EDGE_CLOSURE = {"frozen": EQ_FROZEN, "equilibrium": EQ_KERNEL}
+# Per-edge thermochemistry closure tokens (UI edge ``thermoModel``) -> model id.  The writer
+# (:mod:`nefes.io.yaml_out`) inverts this to emit the tokens back.
+EDGE_CLOSURE = {"frozen": EQ_FROZEN, "equilibrium": EQ_KERNEL}
 
 
 def _parse_composition(spec):
@@ -174,11 +174,6 @@ def _resolve_path(path: str, case_dir: str) -> str:
         if os.path.isfile(cand):
             return cand
     raise FileNotFoundError(f"mechanism file {path!r} not found (looked in {candidates})")
-
-
-# Above ~40 candidate species the equilibrium Newton solve becomes expensive enough that
-# reducing the slate pays off (hydrocarbon/air admits ~115); below it, run them raw.
-_AUTO_REDUCE_THRESHOLD = 40
 
 
 def _is_auto(species) -> bool:
@@ -283,7 +278,7 @@ def _auto_library(db, specs, g):
     candidates = db.candidate_species(pool, gas_only=True, exclude_ions=True)
     declared_gas = [n for n in declared if db[n].phase == 0]
 
-    if len(candidates) <= _AUTO_REDUCE_THRESHOLD:
+    if len(candidates) <= AUTO_REDUCE_THRESHOLD:
         report = {"reducer": "none", "n_candidates": len(candidates), "n_kept": len(candidates)}
         final = _dedup(candidates + declared)
     else:
@@ -354,17 +349,9 @@ def _reacting_h_ref(gas, specs) -> float:
 def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
     """Per-edge thermo-model ids for the compiled problem (``None`` -> the gas/marker default).
 
-    Perfect gas: every edge follows the gas default (``None``).  Reacting:
-
-    * **all ``auto``** (the common case) -> every edge ``None``, deferring to the marker-gated
-      closure: :func:`~nefes.shell.build.build_problem` adds the transported burnt marker and
-      runs ``EQ_MARKER`` on every edge.  The marker rides the *signed* mass flow, so the
-      frozen/equilibrium split is orientation-proof (no flood-fill labeling, no draw-direction
-      hazard) -- the topology flood-fill survives only as the marker's initial guess.
-    * **any explicit ``frozen`` / ``equilibrium``** -> the hard per-edge closure (no marker): the
-      pinned edges take their stated closure and the remaining ``auto`` edges are labeled by the
-      flood-fill (frozen upstream of a flame, equilibrium downstream).  Here the declared-arrow
-      labeling *is* load-bearing, so a flame not drawn flow-aligned is warned about.
+    Perfect gas or all-``auto`` reacting edges defer to the gas/marker default (``None``); any
+    explicit ``frozen`` / ``equilibrium`` edge switches to the hard per-edge closure, with the
+    remaining ``auto`` edges labeled by a downstream-of-flame flood-fill.
     """
     n_edges = len(parsed)
     if not reacting:
@@ -378,10 +365,8 @@ def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
         return [None] * n_edges
 
     flame_nodes = {i for i, sp in enumerate(specs) if sp.residual_id == FLAME_EQUILIBRIUM}
-    # Orientation guard (hard-closure path only): the flood-fill labels "burnt" downstream of a
-    # flame along the *declared* tail->head arrows, so a flame not drawn flow-aligned (no outgoing
-    # edge -> nothing seeded burnt; no incoming edge -> no reactant approach) is silently
-    # mislabeled.  The marker-gated (all-auto) path above is immune; switch to it to avoid this.
+    # Orientation guard: the hard-closure flood-fill labels burnt along the declared arrows, so a
+    # flame not drawn flow-aligned is mislabeled.  Warn per such flame (checked below).
     out_deg = defaultdict(int)
     in_deg = defaultdict(int)
     for ei, s, t, _area, _name in parsed:
@@ -417,8 +402,8 @@ def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
     models = [None] * n_edges
     for ei, _s, _t, _area, _name in parsed:
         token = edge_tokens[ei]
-        if token in _EDGE_CLOSURE:
-            models[ei] = _EDGE_CLOSURE[token]
+        if token in EDGE_CLOSURE:
+            models[ei] = EDGE_CLOSURE[token]
         elif token == "auto":
             models[ei] = EQ_KERNEL if (not flame_nodes or ei in burnt) else EQ_FROZEN
         else:

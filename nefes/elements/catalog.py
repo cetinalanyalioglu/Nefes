@@ -56,7 +56,7 @@ class ElementSpec:
     """One network element: its residual type and the ordered parameters its kernel reads.
 
     The immutable parse-time building block that ``build_problem`` assembles (with the
-    directed edges) into a :class:`~nefes.graph.problem.CompiledProblem`.  The mean-flow
+    directed edges) into a :class:`~nefes.shell.problem.CompiledProblem`.  The mean-flow
     solve needs only ``residual_id`` and ``fparams``; the remaining fields are optional
     acoustic / reacting / perturbation extras, one line each below.
     """

@@ -158,3 +158,7 @@ ELEMENT_TYPE_NAMES = {
 # and the mass source.  Shared by the builder (stream discovery) and the post-solve
 # per-edge chemistry recovery.
 STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
+
+# Single-port boundary terminations (one equation row, one incident edge): the inlets,
+# outlets and wall.  Shared by the perturbation terminals and the YAML writer.
+BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)

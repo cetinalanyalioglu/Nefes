@@ -1,19 +1,18 @@
 """Network connectivity: CSR (node->edges) and CSC (edge->endpoints) views.
 
-State lives on edges; conservation equations are assembled at nodes.  The two
-assembly directions are each served in O(1)/O(d_n) by one of two views of the
-*same* sparsity pattern (implementation-plan.md section 2):
+State lives on edges; conservation equations are assembled at nodes.  Both
+assembly directions read one of two views of the same sparsity pattern:
 
-  * **CSR node-row view** -- ``row_ptr, col_edge, orient, port`` -- answers
-    "node n -> its incident edges" by slicing one contiguous run.
-  * **CSC edge-column view** -- ``tail_node, tail_port, head_node, head_port``
-    (length E) -- answers "edge e -> its two endpoint nodes/ports" in O(1).
+  * **CSR node-row view** (``row_ptr, col_edge, orient, port``): node n -> its
+    incident edges, one contiguous run.
+  * **CSC edge-column view** (``tail_node, tail_port, head_node, head_port``,
+    length E): edge e -> its two endpoint nodes/ports in O(1).
 
-The shared pattern, block-expanded, is also the Jacobian's block-sparsity.  The
-edge-owned total-enthalpy transport row couples *wider* than its two endpoint
-node-rows: its donor enthalpies are mass-weighted upwind mixes over **all**
-edges incident to each endpoint node, so edge e's transport row depends on every
-edge sharing a node with e.  ``build_jacobian_pattern`` encodes exactly that.
+Block-expanded, that pattern is also the Jacobian's block-sparsity.  An edge's
+scalar-transport row couples wider than its two endpoint node-rows: each donor
+scalar is a mass-weighted upwind mix over all edges incident to an endpoint
+node, so the row depends on every edge sharing a node with e.
+``build_jacobian_pattern`` encodes exactly that.
 """
 
 from dataclasses import dataclass
@@ -51,8 +50,8 @@ def build_connectivity(n_nodes: int, endpoints) -> Connectivity:
     """Build connectivity from an explicit edge-endpoint table.
 
     ``endpoints`` is an iterable of ``(tail_node, tail_port, head_node,
-    head_port)`` rows, one per edge in edge-index order (the CSC view).  The CSR
-    node-row view is derived from it.
+    head_port)`` rows, one per edge in edge-index order (the CSC view).
+    The CSR node-row view is derived from it.
     """
     rows = [tuple(int(v) for v in row) for row in endpoints]
     E = len(rows)

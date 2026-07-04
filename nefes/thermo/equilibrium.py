@@ -53,6 +53,11 @@ _OFF_BLOCKS = 3  # p_ref, T_init, T_init_frozen precede the flat data blocks
 # accuracy independent of it -- a frozen edge is pure frozen, a burnt edge pure equilibrium.
 MARKER_GATE_WIDTH = 0.1
 
+# Candidate-species count above which the automatic (CEA-style) product slate is reduced to
+# its non-trace members before packing: past this the equilibrium Newton solve is expensive
+# enough that reducing pays off (hydrocarbon/air admits ~115); below it, run the slate raw.
+AUTO_REDUCE_THRESHOLD = 40
+
 
 def pack_equilibrium(lib, stream_Y, T_init=3000.0, T_init_frozen=300.0):
     """Pack a ``thermolib.SpeciesLibrary`` + its feed streams into ``(tf, ti)``.

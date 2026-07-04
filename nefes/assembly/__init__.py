@@ -1,6 +1,6 @@
 """Residual and Jacobian evaluation kernel (below the solver control layer).
 
-The complex-step-safe core that turns a :class:`~nefes.graph.problem.CompiledProblem`
+The complex-step-safe core that turns a :class:`~nefes.shell.problem.CompiledProblem`
 and a solution vector into residuals and their complex-step Jacobian:
 
 * :mod:`~nefes.assembly.smooth`   -- C-infinity, complex-step-safe primitives (a leaf

@@ -1,9 +1,11 @@
 """The immutable, solve-time problem bundle handed to the assembly kernels.
 
-``CompiledProblem`` is a flat struct-of-arrays: connectivity, element dispatch
-ids, packed node parameters, edge areas, the field-layout scalars, the Jacobian
-sparsity pattern, and the nondimensionalization scales.  Nothing here is solver
-state; it is built once at parse time and threaded read-only.
+``CompiledProblem`` is where the high-level network definition is cast into the
+flat, low-level form the kernels actually solve on -- a compile step hidden from
+the user.  It is a struct-of-arrays of connectivity, element dispatch ids,
+packed node parameters, edge areas, field-layout scalars, the Jacobian sparsity
+pattern, and the nondimensionalization scales.  It holds no solver state: built
+once at parse time, then threaded read-only.
 """
 
 from dataclasses import dataclass
@@ -14,15 +16,15 @@ import numpy as np
 @dataclass(frozen=True)
 class CompiledProblem:
     # thermo
-    model_id: int
-    tf: np.ndarray
-    ti: np.ndarray
-    n_elem: int
+    model_id: int  # global thermo/closure model id (per-edge override via edge_model)
+    tf: np.ndarray  # thermo float parameters (closure constants)
+    ti: np.ndarray  # thermo integer parameters
+    n_elem: int  # number of composition scalars carried per edge (0 for perfect gas)
     # sizes
-    n_solve: int
-    n_nodes: int
-    n_edges: int
-    n_eq: int
+    n_solve: int  # solved variables per edge (mdot, p, h_t, then n_elem composition scalars)
+    n_nodes: int  # element count
+    n_edges: int  # port-connection (edge) count
+    n_eq: int  # total residual rows: node equations + edge transport rows
     # geometry / connectivity
     area: np.ndarray  # float64[E]
     row_ptr: np.ndarray
@@ -32,7 +34,7 @@ class CompiledProblem:
     head_node: np.ndarray
     # element dispatch + params
     node_rid: np.ndarray  # int64[N]
-    node_acoustic_id: np.ndarray  # int64[N] -- acoustic-face dispatch (s8.3)
+    node_acoustic_id: np.ndarray  # int64[N] -- acoustic-face dispatch
     npar_f: np.ndarray  # float64[...]
     npar_fptr: np.ndarray  # int64[N+1]
     # equation row layout

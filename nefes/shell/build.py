@@ -3,7 +3,7 @@
 The parse-time counterpart to the element catalog.  :func:`build_problem` (and the
 port-explicit :func:`build_problem_from_connectivity`) turn a list of
 :class:`~nefes.elements.catalog.ElementSpec` plus ``(tail, head, area)`` edges into a
-:class:`~nefes.graph.problem.CompiledProblem`: it validates the network, discovers the
+:class:`~nefes.shell.problem.CompiledProblem`: it validates the network, discovers the
 reacting feed streams, packs the per-node kernel parameters, and lays out the residual /
 Jacobian scales.  The user-facing wrapper over it is :class:`~nefes.shell.network.Network`.
 """
@@ -20,7 +20,7 @@ from ..graph.connectivity import (
     build_jacobian_pattern,
     Connectivity,
 )
-from ..graph.problem import CompiledProblem
+from .problem import CompiledProblem
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from ..thermo.configure import ThermoConfig
 from ..elements.catalog import ElementSpec, ensure_unique_names

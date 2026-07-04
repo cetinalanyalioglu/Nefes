@@ -1,10 +1,8 @@
 """UI-provenance carrier: the layout/identity metadata a loaded case keeps.
 
 ``load_case`` reads only the physics out of a UI export (gas, elements, edges),
-but the file also carries UI-only information Nefes does not model: canvas node
-positions, id-generation counters, the human title, and the original node/edge
-ids and port handles.  When the user saves the case back for the UI, that
-information should round-trip verbatim so the network reopens exactly as drawn.
+but the file also carries UI-only information Nefes does not model. That information
+should round-trip verbatim so the network reopens exactly as drawn.
 
 A :class:`UIProvenance` snapshots the parsed document plus the id ordering Nefes
 assigned, and is stashed on the ``Network`` at load time (``net.provenance``).

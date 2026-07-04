@@ -504,8 +504,7 @@ def _marker_donor(mdot, phi, rid=JUNCTION, npar_f=None):
     if npar_f is None:
         npar_f = np.zeros(0, dtype=mdot.dtype)
     npar_fptr = np.array([0, npar_f.shape[0]], dtype=np.int64)
-    tf = np.zeros((1, 1), dtype=mdot.dtype)  # unused by the marker donor
-    return node_donor(0, rid, 0, 0, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, EPS, mdot, phi)
+    return node_donor(0, rid, 0, 0, row_ptr, col_edge, orient, npar_f, npar_fptr, EPS, mdot, phi)
 
 
 def test_marker_noisy_or_donor_complex_step_matches_fd():

@@ -45,7 +45,7 @@ from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.thermo.configure import equilibrium
-from nefes.assembly.derive import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
+from nefes.assembly.recover import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
 
 AREA = 0.02
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")

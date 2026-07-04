@@ -22,7 +22,7 @@ element geometry (see ``response._seats_entropy`` and ``stamps.build_duct_stamps
 """
 
 from ...solver.report import states_table
-from ...assembly.derive import ES_M
+from ...assembly.recover import ES_M
 from ...elements.ids import ACOUSTIC_DUCT
 
 

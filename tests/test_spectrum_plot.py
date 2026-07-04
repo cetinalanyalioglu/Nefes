@@ -7,7 +7,7 @@ import numpy as np
 from nefes.shell import Network
 from nefes.elements import catalog as cat
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.derive import ES_C
+from nefes.assembly.recover import ES_C
 from nefes.perturbation import PerturbationBC, eigenmodes
 from nefes.perturbation.stability.contour import ellipse_contour
 from nefes.plotting import plot_spectrum

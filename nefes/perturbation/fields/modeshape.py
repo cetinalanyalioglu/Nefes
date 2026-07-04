@@ -30,7 +30,7 @@ import numpy as np
 
 from ..operator.characteristics import basis_block_from_state, BASIS_LABELS
 from ..operator.verify import duct_nodes
-from ...assembly.derive import ES_C, ES_U
+from ...assembly.recover import ES_C, ES_U
 from ...elements.ids import MASS_FLOW_INLET, PT_INLET
 
 # Below this |speed| a duct is treated as quiescent: the entropy wave does not

@@ -17,7 +17,7 @@ from ..graph.problem import CompiledProblem
 from ..solver import solve as _solve
 from ..solver.control import initial_guess
 from ..solver.report import states_table, print_states, residual_breakdown, print_residuals
-from ..assembly.derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
+from ..assembly.recover import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
 
 # ES for "edge state"
 _EDGE_FIELDS = {

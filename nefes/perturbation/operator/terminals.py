@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import List
 
 from ...solver.report import states_table
-from ...assembly.derive import ES_MDOT
+from ...assembly.recover import ES_MDOT
 from ...elements.ids import (
     MASS_FLOW_INLET,
     PT_INLET,

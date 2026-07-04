@@ -15,7 +15,7 @@ import os
 import pytest
 
 from nefes.chem.composition import enthalpy_mass, resolve_composition
-from nefes.assembly.derive import ES_HT, ES_MDOT, ES_T, ES_U
+from nefes.assembly.recover import ES_HT, ES_MDOT, ES_T, ES_U
 from nefes.elements import catalog as cat
 from nefes.solver import solve
 from nefes.solver.report import states_table

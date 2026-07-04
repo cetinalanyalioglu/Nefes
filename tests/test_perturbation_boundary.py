@@ -26,7 +26,7 @@ from nefes.elements import catalog as cat
 from nefes.elements.ids import WALL
 from nefes.io import load_case
 from nefes.thermo.configure import perfect_gas, perfect_gas_passive_scalars
-from nefes.assembly.derive import ES_U, ES_C, ES_RHO, ES_P
+from nefes.assembly.recover import ES_U, ES_C, ES_RHO, ES_P
 from nefes.perturbation import PerturbationBC, forced_response, CompositionalNoiseWarning
 from nefes.perturbation.operator.characteristics import char_to_dq
 

@@ -30,7 +30,7 @@ from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import eigenmodes
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_T
+from nefes.assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_T
 from nefes.thermo.api import thermo_state
 from nefes.thermo.configure import perfect_gas, equilibrium
 

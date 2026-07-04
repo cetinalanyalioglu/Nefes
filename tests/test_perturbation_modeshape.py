@@ -22,7 +22,7 @@ import pytest
 from nefes.shell import Network
 from nefes.elements import catalog as cat
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.derive import ES_U, ES_C
+from nefes.assembly.recover import ES_U, ES_C
 from nefes.perturbation import (
     PerturbationBC,
     eigenmodes,

@@ -53,7 +53,7 @@ from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometr
 from ..operator.terminals import Terminal, find_terminals, _BOUNDARY_RIDS  # noqa: F401  (re-exported)
 from ..operator import matrices as mat
 from ...solver.report import states_table
-from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT  # noqa: F401
+from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT  # noqa: F401
 
 
 class TransferMatrixWarning(UserWarning):

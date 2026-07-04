@@ -43,7 +43,7 @@ from typing import List
 
 import numpy as np
 
-from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
+from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
 from ...elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
 from ..operator.stamps import storage_stamps_from_est
 

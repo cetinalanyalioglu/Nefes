@@ -26,8 +26,7 @@
   (≈20 % for a flanged `δ ≈ 0.85a`); and that a `junction(volume=V)` reproduces the
   `cavity(V)` compliance. Plotly, Nefes theme.
 - **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
-  **secondary-air / cooling** distribution), adapted from the preliminary-study
-  prototype. Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`
+  **secondary-air / cooling** distribution). Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`
   (LP) — mix at a static-pressure junction, pass a contraction, and split across
   three sub-manifolds metering air to ~15 fixed-back-pressure sinks through
   orifices (`IsentropicAreaChange`), dump nozzles (`+ SuddenAreaChange`) and

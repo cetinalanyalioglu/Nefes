@@ -58,10 +58,9 @@ env/
 ENV/
 
 ###############################################################################
-# Solver output artifacts (but keep the shipped showcase reference results)
+# Solver output artifacts
 ###############################################################################
 *-results.json
-!preliminary-study/examples/ui_showcase/*-results.json
 
 ###############################################################################
 # macOS

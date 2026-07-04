@@ -1,6 +1,6 @@
 # Gas-turbine secondary-air system -- saved from the FNetLibUI tool
-# (model: fns-flow-network).  The large showcase network adapted from the
-# preliminary-study prototype; it loads and solves verbatim on the current Nefes.
+# (model: fns-flow-network).  The large showcase network; it loads and solves
+# verbatim on the current Nefes.
 #
 #   HP bleed (total-P) --\
 #                         JunctionStaticP (mix-plenum) --> IsentropicAreaChange

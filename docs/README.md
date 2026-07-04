@@ -43,4 +43,4 @@ Why the code is shaped the way it is (concepts and contracts, not the API, which
 - `reference/modeling-guide.md` — mapping real components to network elements.
 - `reference/examples.md` — annotated index of the runnable notebooks under [`examples/`](../examples/).
 
-The authoritative theory spec of the prototype lives under [`preliminary-study/docs/`](../preliminary-study/docs/); these pages document and re-verify the shipped tool.
+These pages are the authoritative theory spec and re-verification of the shipped tool.

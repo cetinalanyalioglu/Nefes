@@ -94,7 +94,7 @@ under `reference/` and are cross-linked, not rewritten.
 ### Supporting / reference (mostly exists)
 
 - `reference/atomic-elements.md`, `reference/composite-elements.md` — keep, cross-link to Track I.
-- `reference/modeling-guide.md` — refresh from `preliminary-study/docs/modeling-guide.md`.
+- `reference/modeling-guide.md` — mapping real components to network elements.
 - `reference/examples.md` — annotated index of `examples/*.ipynb`, each tagged with the theory
   sections and validation cases it demonstrates (including `flame_identification.ipynb` → T14).
 

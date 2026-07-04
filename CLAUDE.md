@@ -4,19 +4,17 @@ Nefes is a compressible-flow **network** analysis tool: it models a fluid system
 directed graph and solves for the steady mean flow (and, by design, the acoustic
 behavior around it) without resolving the full 3-D field.
 
-This repo is the **real tool**, built fresh. `preliminary-study/` is a prior working
-prototype (package `fns`) that validated the design, plus the authoritative spec.
+This repo is the **real tool**, built fresh.
 
 ## Read the spec before designing anything
 
-`preliminary-study/docs/` is the source of truth — do not restate it here, read it:
+`docs/` is the source of truth — do not restate it here, read it:
 
-- `theory.md` — full theory: framework, equations, elements, the solver, choking/shocks, and the acoustic/perturbation network (§12).
-- `implementation-plan.md` — first-version plan: connectivity, Jacobian, storage, thermo, solver, acoustic layer, OO shell.
-- `modeling-guide.md` — mapping catalogue restrictions (orifices, valves, nozzles) to elements.
-- `reactive-flow-requirements.md` — reactive flow + the standalone thermochemistry library.
-
-Prototype implementation: `preliminary-study/fns/`; runnable demos + validation: `preliminary-study/{examples,tests}/`.
+- `docs/theory/` — full theory: framework, governing equations, elements, transport, choking, and the acoustic/perturbation network.
+- `docs/design/` — implementation contracts: assembly, solver, complex-step, kernel architecture, smoothness.
+- `docs/reference/modeling-guide.md` — mapping catalogue restrictions (orifices, valves, nozzles) to elements.
+- `docs/theory/thermochemistry.md` — reactive flow and the standalone thermochemistry library.
+- `docs/validation/` — validation map, verification checks, and literature benchmarks.
 
 However, do not assume everything in there is theoretically flawless, always do your sanity checks.
 As project matures, these documents should serve more as a guideline than of a rigid constraint.
@@ -47,7 +45,7 @@ As project matures, these documents should serve more as a guideline than of a r
 
 ## Hard constraints (don't violate without explicit reason)
 
-- All residual math must be **complex-step-safe**: smooth, complex-analytic, no `abs`/`min`/`max`/branches on the flow state. Jacobians come from complex-step differentiation. (See `preliminary-study/fns/smooth.py`.) Every new element kernel must get a probe in `tests/test_complex_step_safety.py` (`PROBES`); the roll-call test fails until it does, and the per-kernel sweep then checks complex-step == finite-difference across forward/reverse/near-zero/near-choke flow.
+- All residual math must be **complex-step-safe**: smooth, complex-analytic, no `abs`/`min`/`max`/branches on the flow state. Jacobians come from complex-step differentiation. (See `nefes/assembly/smooth.py`.) Every new element kernel must get a probe in `tests/test_complex_step_safety.py` (`PROBES`); the roll-call test fails until it does, and the per-kernel sweep then checks complex-step == finite-difference across forward/reverse/near-zero/near-choke flow.
 - v1 scope is **subsonic** (flowing or quiescent); supersonic/shock-seeding is deferred.
 
 ## Version control

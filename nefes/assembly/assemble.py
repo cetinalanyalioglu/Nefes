@@ -1,11 +1,17 @@
 """Residual and Jacobian assembly.
 
-The residual kernel walks the two assembly loops (node rows via CSR, edge
-transport via CSC).  The Jacobian is the sparse complex-step seed of
-implementation-plan.md section 3.3: seed one band-1 unknown of one edge, recover
-only that edge's state, and recompute only the residual rows that depend on it
-(the two endpoint node blocks plus the transport rows of neighbouring edges),
-scattering ``Im/h`` into the fixed CSC pattern.
+Two routines build the nonlinear system the Newton solve drives to zero.
+
+``assemble_residual`` fills the residual vector by walking two families of rows:
+the node balances (mass / momentum via the CSR node-edge map) and the edge
+transport rows (upwinded advection of ``h_t`` and composition along each edge).
+
+``jacobian_fill`` builds the sparse Jacobian by complex-step differentiation.
+Each band-1 unknown lives on a single edge, so perturbing it only re-recovers
+that edge's state and only disturbs the residual rows that read it: the two
+endpoint node blocks and the transport rows of the edges sharing those nodes.
+Each column recomputes just those rows and scatters ``Im/h`` into the fixed CSC
+pattern, keeping assembly cost proportional to the number of nonzeros.
 """
 
 import numpy as np
@@ -17,6 +23,7 @@ from .smooth import smooth_step
 from ..elements.kernels import node_residual, node_donor
 from ..thermo.api import PERFECT_GAS
 
+# Complex step perturbation size
 CS_H = 1e-30
 
 
@@ -51,8 +58,10 @@ def assemble_residual(
     """Fill the full residual vector R (length n_eq) and the est table."""
     N = node_rid.shape[0]
     E = x.shape[1]
+    # refresh every edge's recovered (rho, u, T, c, ...) state into the est table
     recover_all(edge_model, tf, ti, x, area, n_elem, marker_row, est, nj_cache)
 
+    # node balance rows: each node emits its mass / momentum(-pressure) block
     for n in range(N):
         eps_n = node_eps[n] if node_eps[n] >= 0.0 else eps  # per-element smoothing override
         node_residual(
@@ -62,21 +71,24 @@ def assemble_residual(
     # advected scalars: band-1 rows 2.. (s=0 is h_t, s>=1 are composition Z_el, marker_s is the marker)
     n_scalars = x.shape[0] - 2
     mdot_e = est[ES_MDOT]
-    Hd = R[:N] * 0.0
+    Hd = R[:N] * 0.0  # per-node donor value of the current scalar (reused each s)
     for s in range(n_scalars):
         phi_e = x[2 + s]
+        # donor value seen at each node (the flux-weighted upstream mix of scalar s)
         for n in range(N):
             Hd[n] = node_donor(
                 n, node_rid[n], s, marker_s, row_ptr, col_edge, orient, npar_f, npar_fptr, tf, eps, mdot_e, phi_e
             )
+        # transport residual: edge scalar minus its upwind-donor value (0 at solution)
         for e in range(E):
-            theta = smooth_step(est[ES_MDOT, e], eps)
+            theta = smooth_step(est[ES_MDOT, e], eps)  # ~1 forward flow, ~0 reversed
             phi_up = theta * Hd[tail_node[e]] + (1.0 - theta) * Hd[head_node[e]]
             R[transport_row0 + s * E + e] = phi_e[e] - phi_up
 
 
 @njit(cache=True)
 def _find_slot(c, row, indptr, indices):
+    """Binary-search the CSC data index of entry ``(row, c)`` in the fixed pattern."""
     lo = indptr[c]
     hi = indptr[c + 1]
     while lo < hi:
@@ -130,6 +142,8 @@ def jacobian_fill(
     recover_all(edge_model, tf, ti, xc, area, n_elem, marker_row, est, nj_cache)
     Rc = np.zeros(n_eq, dtype=np.complex128)
 
+    # one complex-step column per (edge e, band-1 unknown v): seed x[v, e] += i*H,
+    # re-recover only edge e, then read Im/H off just the rows that edge feeds.
     for e in range(E):
         nt = tail_node[e]
         nh = head_node[e]

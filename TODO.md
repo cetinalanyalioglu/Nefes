@@ -4,6 +4,11 @@
 - [ ] Full-nozzle composite carrying both distinct area reductions of De Domenico Fig. 3 in one element: the sub-throat vena contracta (`A_min = Gamma*A_T <= A_T`, sets the effective throat / choke) *and* the recovery jet plane (`A_j = beta*A_2 >= A_T`). Existing `lossy_nozzle` has only `A_j`; `sudden_contraction` only a downstream-referenced vena contracta. Stage `A_1 ->isen-> A_T ->isen-> Gamma*A_T ->isen-> A_j ->Borda-> A_2` with `Gamma`, `beta` inputs (later geometry-derived, see `scratch/nozzle-shape-loss-prediction.md`).
 - [ ] Combined linear+quadratic (Forchheimer) flow resistance: `linear_resistance` alone only captures the viscous low-flow regime and undershoots real screens/dampers at higher mass flow, while `loss` (quadratic) alone loses all acoustic resistance at the quiescent (M->0) limit; add a combined element (`dpt = a*mdot + b*mdot*abs(mdot)`) or a composite chaining the two existing atoms so both regimes and the quiescent damping hold together.
 
+## To document
+
+- [ ] We would prefer numbered, hierarchical sections for ease in referencing
+- [ ] "Solution variables and state recovery", the section describes the thermo derivatives for the case of perfect gas, but we'd like to see here how the equilibrium solver gets into play through derivative (without going into internals of equilibrium solver)
+
 ## To verify
 
 ## To brainstorm
@@ -16,6 +21,7 @@
 
 ## Issues
 
+- [ ] The LaTeX rendering, especially inline rendering in Quarto docs still has a large font size, we need to reduce this a bit.
 - [ ] In notebooks, we seem to have too many imports from our package, looking a bit intimidating. It is too much for the user, and perhaps some functionality could be offered as class methods? We should discuss.
 - [ ] We don't have any mechanism to prevent connecting incompatible elements with each other - see the guardrails we put in the UI. Perhaps we were too strict, this is open to re-evalute.
 

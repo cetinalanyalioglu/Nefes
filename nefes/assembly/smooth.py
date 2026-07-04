@@ -2,8 +2,8 @@
 
 Every function here is analytic in a neighbourhood of the real axis, so the
 complex-step derivative trick (``x + 1j*h``) propagates exact derivatives
-through them.  Never use ``abs``, ``sign``, ``min``, ``max`` or branch on a
-solution variable inside a residual definition -- use these instead.
+through them.  NEVER use ``abs``, ``sign``, ``min``, ``max`` or branch on a
+solution variable inside a residual definition, use these instead.
 
 The regularization scale ``delta`` is chosen relative to a problem reference
 value (e.g. ``1e-3 * mdot_ref``).  The error introduced at a converged state

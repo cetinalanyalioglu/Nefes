@@ -22,7 +22,7 @@ from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from nefes.shell.network import Network
 from nefes.solver.control import solve, auto_initial_guess
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_P
+from nefes.assembly.recover import ES_T, ES_RHO, ES_MDOT, ES_P
 from nefes.perturbation.response.response import perturbation_response
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")

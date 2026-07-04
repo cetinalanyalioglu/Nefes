@@ -17,7 +17,7 @@ from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_MDOT, ES_C
+from nefes.assembly.recover import ES_MDOT, ES_C
 from nefes.perturbation import build_acoustic_blocks, assemble_acoustic, perturbation_response
 from nefes.perturbation.operator.operator import _assemble_reference
 

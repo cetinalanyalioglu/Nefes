@@ -16,7 +16,7 @@ import yaml
 from nefes.io import load_case, save_case
 from nefes.io.yaml_in import _parse_composition
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
+from nefes.assembly.recover import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")

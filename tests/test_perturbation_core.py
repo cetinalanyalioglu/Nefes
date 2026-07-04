@@ -7,7 +7,7 @@ from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_MDOT
+from nefes.assembly.recover import ES_MDOT
 from nefes.perturbation import (
     char_to_dx,
     dx_to_char,

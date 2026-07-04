@@ -30,7 +30,7 @@ from nefes.elements import catalog as cat
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_RHO, ES_U, ES_P, ES_C, ES_M
+from nefes.assembly.recover import ES_RHO, ES_U, ES_P, ES_C, ES_M
 from nefes.perturbation import perturbation_response
 from nefes.perturbation.operator.characteristics import char_to_dq, basis_block_from_state
 

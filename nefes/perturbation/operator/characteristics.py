@@ -31,7 +31,7 @@ and ``BASIS_LABELS`` gives its per-component symbols (for plot labelling):
 
 import numpy as np
 
-from ...assembly.derive import ES_RHO, ES_U, ES_P, ES_C, ES_AREA
+from ...assembly.recover import ES_RHO, ES_U, ES_P, ES_C, ES_AREA
 
 
 def char_to_dq(rho, c):

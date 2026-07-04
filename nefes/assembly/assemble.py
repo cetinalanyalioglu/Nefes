@@ -18,7 +18,7 @@ import numpy as np
 import scipy.sparse as sp
 from numba import njit
 
-from .derive import recover_all, recover_edge, NS_EST, ES_MDOT
+from .recover import recover_all, recover_edge, NS_EST, ES_MDOT
 from .smooth import smooth_step
 from ..elements.kernels import node_residual, node_donor
 from ..thermo.api import PERFECT_GAS

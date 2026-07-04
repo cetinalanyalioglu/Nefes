@@ -19,7 +19,7 @@ from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.perturbation import perturbation_response, TransferMatrix, PortState
 from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
-from nefes.assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
+from nefes.assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

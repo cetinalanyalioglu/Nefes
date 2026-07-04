@@ -21,7 +21,7 @@ from nefes.elements import catalog as cat
 from nefes.thermo.configure import perfect_gas
 from nefes.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
 from nefes.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
-from nefes.assembly.derive import ES_C
+from nefes.assembly.recover import ES_C
 from nefes.perturbation import forced_response, eigenmodes, PerturbationBC
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")

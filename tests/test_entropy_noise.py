@@ -29,7 +29,7 @@ from nefes.perturbation import forced_response
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.derive import ES_U, ES_C, ES_M, ES_RHO
+from nefes.assembly.recover import ES_U, ES_C, ES_M, ES_RHO
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

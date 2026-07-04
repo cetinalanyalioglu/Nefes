@@ -17,7 +17,7 @@ from nefes.elements import catalog as cat
 from nefes.solver import solve
 from nefes.solver.control import initial_guess
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_MDOT, ES_P, ES_M, ES_T
+from nefes.assembly.recover import ES_MDOT, ES_P, ES_M, ES_T
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

@@ -11,7 +11,7 @@ artificial-resistance continuation coefficient: it stamps an artificial pressure
 from numba import njit
 
 from ..assembly.smooth import smooth_step, smooth_pos, smooth_abs, fischer_burmeister
-from ..assembly.derive import ES_MDOT, ES_P, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA, ES_C
+from ..assembly.recover import ES_MDOT, ES_P, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA, ES_C
 from .ids import (
     MASS_FLOW_INLET,
     PT_INLET,

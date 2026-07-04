@@ -17,7 +17,7 @@ from nefes.elements import catalog as cat
 from nefes.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_M, ES_P, ES_RHO, ES_U, ES_AREA, ES_PT
+from nefes.assembly.recover import ES_M, ES_P, ES_RHO, ES_U, ES_AREA, ES_PT
 from nefes.perturbation import perturbation_response
 from nefes.shell import Network
 
@@ -119,7 +119,7 @@ def test_lossy_nozzle_lossless_limit_conserves_total_pressure():
     # beta = 1 -> the lossless (isentropic) nozzle: total pressure is conserved across it
     # (the Borda re-expansion is A2 -> A2, its loss term vanishes), unlike the lossy orifice.
     # Use a mild throat (PT 110 kPa, AT = 2/3 A2) so the con-di flow stays comfortably subsonic.
-    from nefes.assembly.derive import ES_PT
+    from nefes.assembly.recover import ES_PT
 
     pti, at = 110000.0, 2.0e-3
 

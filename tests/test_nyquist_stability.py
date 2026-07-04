@@ -30,7 +30,7 @@ from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.derive import ES_M
+from nefes.assembly.recover import ES_M
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

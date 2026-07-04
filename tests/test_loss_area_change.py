@@ -15,7 +15,7 @@ from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_MDOT, ES_RHO, ES_PT, ES_AREA
+from nefes.assembly.recover import ES_MDOT, ES_RHO, ES_PT, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

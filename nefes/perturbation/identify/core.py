@@ -251,7 +251,7 @@ def identify_transfer_matrix(
 def _port_state(est, edge):
     """A :class:`~nefes.perturbation.matrix.PortState` from the mean edge-state table."""
     from ..matrix import PortState
-    from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
+    from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
 
     return PortState(
         float(est[ES_RHO, edge]),

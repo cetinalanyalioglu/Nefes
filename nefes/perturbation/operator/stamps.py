@@ -37,7 +37,7 @@ from .matrices import partition
 from .verify import duct_nodes, verify_acoustic
 from .terminals import find_terminals
 from ...solver.report import states_table
-from ...assembly.derive import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
+from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T
 from ...elements.ids import (
     CAVITY,
     FLAME_HEAT_RELEASE,

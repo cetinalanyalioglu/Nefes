@@ -82,7 +82,7 @@ class _Reporter:
 
 def states_table(prob, x2d):
     """Recover the full edge-state table (NS_EST, E) for diagnostics/output."""
-    from ..assembly.derive import recover_all, NS_EST
+    from ..assembly.recover import recover_all, NS_EST
 
     est = np.zeros((NS_EST, prob.n_edges))
     nj_cache = np.zeros((prob.n_edges, 0))  # diagnostics: no warm start (single pass, robust uniform)
@@ -100,7 +100,7 @@ def _states_columns(prob, x2d, edges=None, precision=5):
     (``"edge"`` followed by ``"<label> [<unit>]"`` per quantity) and ``rows`` is a
     list of pre-formatted string cells, one list per edge.
     """
-    from ..assembly.derive import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
+    from ..assembly.recover import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
 
     # (label, est-row index, unit) in edge-state-table column order
     cols = (

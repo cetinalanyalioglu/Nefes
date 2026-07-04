@@ -21,7 +21,7 @@ from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.shell.network import Network
 from nefes.solver.control import solve
 from nefes.solver.report import states_table
-from nefes.assembly.derive import ES_T
+from nefes.assembly.recover import ES_T
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
 # stoichiometric H2-air premix (2 H2 + O2 + 3.76 N2, by mole)

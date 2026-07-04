@@ -41,8 +41,7 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, marker, out, nj_io):
     yields ``(T, rho, c, W)`` in one shot.  The kinetic-energy coupling
     ``h = h_t - u^2/2`` (``u = mdot/(rho A)``) is carried by an outer bracketed root
     on the static enthalpy wrapped around that solve (``eq_*_state_ke_*``), mirroring
-    the perfect gas's density root -- so every model now recovers the exact static
-    state, not the ``O(M^2)`` ``h ~ h_t`` approximation.
+    the perfect gas's density root, so every model recovers the exact static state.
 
     ``marker`` is the transported burnt-marker scalar; only the ``EQ_MARKER`` model reads
     it, to gate the frozen/equilibrium blend (the other models ignore it).

@@ -1,12 +1,11 @@
 """Residual / variable nondimensionalization scales.
 
 The Newton solve nondimensionalizes the system by a characteristic magnitude per
-equation row (``res_scale``) and per variable column (``var_scale``).  Historically
-these were fixed boundary references frozen into the :class:`~nefes.problem.CompiledProblem`
-at compile time.  :func:`compose_scales` builds them from four kind-scales (mass,
-pressure, enthalpy, composition); :func:`measure_inflow_scales` reads the mass and
-enthalpy scales off a state vector so the solve can *adapt* them to the realized flow
-(see :func:`nefes.solver.control.solve`).  The pressure scale stays the user gauge anchor
+equation row (``res_scale``) and per variable column (``var_scale``).
+:func:`compose_scales` builds them from four kind-scales (mass, pressure, enthalpy,
+composition); :func:`measure_inflow_scales` reads the mass and enthalpy scales off a
+state vector so the solve can *adapt* them to the realized flow (see
+:func:`nefes.solver.control.solve`).  The pressure scale stays the user gauge anchor
 ``p_ref`` and the composition scale stays ``1`` (mixture fractions are O(1)).
 """
 
@@ -50,10 +49,6 @@ def compose_scales(node_rid, degrees, n_edges, n_scalars, mass, p, h, z=1.0):
     res.extend([z] * n_edges * n_scalars)
     var = np.array([mass, p, h] + [z] * n_scalars, dtype=np.float64)
     return np.array(res, dtype=np.float64), var
-
-
-def _degrees(prob):
-    return np.diff(prob.row_ptr)
 
 
 def inlet_edges(prob):

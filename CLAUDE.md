@@ -62,6 +62,7 @@ As project matures, these documents should serve more as a guideline than of a r
 ## Coding style
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
+- NEVER include in the docstring references in a historical context: e.g. previous state of codebase, an earlier bug, an improvement etc.
 - Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
 
 ## Markdown files

@@ -5,7 +5,7 @@ and a solution vector into residuals and their complex-step Jacobian:
 
 * :mod:`~nefes.assembly.smooth`   -- C-infinity, complex-step-safe primitives (a leaf
   imported across ``thermo``/``elements`` as well);
-* :mod:`~nefes.assembly.closure`  -- the AD-3 thermo boundary ``(mdot, p, h_t) -> (rho, h)``;
+* :mod:`~nefes.assembly.closure`  -- the perfect-gas thermo boundary ``(mdot, p, h_t) -> (rho, h)``;
 * :mod:`~nefes.assembly.derive`   -- the edge-state recovery DAG (the ``ES_*`` slot layout);
 * :mod:`~nefes.assembly.assemble` -- the node/edge residual and sparse Jacobian assembly;
 * :mod:`~nefes.assembly.scaling`  -- residual / variable nondimensionalization.

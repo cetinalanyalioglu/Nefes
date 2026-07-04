@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
@@ -38,7 +39,7 @@ def _forced_split_network(fractions, out_pressures, mdot_in=30.0, area=0.25):
     for k, p_out in enumerate(out_pressures):
         els.append(cat.pressure_outlet(p_out, 300.0))
         edges.append((1, 2 + k, area))  # splitter -> outlet k  (port k + 1)
-    return cat.build_problem(CFG, els, edges, mdot_in, 101325.0, H_REF)
+    return build_problem(CFG, els, edges, mdot_in, 101325.0, H_REF)
 
 
 def test_mean_split_is_exact_and_backpressure_independent():
@@ -108,7 +109,7 @@ def test_build_rejects_port_count_mismatch():
     # fewer than 3 ports (1 inflow + 1 outflow) is not a meaningful split
     els = [cat.mass_flow_inlet(10.0, 300.0), cat.forced_splitter([0.3]), cat.pressure_outlet(1.0e5)]
     with pytest.raises(ValueError, match="needs >= 3 ports"):
-        cat.build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 10.0, 101325.0, H_REF)
+        build_problem(CFG, els, [(0, 1, 0.1), (1, 2, 0.1)], 10.0, 101325.0, H_REF)
 
 
 # --------------------------------------------------------------------------- #
@@ -124,7 +125,7 @@ def _forced_tree(pt_in=1.10e5, p_out=1.01325e5, a=0.05, a_branch=0.03):
         cat.pressure_outlet(p_out, 300.0),
     ]
     edges = [(0, 1, a), (1, 2, a), (2, 3, a_branch), (2, 4, a_branch)]
-    prob = cat.build_problem(CFG, els, edges, 10.0, 101325.0, H_REF)
+    prob = build_problem(CFG, els, edges, 10.0, 101325.0, H_REF)
     res = solve(prob)
     assert res.converged
     return prob, res

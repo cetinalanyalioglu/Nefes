@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import equilibrium
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from nefes.shell.network import Network
@@ -63,7 +64,7 @@ def _edges():
 
 def _prob(edge_models):
     gas, h_air = _air_datum()
-    return cat.build_problem(
+    return build_problem(
         equilibrium(gas.mech), _elements(gas), _edges(), mdot_ref=0.4, p_ref=1e5, h_ref=h_air, edge_models=edge_models
     )
 
@@ -142,7 +143,7 @@ def test_both_in_flame_draw_degrades_gracefully():
         cat.pressure_outlet(1.0e5, 300.0, composition=AIR, basis="mole"),
     ]
     edges = [(0, 1, AREA), (1, 2, AREA), (3, 2, AREA)]  # edge 2 reversed -> flame is both-in
-    prob = cat.build_problem(equilibrium(gas.mech), els, edges, mdot_ref=0.4, p_ref=1e5, h_ref=h_air)
+    prob = build_problem(equilibrium(gas.mech), els, edges, mdot_ref=0.4, p_ref=1e5, h_ref=h_air)
     res = solve(prob)  # must return, not raise
     assert not res.converged
 

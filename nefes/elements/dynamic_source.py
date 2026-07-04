@@ -1,15 +1,15 @@
-"""Dynamic source response ``S(omega)`` -- frequency-domain feedback of a source term.
+"""Dynamic source response ``S(omega)``: frequency response of a source term.
 
-A mass source (a fuel/air injector) or a flame carries a **dynamic** part: a
+A mass source (a fuel/air injector) or a heat source carries a **dynamic** part: a
 fluctuating injection / heat release whose amplitude responds to the unsteady flow
-elsewhere in the network.  The classic example is a velocity-driven flame transfer
-function (FTF): the heat release fluctuates with the acoustic velocity ``u'`` an
-edge upstream of the flame, with a gain and a time lag (the ``n-tau`` model).  This
-feedback is what makes the perturbation operator non-self-adjoint and drives
-thermoacoustic instability (theory.md s12.4, the ``S(omega)`` face).
+(perturbations) elsewhere in the network.  The classic example is a velocity-driven
+flame transfer function (FTF): the heat release fluctuates with the acoustic velocity
+``u'`` an edge upstream of the flame, with a gain and a time lag. This feedback is
+what makes the perturbation operator non-self-adjoint and drives thermoacoustic
+instability.
 
-The general response is a **sum of transfer functions**, each on its own reference
-edge and quantity::
+The general response is a **superposition of transfer functions**, each on its own
+reference edge and quantity::
 
     q'(omega) / q_bar = sum_k  gain_k * F_k(omega) * ( phi'_k(omega) / phi_bar_k )
 
@@ -21,10 +21,9 @@ reference edge.  Most flames are modelled with a single velocity term.
 
 This module owns only the **specification** (the descriptor + the transfer-function
 objects); the mean flow ignores it entirely (a constant mean source is acoustically
-passive), and the perturbation layer (:mod:`nefes.perturbation.operator.stamps`) consumes it to
-stamp the ``S(omega)`` face of the operator.  Nothing here depends on the
-perturbation layer, so the descriptor rides end-to-end on the element with no import
-cycle.
+passive), and the perturbation layer (:mod:`nefes.perturbation.operator.stamps`)
+consumes it to stamp the ``S(omega)`` face of the operator.  Nothing here depends on
+the perturbation layer.
 
 Frequency convention
 --------------------
@@ -33,8 +32,8 @@ graphs and user input use frequency, not angular frequency).  The perturbation
 assembler evaluates ``F(omega / 2 pi)``.  For a stability analysis the frequency is
 **complex**, so a transfer function must be analytically continuable
 (:attr:`TransferFunction.analytic`); the closed-form models are, a table interpolated
-on a real grid is not (use it for the forced response, or supply a closed form for
-stability).
+on a real grid is not (use it for the forced response, or make use of the bundled
+RationalFit to fit a closed-form model to the data).
 """
 
 from __future__ import annotations
@@ -43,6 +42,14 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
+
+# Reference quantities a response term may read at its edge.  Composition scalars are
+# named "Z:<scalar-name>" and resolved against the compiled problem's ``scalar_names``.
+_QUANTITIES = ("u", "p", "rho", "mdot")
+
+# Which source quantity a descriptor modulates, and the residual it feeds.
+_TARGETS = ("Qdot", "mdot")
+
 
 # ==========================================================================
 # Transfer functions  F(f) : (complex) frequency [Hz] -> complex
@@ -133,8 +140,8 @@ class NTauLowpass(TransferFunction):
 
     Entire in the unstable (lower-half ``omega``) plane -- the low-pass pole sits at
     ``f = i f_c`` (the *stable* upper half), so it is analytically continuable for the
-    eigenproblem as long as the search region does not reach down to growth
-    ``-2 pi f_c``.
+    eigenproblem (as long as the search region does not reach down to growth
+    ``-2 pi f_c``).
 
     Parameters
     ----------
@@ -167,11 +174,14 @@ class NTauLowpass(TransferFunction):
 class Tabulated(TransferFunction):
     """A measured transfer function interpolated from a table ``F(freqs) = values``.
 
-    Real-frequency only: a table interpolated on a real grid is **not** analytically
-    continuable, so it cannot be evaluated at the complex frequencies the stability
-    eigenproblem visits (:attr:`analytic` is ``False``).  Use it for the forced
-    response / scattering sweep; for stability supply a closed-form model
-    (:class:`NTau` or a custom :class:`TransferFunction`) fitted to the data.
+    Real-frequency only: this grid interpolant is **not** analytically continuable, so it
+    cannot be evaluated at the complex frequencies the stability eigenproblem visits
+    (:attr:`analytic` is ``False``).  Use it for the forced response / scattering sweep,
+    which stay on the real axis.  For **stability** analysis from the same tabulated data,
+    fit it with :func:`~nefes.perturbation.continuation.rational_fit`
+    (:class:`~nefes.perturbation.continuation.RationalFit`): a barycentric rational fit is
+    analytic off the real axis, so it drops straight into the eigensolver.  A closed-form
+    model (:class:`NTau`) fitted by hand works too.
 
     Magnitude and (unwrapped) phase are interpolated separately so the gain stays
     non-negative and the phase reads smoothly; outside the tabulated band the value
@@ -260,32 +270,89 @@ class _CallableTF(TransferFunction):
 
 
 def n_tau(n, tau) -> NTau:
-    """The ``n-tau`` flame model ``F(f) = n * exp(-i 2 pi f tau)`` (see :class:`NTau`)."""
+    """The ``n-tau`` flame model ``F(f) = n * exp(-i 2 pi f tau)`` (see :class:`NTau`).
+
+    Parameters
+    ----------
+    n : float or complex
+        Interaction index (gain).
+    tau : float
+        Time lag [s] (``>= 0`` for a causal response).
+
+    Returns
+    -------
+    NTau
+    """
     return NTau(n, tau)
 
 
 def n_tau_lowpass(n, tau, fc) -> NTauLowpass:
-    """The ``n-tau`` flame with a first-order gain roll-off (see :class:`NTauLowpass`)."""
+    """The ``n-tau`` flame with a first-order gain roll-off (see :class:`NTauLowpass`).
+
+    Parameters
+    ----------
+    n : float or complex
+        Low-frequency interaction index (DC gain).
+    tau : float
+        Time lag [s] (``>= 0`` for a causal response).
+    fc : float
+        Roll-off cutoff frequency [Hz] (``> 0``).
+
+    Returns
+    -------
+    NTauLowpass
+    """
     return NTauLowpass(n, tau, fc)
 
 
 def constant(value) -> Constant:
-    """A frequency-independent gain (see :class:`Constant`)."""
+    """A frequency-independent gain (see :class:`Constant`).
+
+    Parameters
+    ----------
+    value : float or complex
+        The constant gain ``F(f) = value``.
+
+    Returns
+    -------
+    Constant
+    """
     return Constant(value)
 
 
 def tabulated(freqs, values, **kwargs) -> Tabulated:
-    """A measured transfer function from a table (see :class:`Tabulated`)."""
+    """A measured transfer function from a table (see :class:`Tabulated`).
+
+    Parameters
+    ----------
+    freqs : array_like
+        Tabulated frequencies [Hz], strictly increasing.
+    values : array_like
+        Complex transfer-function values at ``freqs``.
+    **kwargs
+        Forwarded to :class:`Tabulated` (e.g. ``kind``, ``extrapolate``).
+
+    Returns
+    -------
+    Tabulated
+    """
     return Tabulated(freqs, values, **kwargs)
 
 
 def as_transfer(obj) -> TransferFunction:
     """Coerce ``obj`` into a :class:`TransferFunction`.
 
-    Accepts an existing :class:`TransferFunction`, an ``(n, tau)`` pair (-> n-tau),
-    a real/complex number (-> constant), or a bare ``f -> complex`` callable (wrapped;
-    treated as *non*-analytic, so usable only for the forced response unless it is a
-    :class:`TransferFunction` declaring ``analytic = True``).
+    Parameters
+    ----------
+    obj : TransferFunction or (n, tau) or number or callable
+        An existing :class:`TransferFunction`, an ``(n, tau)`` pair (-> n-tau), a
+        real/complex number (-> constant), or a bare ``f -> complex`` callable (wrapped;
+        treated as *non*-analytic, so usable only for the forced response unless it is a
+        :class:`TransferFunction` declaring ``analytic = True``).
+
+    Returns
+    -------
+    TransferFunction
     """
     if isinstance(obj, TransferFunction):
         return obj
@@ -305,16 +372,9 @@ def as_transfer(obj) -> TransferFunction:
 # Dynamic-source descriptor
 # ==========================================================================
 
-# Reference quantities a term may read at its edge.  Composition scalars are named
-# "Z:<scalar-name>" and resolved against the compiled problem's ``scalar_names``.
-_QUANTITIES = ("u", "p", "rho", "mdot")
-
-# Which source quantity a descriptor modulates, and the residual it feeds.
-_TARGETS = ("Qdot", "mdot")
-
 
 @dataclass
-class FlameResponseTerm:
+class DynamicResponseTerm:
     """One transfer-function term ``gain * F(omega) * (phi'_ref / phi_bar_ref)``.
 
     Parameters
@@ -348,18 +408,21 @@ class FlameResponseTerm:
 class DynamicSource:
     """How a source term's fluctuation responds to the unsteady flow ``S(omega)``.
 
-    The modulated source quantity fluctuates as a sum over :class:`FlameResponseTerm`::
+    The modulated source quantity fluctuates as a sum over :class:`DynamicResponseTerm`::
 
         q'(omega) = q_mean * sum_k  term_k.gain * F_k(omega) * (phi'_k / phi_bar_k)
 
     For ``target="Qdot"`` (a flame) ``q'`` is the unsteady heat release [W], stamped
     onto the downstream edge's total-enthalpy (energy) row as ``q'/mdot``.  For
-    ``target="mdot"`` (a mass source) ``q'`` is the unsteady injected mass-flow
-    [kg/s], stamped onto the source element's mass (and momentum) node rows.
+    ``target="mdot"`` (a mass source) ``q'`` is the unsteady injected mass-flow [kg/s],
+    stamped onto the source element's mass row and, in proportion to the injection
+    velocity ``u_inj``, its momentum row (as ``q' u_inj / A``).  ``u_inj`` is zero by
+    default, so a quiescent injector perturbs mass only -- the momentum stamp appears
+    only for an injector given a non-zero velocity.
 
     Parameters
     ----------
-    terms : list of FlameResponseTerm
+    terms : list of DynamicResponseTerm
         The transfer-function terms summed to form the response.
     target : {"Qdot", "mdot"}, optional
         Which source quantity is modulated (default ``"Qdot"``).
@@ -371,16 +434,16 @@ class DynamicSource:
         the element's injected ``mdot`` for a mass source); pass a value to override.
     """
 
-    terms: List[FlameResponseTerm] = field(default_factory=list)
+    terms: List[DynamicResponseTerm] = field(default_factory=list)
     target: str = "Qdot"
     q_mean: Optional[float] = None
 
     def __post_init__(self):
         if self.target not in _TARGETS:
             raise ValueError(f"target must be one of {_TARGETS}; got {self.target!r}")
-        self.terms = [t if isinstance(t, FlameResponseTerm) else FlameResponseTerm(**t) for t in self.terms]
+        self.terms = [t if isinstance(t, DynamicResponseTerm) else DynamicResponseTerm(**t) for t in self.terms]
         if not self.terms:
-            raise ValueError("a DynamicSource needs at least one FlameResponseTerm")
+            raise ValueError("a DynamicSource needs at least one DynamicResponseTerm")
         if self.q_mean is not None:
             self.q_mean = float(self.q_mean)
 
@@ -401,10 +464,28 @@ class DynamicSource:
 def heat_release_response(transfer, ref_edge, *, quantity="u", gain=1.0, q_mean=None) -> DynamicSource:
     """A single-term heat-release response (the common velocity-FTF flame).
 
-    Equivalent to ``DynamicSource([FlameResponseTerm(transfer, ref_edge, quantity,
+    Equivalent to ``DynamicSource([DynamicResponseTerm(transfer, ref_edge, quantity,
     gain)], target="Qdot", q_mean=q_mean)``.
+
+    Parameters
+    ----------
+    transfer : TransferFunction or (n, tau) or number or callable
+        The frequency response ``F``; coerced via :func:`as_transfer`.
+    ref_edge : int
+        Edge whose fluctuation drives the response (e.g. the edge just upstream of the flame).
+    quantity : str, optional
+        Reference quantity: one of ``"u"``, ``"p"``, ``"rho"``, ``"mdot"`` or a composition
+        scalar ``"Z:<name>"`` (default ``"u"``).
+    gain : float or complex, optional
+        Scalar gain on the term (default ``1.0``).
+    q_mean : float, optional
+        Mean heat release [W]; ``None`` (default) auto-derives it from the mean flame.
+
+    Returns
+    -------
+    DynamicSource
     """
-    return DynamicSource(terms=[FlameResponseTerm(transfer, ref_edge, quantity, gain)], target="Qdot", q_mean=q_mean)
+    return DynamicSource(terms=[DynamicResponseTerm(transfer, ref_edge, quantity, gain)], target="Qdot", q_mean=q_mean)
 
 
 def n_tau_flame(n, tau, ref_edge, *, quantity="u", q_mean=None) -> DynamicSource:
@@ -429,7 +510,25 @@ def n_tau_flame(n, tau, ref_edge, *, quantity="u", q_mean=None) -> DynamicSource
 def mass_flow_response(transfer, ref_edge, *, quantity="u", gain=1.0, mdot_mean=None) -> DynamicSource:
     """A single-term injected-mass-flow response (e.g. a velocity-modulated fuel feed).
 
-    Equivalent to ``DynamicSource([...], target="mdot", q_mean=mdot_mean)``; ``q_mean``
-    here is the mean injected mass-flow [kg/s] (auto-derived from the element when ``None``).
+    Equivalent to ``DynamicSource([...], target="mdot", q_mean=mdot_mean)``.
+
+    Parameters
+    ----------
+    transfer : TransferFunction or (n, tau) or number or callable
+        The frequency response ``F``; coerced via :func:`as_transfer`.
+    ref_edge : int
+        Edge whose fluctuation drives the injected-mass modulation.
+    quantity : str, optional
+        Reference quantity (default ``"u"``); see :func:`heat_release_response`.
+    gain : float or complex, optional
+        Scalar gain on the term (default ``1.0``).
+    mdot_mean : float, optional
+        Mean injected mass flow [kg/s]; ``None`` (default) auto-derives it from the element.
+
+    Returns
+    -------
+    DynamicSource
     """
-    return DynamicSource(terms=[FlameResponseTerm(transfer, ref_edge, quantity, gain)], target="mdot", q_mean=mdot_mean)
+    return DynamicSource(
+        terms=[DynamicResponseTerm(transfer, ref_edge, quantity, gain)], target="mdot", q_mean=mdot_mean
+    )

@@ -11,8 +11,9 @@ from ..thermo.api import PERFECT_GAS, EQ_KERNEL
 from ..graph.connectivity import build_connectivity
 from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
+from .build import build_problem, build_problem_from_connectivity
 from ..elements.composite import is_composite, CompositeView
-from ..elements.ids import RESIDUAL_NAMES
+from ..elements.ids import ELEMENT_TYPE_NAMES, CHOKED_NOZZLE_OUTLET
 from ..graph.problem import CompiledProblem
 from ..solver import solve as _solve
 from ..solver.control import initial_guess
@@ -65,7 +66,7 @@ class Network:
 
         The three positional arguments -- ``gas``, ``nodes`` and ``edges`` -- are the whole
         interface for the common one-shot case; the one-shot form supersedes the lower-level
-        :func:`nefes.elements.catalog.build_problem`.  The remaining keyword-only arguments
+        :func:`nefes.shell.build.build_problem`.  The remaining keyword-only arguments
         are seldom-touched reference/advanced overrides.
 
         Parameters
@@ -263,8 +264,10 @@ class Network:
         """
         if self._mdot_ref is not None:
             return self._mdot_ref
-        mass = [abs(el.fparams[0]) for el in self._elements if el.residual_id == cat.MASS_FLOW_INLET]
-        has_pt = any(el.residual_id == cat.PT_INLET for el in self._elements)
+        # ``getattr`` guards the composite specs (which carry no ``residual_id``); a composite
+        # is never an inlet, so skipping it is correct.
+        mass = [abs(el.fparams[0]) for el in self._elements if getattr(el, "residual_id", None) == cat.MASS_FLOW_INLET]
+        has_pt = any(getattr(el, "residual_id", None) == cat.PT_INLET for el in self._elements)
         # every inlet a mass-flow inlet -> the total specified inflow is exactly known.
         if mass and not has_pt and sum(mass) > 0.0:
             return sum(mass)
@@ -283,7 +286,9 @@ class Network:
 
     def _boundary_dp(self) -> float:
         """Largest a-priori pressure drop across the boundary pressure references (0 if < 2)."""
-        refs = [el.fparams[0] for el in self._elements if el.residual_id in (cat.PT_INLET, cat.P_OUTLET)]
+        refs = [
+            el.fparams[0] for el in self._elements if getattr(el, "residual_id", None) in (cat.PT_INLET, cat.P_OUTLET)
+        ]
         return (max(refs) - min(refs)) if len(refs) >= 2 else 0.0
 
     # -- compile / solve ----------------------------------------------------------------------------------------------
@@ -328,10 +333,10 @@ class Network:
             endpoints = [(t, int(tp), h, int(hp)) for (t, h, _a), (tp, hp) in zip(self._edges, self._ports)]
             conn = build_connectivity(len(self._elements), endpoints)
             area = np.array([a for (_t, _h, a) in self._edges], dtype=np.float64)
-            return cat.build_problem_from_connectivity(
+            return build_problem_from_connectivity(
                 self.gas, self._elements, conn, area, mdot_ref, self.p_ref, h_ref, edge_models=edge_models
             )
-        return cat.build_problem(
+        return build_problem(
             self.gas, self._elements, self._edges, mdot_ref, self.p_ref, h_ref, edge_models=edge_models
         )
 
@@ -362,7 +367,18 @@ class Network:
         """
         prob = self.compile()
         res = _solve(prob, x0=x0, **kw)
-        return Solution(self, prob, res)
+        sol = Solution(self, prob, res)
+        if res.converged:
+            for nz in sol.unchoked_nozzles():
+                warnings.warn(
+                    f"choked_nozzle_outlet {nz['name']!r} (edge {nz['edge']}): the specified back pressure "
+                    f"{nz['back_pressure']:.4g} Pa exceeds the throat's critical pressure "
+                    f"{nz['critical_pressure']:.4g} Pa, so the nozzle would not choke -- the compact choked-nozzle "
+                    f"model does not apply here; use a pressure_outlet, which handles the choked/unchoked transition "
+                    f"against a back pressure.",
+                    stacklevel=2,
+                )
+        return sol
 
     def initial_guess(self, **kw):
         """Return the solver's initial state guess for the compiled problem."""
@@ -455,7 +471,7 @@ class Network:
         """Human-readable residual-type name for an element (or the kind for a composite)."""
         if is_composite(el):
             return el.kind or "composite"
-        return RESIDUAL_NAMES.get(el.residual_id, f"residual#{el.residual_id}")
+        return ELEMENT_TYPE_NAMES.get(el.residual_id, f"residual#{el.residual_id}")
 
     def __repr__(self) -> str:
         """Compact text summary: size, thermo model, references, and the element / edge listings.
@@ -831,6 +847,52 @@ class Solution:
         burnt one).
         """
         return self.table()[_EDGE_FIELDS[name], :]
+
+    def unchoked_nozzles(self) -> list:
+        """Choked-nozzle outlets whose set back pressure is too high for the throat to choke.
+
+        A :func:`~nefes.elements.catalog.choked_nozzle_outlet` asserts a sonic throat, which
+        holds only while the ambient back pressure sits below the throat's critical (sonic)
+        pressure ``p* = p_t (2 / (g + 1))^(g / (g - 1))`` (``g`` the local ratio of specific
+        heats, ``g = c^2 W / (R_u T)``).  For every such element given a ``back_pressure`` at
+        construction, this compares it to ``p*`` at the converged state and returns the nozzles
+        that would *not* actually choke -- the compact choked-nozzle model does not apply to
+        them.  :meth:`Network.solve` calls this and warns for each; call it directly to inspect.
+
+        Returns
+        -------
+        list of dict
+            One entry per offending nozzle: ``{"node", "name", "edge", "back_pressure",
+            "critical_pressure", "p_t"}``.  Empty when every nozzle with a set back pressure is
+            genuinely choked (or none set one).
+        """
+        RU = 8.31446261815324  # universal gas constant [J/(mol K)] (matches thermolib.constants)
+        p_t, c, W, T = self.field("p_t"), self.field("c"), self.field("W"), self.field("T")
+        cmap = getattr(self.problem, "composite_map", None)
+        out = []
+        for user_n, el in enumerate(self.network._elements):
+            # composites expand to several atomic nodes and are never a choked nozzle; skip them
+            if is_composite(el) or getattr(el, "residual_id", None) != CHOKED_NOZZLE_OUTLET:
+                continue
+            if el.back_pressure is None:
+                continue
+            # map the user node id to its compiled (expanded) node id, then to its single edge
+            node = cmap.expanded_nodes(user_n)[0] if cmap is not None else user_n
+            e = int(self.problem.col_edge[self.problem.row_ptr[node]])
+            gamma = float(c[e]) ** 2 * float(W[e]) / (RU * float(T[e]))
+            p_crit = float(p_t[e]) * (2.0 / (gamma + 1.0)) ** (gamma / (gamma - 1.0))
+            if float(el.back_pressure) > p_crit:
+                out.append(
+                    {
+                        "node": node,
+                        "name": el.name,
+                        "edge": e,
+                        "back_pressure": float(el.back_pressure),
+                        "critical_pressure": p_crit,
+                        "p_t": float(p_t[e]),
+                    }
+                )
+        return out
 
     def mixture_fractions(self, e: int) -> dict:
         """Transported feed-stream mixture fractions ``{stream_label: xi}`` on edge ``e``.

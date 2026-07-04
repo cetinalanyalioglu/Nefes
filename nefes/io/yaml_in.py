@@ -357,7 +357,7 @@ def _resolve_edge_models(reacting, specs, parsed, edge_tokens):
     Perfect gas: every edge follows the gas default (``None``).  Reacting:
 
     * **all ``auto``** (the common case) -> every edge ``None``, deferring to the marker-gated
-      closure: :func:`~nefes.elements.catalog.build_problem` adds the transported burnt marker and
+      closure: :func:`~nefes.shell.build.build_problem` adds the transported burnt marker and
       runs ``EQ_MARKER`` on every edge.  The marker rides the *signed* mass flow, so the
       frozen/equilibrium split is orientation-proof (no flood-fill labeling, no draw-direction
       hazard) -- the topology flood-fill survives only as the marker's initial guess.

@@ -2,7 +2,7 @@
 
 A measured / tabulated transfer function or reflection coefficient lives on a real
 frequency grid; the stability eigenproblem searches the *complex* plane.  ``rational_fit``
-(AAA barycentric rational, :mod:`nefes.elements.continuation`) bridges the two: the fit
+(AAA barycentric rational, :mod:`nefes.perturbation.continuation`) bridges the two: the fit
 reproduces the data on the grid yet continues off the real axis, so the same object drives
 both the real-axis Nyquist sweep and the contour eigensolver.
 
@@ -27,7 +27,8 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
-from nefes.elements.continuation import rational_fit, continuation_warning
+from nefes.shell.build import build_problem
+from nefes.perturbation.continuation import rational_fit, continuation_warning
 from nefes.elements.dynamic_source import (
     NTau,
     NTauLowpass,
@@ -146,7 +147,7 @@ def _rijke(ftf, bc_in, bc_out, *, mdot=0.005, dT=400.0):
         cat.pressure_outlet(1.0e5, perturbation_bc=bc_out),
     ]
     edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x

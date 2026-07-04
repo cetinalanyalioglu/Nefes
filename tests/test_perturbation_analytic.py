@@ -27,6 +27,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
@@ -128,7 +129,7 @@ def _jump_tm(rfun, y0, y1, *args):
 
 def _two_port(mid, A0, A1, pt_in=120000.0, p_out=101325.0):
     net = [cat.total_pressure_inlet(pt_in, 300.0), mid, cat.pressure_outlet(p_out, 300.0)]
-    prob = cat.build_problem(CFG, net, [(0, 1, A0), (1, 2, A1)], 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, [(0, 1, A0), (1, 2, A1)], 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res

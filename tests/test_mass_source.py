@@ -13,6 +13,7 @@ import pytest
 
 from nefes.assembly.recover import ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
@@ -38,7 +39,7 @@ def test_perfect_gas_mass_source_balances():
         cat.mass_source(mdot_src, Tt_src, None, u_inj=0.0, name="src"),
         cat.pressure_outlet(1.0e5),
     ]
-    prob = cat.build_problem(cfg, els, [(0, 1, A), (1, 2, A)], mdot_ref=mdot_in, p_ref=1.0e5, h_ref=CP * Tt_in)
+    prob = build_problem(cfg, els, [(0, 1, A), (1, 2, A)], mdot_ref=mdot_in, p_ref=1.0e5, h_ref=CP * Tt_in)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)
@@ -68,7 +69,7 @@ def test_perfect_gas_mass_source_injection_momentum():
         cat.mass_source(mdot_src, 300.0, None, u_inj=u_inj, name="src"),
         cat.pressure_outlet(1.0e5),
     ]
-    prob = cat.build_problem(cfg, els, [(0, 1, A), (1, 2, A)], mdot_ref=mdot_in, p_ref=1.0e5, h_ref=CP * 300.0)
+    prob = build_problem(cfg, els, [(0, 1, A), (1, 2, A)], mdot_ref=mdot_in, p_ref=1.0e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)
@@ -122,7 +123,7 @@ def _fuel_injection_network(mdot_air=1.0, mdot_fuel=0.05, Tin=300.0, p=1.0e5):
     # air(0) -> fuel-source(1) -> flame(2) -> outlet(3)
     edges = [(0, 1, A), (1, 2, A), (2, 3, A)]
     edge_models = [EQ_FROZEN, EQ_FROZEN, EQ_KERNEL]  # air, air+fuel (unburnt), burnt
-    prob = cat.build_problem(cfg, els, edges, mdot_ref=mdot_air, p_ref=p, h_ref=abs(h_mix), edge_models=edge_models)
+    prob = build_problem(cfg, els, edges, mdot_ref=mdot_air, p_ref=p, h_ref=abs(h_mix), edge_models=edge_models)
     return lib, gas, prob, h_mix
 
 

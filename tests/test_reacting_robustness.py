@@ -17,6 +17,7 @@ import pytest
 from nefes.chem.composition import enthalpy_mass, resolve_composition
 from nefes.assembly.recover import ES_HT, ES_MDOT, ES_T, ES_U
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
@@ -72,7 +73,7 @@ def test_operating_envelope_converges_from_seed(mdot_fuel, Tin, p):
         cat.pressure_outlet(p, Tt_backflow=Tin, composition=AIR, basis="mole", name="out"),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A)]
-    prob = cat.build_problem(
+    prob = build_problem(
         cfg,
         els,
         edges,
@@ -114,7 +115,7 @@ def test_two_carbon_fuels_co_injected():
         cat.pressure_outlet(p, Tt_backflow=Tin, composition=AIR, basis="mole", name="out"),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A), (3, 4, A)]
-    prob = cat.build_problem(
+    prob = build_problem(
         cfg,
         els,
         edges,
@@ -163,7 +164,7 @@ def test_branched_mixing_converges_from_seed():
     edges = [(0, 2, A), (1, 2, A), (2, 3, A), (3, 4, A), (4, 5, A)]
     # frozen up to and including the fuel-laden edge; burnt after the flame
     edge_models = [EQ_FROZEN, EQ_FROZEN, EQ_FROZEN, EQ_FROZEN, EQ_KERNEL]
-    prob = cat.build_problem(
+    prob = build_problem(
         cfg, els, edges, mdot_ref=mdotA + mdotB, p_ref=p, h_ref=abs(h_mix), edge_models=edge_models
     )
     res = solve(prob)
@@ -197,7 +198,7 @@ def test_carbonless_burn_in_carbon_library():
         cat.pressure_outlet(p, Tt_backflow=Tin, composition=AIR, basis="mole", name="out"),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A)]
-    prob = cat.build_problem(
+    prob = build_problem(
         cfg, els, edges, mdot_ref=mdot_air, p_ref=p, h_ref=abs(h_mix), edge_models=[EQ_FROZEN, EQ_FROZEN, EQ_KERNEL]
     )
     res = solve(prob)

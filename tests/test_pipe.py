@@ -12,6 +12,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_PT, ES_M, ES_T
@@ -27,7 +28,7 @@ K = F * L / D
 
 
 def _solve(els, edges, mdot=0.3):
-    prob = cat.build_problem(CFG, els, edges, mdot, P0, CP * T0)
+    prob = build_problem(CFG, els, edges, mdot, P0, CP * T0)
     res = solve(prob)
     assert res.converged
     return prob, res.x

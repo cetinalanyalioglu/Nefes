@@ -32,7 +32,7 @@ class ThermoConfig:
     library: object = None
     # Packing controls for a deferred equilibrium config: when no feed streams were
     # given at config time they are discovered from the network's inlet/source
-    # compositions and packed at build time (see ``catalog.finalize_thermo``).
+    # compositions and packed at build time (see ``shell.build.finalize_thermo``).
     t_init: float = 3000.0
     t_init_frozen: float = 300.0
 

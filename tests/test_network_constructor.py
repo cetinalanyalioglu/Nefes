@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import perfect_gas, equilibrium
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.shell.network import Network
@@ -47,7 +48,7 @@ def test_one_shot_matches_build_problem():
     nodes, edges = _nodes_edges()
     net = Network(gas=CFG, nodes=nodes, edges=edges)
     one = net.solve()
-    prob = cat.build_problem(CFG, nodes, edges, net._seed_mdot(), net.p_ref, net._seed_h())
+    prob = build_problem(CFG, nodes, edges, net._seed_mdot(), net.p_ref, net._seed_h())
     func = solve(prob)
     assert np.allclose(one.x, func.x)
 
@@ -131,11 +132,11 @@ def test_marker_gating_matches_explicit_edge_models():
         assert np.allclose(auto.field(f), explicit.field(f), rtol=1e-6), f
 
 
-def test_marker_gating_needs_explicit_edge_models_when_inert_diluted_downstream():
-    # Where marker-gating is NOT enough: injecting a fresh (marker-0) stream downstream of the flame
-    # pulls the burnt marker below 1, so the diluted edge runs a frozen/equilibrium blend instead of
-    # full equilibrium and diverges from the pinned closure.  This is why edge_models is retained as
-    # an advanced escape hatch rather than removed.
+def test_marker_gating_handles_fresh_dilution_downstream():
+    # A fresh (marker-0) stream injected downstream of the flame must not revert the diluted
+    # edge to a frozen reactant: the sticky (noisy-OR) marker keeps it burnt, so the auto path
+    # re-equilibrates the diluted zone and reproduces the pinned all-equilibrium closure with
+    # no edge_models (the staged-combustion / exhaust-gas-recirculation case).
     from thermolib import SpeciesLibrary, Thermo
 
     gas = Thermo(SpeciesLibrary.from_native(MECH))
@@ -145,7 +146,7 @@ def test_marker_gating_needs_explicit_edge_models_when_inert_diluted_downstream(
             cat.total_pressure_inlet(1.2e5, 300.0, composition={"O2": 0.21, "N2": 0.79}, name="air"),
             cat.mass_source(0.006, 300.0, composition={"H2": 1.0}, name="H2"),
             cat.equilibrium_flame(),
-            cat.mass_source(0.4, 300.0, composition={"O2": 0.21, "N2": 0.79}, name="dilution"),  # inert, marker 0
+            cat.mass_source(0.4, 300.0, composition={"O2": 0.21, "N2": 0.79}, name="dilution"),  # fresh, marker 0
             cat.mass_flow_outlet(0.806),
         ]
         edges = [(0, 1, 0.02), (1, 2, 0.02), (2, 3, 0.02), (3, 4, 0.02)]
@@ -154,9 +155,9 @@ def test_marker_gating_needs_explicit_edge_models_when_inert_diluted_downstream(
     explicit = build([EQ_FROZEN, EQ_FROZEN, EQ_KERNEL, EQ_KERNEL]).solve()
     auto = build(None).solve()  # marker-gated
     assert explicit.converged and auto.converged
-    assert auto.marker(3) < 0.9  # the dilution diluted the burnt marker on the outlet edge
-    # so the outlet temperature diverges from the pinned all-equilibrium closure
-    assert abs(auto.field("T")[3] - explicit.field("T")[3]) > 1.0
+    assert auto.marker(3) == pytest.approx(1.0, abs=1e-4)  # the fresh dilution does not un-burn the edge
+    for f in ("T", "M", "p", "mdot"):
+        assert np.allclose(auto.field(f), explicit.field(f), rtol=1e-5, atol=1e-5 * np.abs(explicit.field(f)).max()), f
 
 
 def test_validation():

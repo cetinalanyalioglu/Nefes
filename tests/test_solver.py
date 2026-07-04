@@ -5,6 +5,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.control import initial_guess
 from nefes.solver.report import states_table
@@ -22,7 +23,7 @@ def _nozzle(pt, Tt, p_out, A0=0.10, A1=0.05, mdot_ref=10.0):
         cat.pressure_outlet(p_out, Tt_backflow=Tt),
     ]
     edges = [(0, 1, A0), (1, 2, A1)]
-    return cat.build_problem(cfg, elements, edges, mdot_ref, 101325.0, CP * Tt)
+    return build_problem(cfg, elements, edges, mdot_ref, 101325.0, CP * Tt)
 
 
 def _isentropic_exit(pt, Tt, p, A):
@@ -113,7 +114,7 @@ def test_branch_network_conserves_mass():
         (3, 4, 0.12),
         (4, 5, 0.20),
     ]
-    prob = cat.build_problem(cfg, elements, edges, 20.0, 101325.0, CP * 300.0)
+    prob = build_problem(cfg, elements, edges, 20.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
 
@@ -140,7 +141,7 @@ def test_edge_direction_invariance():
         cat.pressure_outlet(p_out, Tt_backflow=Tt),
     ]
     edges = [(0, 1, 0.10), (2, 1, 0.05)]  # exit edge reversed: tail=outlet, head=iac
-    prob_f = cat.build_problem(cfg, elements, edges, 10.0, 101325.0, CP * Tt)
+    prob_f = build_problem(cfg, elements, edges, 10.0, 101325.0, CP * Tt)
     res_f = solve(prob_f)
     est_f = states_table(prob_f, res_f.x)
 

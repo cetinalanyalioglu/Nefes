@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.thermo.configure import perfect_gas
 from nefes.perturbation import cuton_frequency, duct_cuton_frequencies, ALPHA_CIRCULAR
@@ -82,7 +83,7 @@ def _stepped_duct_problem(area_wide):
         cat.pressure_outlet(101325.0),  # 4
     ]
     edges = [(0, 1, a), (1, 2, area_wide), (2, 3, area_wide), (3, 4, a)]
-    return cat.build_problem(CFG, net, edges, mdot_ref=2.0, p_ref=101325.0, h_ref=CP * 300.0)
+    return build_problem(CFG, net, edges, mdot_ref=2.0, p_ref=101325.0, h_ref=CP * 300.0)
 
 
 def test_report_over_a_solved_network():

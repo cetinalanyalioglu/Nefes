@@ -5,6 +5,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_MDOT
@@ -61,7 +62,7 @@ def _nozzle(pt, Tt, p_out):
         cat.pressure_outlet(p_out, Tt_backflow=Tt),
     ]
     edges = [(0, 1, 0.10), (1, 2, 0.06)]
-    return cat.build_problem(cfg, net, edges, 10.0, 101325.0, CP * Tt)
+    return build_problem(cfg, net, edges, 10.0, 101325.0, CP * Tt)
 
 
 def test_zero_frequency_operator_equals_jacobian():

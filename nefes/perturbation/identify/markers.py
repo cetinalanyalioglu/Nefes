@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
-from ...elements.dynamic_source import DynamicSource, FlameResponseTerm, Constant
+from ...elements.dynamic_source import DynamicSource, DynamicResponseTerm, Constant
 
 
 class UnknownTransferMatrix:
@@ -54,11 +54,11 @@ def unknown_dynamic_source(terms: Sequence, *, target: str = "Qdot", q_mean=None
     q_mean : float, optional
         Mean of the modulated quantity (auto-derived when ``None``).
     """
-    ft: List[FlameResponseTerm] = []
+    ft: List[DynamicResponseTerm] = []
     for t in terms:
         ref_edge, quantity = t[0], t[1]
         gain = t[2] if len(t) > 2 else 1.0
-        ft.append(FlameResponseTerm(Constant(0.0), int(ref_edge), quantity, float(gain)))
+        ft.append(DynamicResponseTerm(Constant(0.0), int(ref_edge), quantity, float(gain)))
     ds = DynamicSource(terms=ft, target=target, q_mean=q_mean)
     ds.is_unknown = True
     return ds

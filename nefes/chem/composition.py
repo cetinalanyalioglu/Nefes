@@ -5,20 +5,17 @@ The reacting network transports one conserved band-1 scalar per **feed stream**
 (each distinct injected composition: an oxidizer, a diluent, a fuel, ...).  A feed
 stream's mass is conserved through every mixing junction, mass source and flame
 (combustion conserves elemental -- hence stream-origin -- mass), so its transport
-is source-free and acoustically neutral, exactly like the elemental ``Z`` it
-replaces.  But unlike elements, the mixture fractions ``xi`` reconstruct the
-unburnt speciation **exactly and unambiguously** by a forward blend
-``Y = sum_k xi_k Y_k`` -- there is no element-inversion and no "element-
-distinguishable" restriction, so arbitrarily many co-mixed fuels are fine.
+is source-free and acoustically neutral.  The mixture fractions ``xi`` reconstruct
+the unburnt speciation exactly by a forward blend ``Y = sum_k xi_k Y_k``, so an
+arbitrary number of co-mixed fuels is admissible.
 
-The number of transported scalars is therefore the number of *distinct injected
-compositions* (auto-merged), not the number of chemical elements and never the
-(tens of) equilibrium product species.  Both reconstructions are forward linear
+The number of transported scalars is the number of *distinct injected compositions*
+(auto-merged).  The two reconstructions the kernels consume are both forward linear
 maps of ``xi``:
 
 * unburnt (frozen) species moles ``n_feed = sum_k xi_k n_k`` (each stream's fixed
   per-kg mole vector over the feed-species union);
-* elemental ``Z = sum_k xi_k Z_k`` -- still what the equilibrium kernel consumes.
+* elemental ``Z = sum_k xi_k Z_k`` (the equilibrium kernel's feed).
 
 Users think in **species** -- "inject ``C12H26``", "the air is 21% O2 / 79% N2 by
 mole".  This module is the parse-time bridge: a species mixture (by **mass** or
@@ -34,8 +31,21 @@ from __future__ import annotations
 
 import numpy as np
 
-# Universal gas constant [J/(mol*K)] -- matches thermolib.constants.R_UNIVERSAL.
-_RU = 8.31446261815324
+# Moles of O2 consumed per atom of each oxidizable element on complete combustion
+# (C -> CO2, H -> H2O, S -> SO2); oxygen already in the mixture *supplies* O2 at half
+# an O2 per O atom.
+_O2_PER_ATOM = {"C": 1.0, "H": 0.25, "S": 1.0, "O": -0.5}
+
+# Elements that carry no oxygen demand on complete combustion (they form inert
+# products: N -> N2, the noble gases).  Listed explicitly so that a present element
+# in neither this set nor ``_O2_PER_ATOM`` raises in :func:`_o2_demand` instead of
+# being silently dropped from the oxygen balance.
+_O2_INERT = frozenset({"N", "He", "Ne", "Ar", "Kr", "Xe"})
+
+# Two streams are "the same" if their mass fractions match to this tolerance; the
+# same ``species_mass_fractions`` call is deterministic, so identical compositions
+# compare exactly -- this only guards against floating-point dust.
+_STREAM_ATOL = 1e-12
 
 
 def species_mass_fractions(library, spec, basis="mole"):
@@ -91,8 +101,19 @@ def species_mass_fractions(library, spec, basis="mole"):
 def elemental_Z(library, Y):
     """Elemental **mass** fractions ``Z`` from species mass fractions ``Y``.
 
-    ``Z_i = W_i * Σ_j a_ij Y_j / W_j`` then renormalized -- the first-class
-    transported descriptor (D-2).
+    ``Z_i = W_i * Σ_j a_ij Y_j / W_j``, then renormalized to sum to one.
+
+    Parameters
+    ----------
+    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+        Provides ``molar_masses``, ``element_matrix`` and ``element_weights``.
+    Y : array_like, shape (n_species,)
+        Species mass fractions (need not be normalized).
+
+    Returns
+    -------
+    ndarray, shape (n_elements,)
+        Normalized elemental mass fractions in element order.
     """
     Y = np.asarray(Y, dtype=float)
     Yn = Y / Y.sum()
@@ -107,18 +128,55 @@ def elemental_Z(library, Y):
 def enthalpy_mass(library, Y, T):
     """Absolute specific enthalpy [J/kg] of species mass fractions ``Y`` at ``T``.
 
-    Datum D-1: formation-inclusive, as carried by the NASA polynomials.  Used to
-    convert an inlet/source total temperature to the transported ``h_t``.
+    Formation-inclusive, as carried by the NASA polynomials.  Used to convert an
+    inlet/source total temperature to the transported ``h_t``.
+
+    Parameters
+    ----------
+    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+        Provides ``molar_masses`` and the dimensionless enthalpy ``h_RT(T)``.
+    Y : array_like, shape (n_species,)
+        Species mass fractions (need not be normalized).
+    T : float
+        Temperature [K] at which to evaluate the enthalpy.
+
+    Returns
+    -------
+    float
+        Absolute (formation-inclusive) specific enthalpy [J/kg].
     """
+    # ``library`` is a thermolib object, so thermolib is importable here; the lazy
+    # import keeps the universal gas constant a single source of truth without making
+    # thermolib a load-time dependency of this parse-time module.
+    from thermolib.constants import R_UNIVERSAL
+
     Y = np.asarray(Y, dtype=float)
     Yn = Y / Y.sum()
     W = np.asarray(library.molar_masses, dtype=float)
     hRT = np.asarray(library.h_RT(float(T)), dtype=float)
-    return float(_RU * T * np.sum(Yn * hRT / W))
+    return float(R_UNIVERSAL * T * np.sum(Yn * hRT / W))
 
 
 def resolve_composition(library, spec, basis="mole"):
-    """Convenience: a named mixture -> ``(Y, Z)`` (species and elemental mass fr.)."""
+    """Convenience: a named mixture -> ``(Y, Z)`` (species and elemental mass fractions).
+
+    Parameters
+    ----------
+    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+        The species data.
+    spec : dict or array_like
+        A named species mixture ``{species: fraction}`` (unnormalized is fine) or a full
+        ``(n_species,)`` array already in ``basis``.
+    basis : {"mole", "mass"}, optional
+        Whether the given fractions are mole or mass fractions (default ``"mole"``).
+
+    Returns
+    -------
+    Y : ndarray, shape (n_species,)
+        Normalized species mass fractions.
+    Z : ndarray, shape (n_elements,)
+        Normalized elemental mass fractions.
+    """
     Y = species_mass_fractions(library, spec, basis)
     Z = elemental_Z(library, Y)
     return Y, Z
@@ -150,36 +208,32 @@ def species_mole_fractions(library, spec, basis="mole"):
     return moles / moles.sum()
 
 
-# Moles of O2 consumed per atom of each oxidizable element on complete combustion
-# (C -> CO2, H -> H2O, S -> SO2); oxygen already in the mixture *supplies* O2 at half
-# an O2 per O atom.  Inert elements (N -> N2, the noble gases) carry no demand.
-_O2_PER_ATOM = {"C": 1.0, "H": 0.25, "S": 1.0, "O": -0.5}
-
-
 def _o2_demand(library, X):
     """Net O2 demand [mol O2 per mol mixture] of a mole-fraction vector ``X``.
 
-    Positive for a fuel (needs oxygen), negative for an oxidizer (supplies it).
+    Positive for a fuel (needs oxygen), negative for an oxidizer (supplies it).  A
+    present element classified in neither ``_O2_PER_ATOM`` (oxidizable) nor
+    ``_O2_INERT`` raises, rather than being silently dropped from the balance and
+    biasing the equivalence ratio.
     """
     A = np.asarray(library.element_matrix, dtype=float)  # (n_elements, n_species)
     atoms = A @ np.asarray(X, dtype=float)  # gram-atoms of each element per mole of mixture
     demand = 0.0
-    for el, w in _O2_PER_ATOM.items():
-        i = library.element_index.get(el)
-        if i is not None:
-            demand += w * atoms[i]
+    for el, i in library.element_index.items():
+        if atoms[i] <= 0.0:
+            continue  # element absent from this mixture
+        if el in _O2_PER_ATOM:
+            demand += _O2_PER_ATOM[el] * atoms[i]
+        elif el not in _O2_INERT:
+            raise ValueError(
+                f"element {el!r} is present but has no defined O2 combustion demand; cannot form "
+                f"the equivalence-ratio blend (oxidizable {sorted(_O2_PER_ATOM)}, inert {sorted(_O2_INERT)})"
+            )
     return float(demand)
 
 
 def equivalence_ratio_mixture(library, fuel, oxidizer, phi, *, fuel_basis="mole", oxidizer_basis="mole", basis="mole"):
     """Blend a ``fuel`` and an ``oxidizer`` to a target equivalence ratio ``phi``.
-
-    The stoichiometric fuel/oxidizer ratio is fixed by the elemental oxygen balance
-    of complete combustion (C->CO2, H->H2O, S->SO2; N and the noble gases inert), so
-    arbitrary fuels (including oxygen-bearing ones) and oxidizers (pure O2, air, O2 +
-    diluent) are handled from their species formulae alone -- no per-reaction
-    bookkeeping.  At ``phi = 1`` the blend is exactly stoichiometric; ``phi > 1`` is
-    rich, ``phi < 1`` lean.
 
     Parameters
     ----------
@@ -240,14 +294,14 @@ def equivalence_ratio_mixture(library, fuel, oxidizer, phi, *, fuel_basis="mole"
     return {names[j]: float(frac[j]) for j in np.nonzero(frac > 0.0)[0]}
 
 
-# Two streams are "the same" if their mass fractions match to this tolerance; the
-# same ``species_mass_fractions`` call is deterministic, so identical compositions
-# compare exactly -- this only guards against floating-point dust.
-_STREAM_ATOL = 1e-12
-
-
 def build_streams(library, comps):
     """Distinct **feed streams** from a list of named compositions (auto-merged).
+
+    Resolves each element's composition to library mass fractions and collapses
+    identical ones onto a single stream, so the network transports one scalar per
+    *distinct* injected composition rather than one per injecting element.  Returns
+    those distinct streams together with, for every input, the index of the stream
+    it maps to.
 
     Parameters
     ----------
@@ -324,11 +378,22 @@ def stream_pack_arrays(library, stream_Y):
 def network_elements(library, specs):
     """Elements actually present across a list of named mixtures.
 
-    ``specs`` is an iterable of ``spec`` dicts/arrays (inlet/source compositions).
-    Returns the element symbols (in library order) whose abundance is non-zero in
-    at least one mixture -- the elements the network must transport.  The library
-    is the authority on the element set; this just reports which of its elements
-    are exercised, so a caller can warn about (or trim to) the active union.
+    Reports which of the library's elements are exercised by at least one mixture,
+    so a caller can warn about (or trim to) the active union.
+
+    Parameters
+    ----------
+    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+        The authority on the element set (``element_matrix``, ``elements``).
+    specs : iterable of dict or array_like
+        Named mixtures (inlet / source compositions); a ``dict`` is read on a mole
+        basis, a full ``(n_species,)`` array on a mass basis.
+
+    Returns
+    -------
+    list of str
+        Element symbols (in library order) whose abundance is non-zero in at least
+        one mixture.
     """
     A = np.asarray(library.element_matrix, dtype=float)
     present = np.zeros(library.n_elements, dtype=bool)

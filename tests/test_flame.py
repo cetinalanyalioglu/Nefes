@@ -16,6 +16,7 @@ import pytest
 from nefes.assembly.assemble import jacobian, jacobian_dense
 from nefes.assembly.recover import ES_CP, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
@@ -32,7 +33,7 @@ def _flame_network(mdot, Tt, Qdot, p_out=1.0e5):
     cfg = perfect_gas(R_AIR, GAMMA)
     els = [cat.mass_flow_inlet(mdot, Tt), cat.heat_release_flame(Qdot), cat.pressure_outlet(p_out)]
     edges = [(0, 1, A), (1, 2, A)]
-    return cat.build_problem(cfg, els, edges, mdot_ref=mdot, p_ref=p_out, h_ref=CP * Tt)
+    return build_problem(cfg, els, edges, mdot_ref=mdot, p_ref=p_out, h_ref=CP * Tt)
 
 
 @pytest.mark.parametrize("Qdot", [2.5e5, 1.0e6, 3.0e6])
@@ -110,7 +111,7 @@ def _equilibrium_flame_network(mdot=1.0, Aedge=0.05, Tin=300.0, p=101325.0):
     ]
     edges = [(0, 1, Aedge), (1, 2, Aedge)]
     edge_models = [EQ_FROZEN, EQ_KERNEL]  # unburnt approach, burnt products
-    prob = cat.build_problem(cfg, els, edges, mdot_ref=mdot, p_ref=p, h_ref=h_react, edge_models=edge_models)
+    prob = build_problem(cfg, els, edges, mdot_ref=mdot, p_ref=p, h_ref=h_react, edge_models=edge_models)
     return th, Z, h_react, p, prob
 
 

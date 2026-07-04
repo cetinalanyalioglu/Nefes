@@ -13,7 +13,8 @@ forward machinery, then de-embed and compare:
 import numpy as np
 
 from nefes.elements import catalog as cat
-from nefes.elements.dynamic_source import n_tau, n_tau_flame, DynamicSource, FlameResponseTerm
+from nefes.shell.build import build_problem
+from nefes.elements.dynamic_source import n_tau, n_tau_flame, DynamicSource, DynamicResponseTerm
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.perturbation import perturbation_response, TransferMatrix
@@ -49,7 +50,7 @@ def _cascade(mid, A1=0.05, A2=0.03):
         cat.pressure_outlet(101325.0, 300.0),
     ]
     edges = [(0, 1, A1), (1, 2, A1), (2, 3, A2), (3, 4, A2)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -79,7 +80,7 @@ def _branched(mid, A=0.02):
         cat.pressure_outlet(1.0e5),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A), (3, 4, A), (4, 5, A), (3, 6, A), (6, 7, A)]
-    prob = cat.build_problem(CFG, net, edges, mdot_ref=0.03, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(CFG, net, edges, mdot_ref=0.03, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -122,7 +123,7 @@ def _flame(ds, mdot=0.02, Qdot=8.0e3, A=0.01):
         cat.pressure_outlet(1.0e5),
     ]
     edges = [(0, 1, A), (1, 2, A), (2, 3, A), (3, 4, A)]
-    prob = cat.build_problem(CFG, net, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(CFG, net, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -144,7 +145,7 @@ def test_identify_multi_input_ftf():
     # a flame responding to BOTH velocity and pressure at edge 1 -- separated from one measured
     # matrix because the excitations decorrelate u' and p' (finite conditioning, not singular).
     Fu, Fp = n_tau(0.8, 2.5e-3), n_tau(0.35, 1.1e-3)
-    plant = DynamicSource(terms=[FlameResponseTerm(Fu, 1, "u"), FlameResponseTerm(Fp, 1, "p")])
+    plant = DynamicSource(terms=[DynamicResponseTerm(Fu, 1, "u"), DynamicResponseTerm(Fp, 1, "p")])
     pf, xf = _flame(plant)
     M_meas = perturbation_response(pf, xf, FREQS, excite=FULL).transfer_matrix(0, 3, basis="char")
 

@@ -14,6 +14,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
 from nefes.solver import solve
 from nefes.solver.report import states_table
@@ -36,7 +37,7 @@ def _orifice_reference():
         cat.sudden_area_change(),
         cat.pressure_outlet(P0, T0),
     ]
-    prob = cat.build_problem(CFG, els, [(0, 1, A1), (1, 2, AT), (2, 3, A2)], 1.0, P0, CP * T0)
+    prob = build_problem(CFG, els, [(0, 1, A1), (1, 2, AT), (2, 3, A2)], 1.0, P0, CP * T0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -45,7 +46,7 @@ def _orifice_reference():
 def _orifice_composite(throat=AT):
     """The same orifice as one composite element: inlet -> orifice -> outlet."""
     els = [cat.total_pressure_inlet(PT, T0), cat.orifice(throat), cat.pressure_outlet(P0, T0)]
-    prob = cat.build_problem(CFG, els, [(0, 1, A1), (1, 2, A2)], 1.0, P0, CP * T0)
+    prob = build_problem(CFG, els, [(0, 1, A1), (1, 2, A2)], 1.0, P0, CP * T0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -64,7 +65,7 @@ def test_no_composite_is_zero_overhead():
     edges = [(0, 1, A1), (1, 2, A1)]
     out_els, out_edges, cmap = expand_composites(els, edges)
     assert out_els is els and out_edges is edges and cmap is None
-    prob = cat.build_problem(CFG, els, edges, 1.0, P0, CP * T0)
+    prob = build_problem(CFG, els, edges, 1.0, P0, CP * T0)
     assert prob.composite_map is None
 
 
@@ -77,10 +78,13 @@ def test_expansion_appends_and_preserves_user_ids():
     # user nodes 0, 2 unchanged; orifice's iac keeps slot 1, sac appends at 3
     assert cmap.user_node_to_expanded == ((0,), (1, 3), (2,))
     assert cmap.internal_nodes == frozenset({3}) and cmap.internal_edges == frozenset({2})
-    # user edges keep their endpoints/areas; only the orifice endpoint is rewired
-    assert out_edges[0] == (0, 1, A1)  # inlet -> iac (unchanged)
-    assert out_edges[1] == (3, 2, A2)  # sac -> outlet (tail rewired to the downstream sub)
-    assert out_edges[2] == (1, 3, AT)  # internal iac -> sac at the throat area
+    # user edges keep their endpoints/areas; only the orifice endpoint is rewired.  Each edge
+    # now carries explicit flow-aligned ports (..., tail_port, head_port): a 2-port sub-element
+    # takes its inflow on port 0 and its outflow on port 1, so the throat's iac/sac are wired
+    # port 0 (in) / port 1 (out) exactly as by hand.
+    assert out_edges[0] == (0, 1, A1, 0, 0)  # inlet -> iac: iac inflow on port 0
+    assert out_edges[1] == (3, 2, A2, 1, 0)  # sac -> outlet: sac outflow on port 1
+    assert out_edges[2] == (1, 3, AT, 1, 0)  # internal iac (out, port 1) -> sac (in, port 0)
 
 
 # -- round-trip identity (the must-pass test) ------------------------------------------------------
@@ -108,7 +112,7 @@ def test_orifice_roundtrip_scattering_matrix():
 def test_lossy_nozzle_orifice_limit_matches_orifice():
     # beta = AT/A2 -> the orifice (maximum loss)
     els = [cat.total_pressure_inlet(PT, T0), cat.lossy_nozzle(AT, AT / A2, A2), cat.pressure_outlet(P0, T0)]
-    pn = cat.build_problem(CFG, els, [(0, 1, A1), (1, 2, A2)], 1.0, P0, CP * T0)
+    pn = build_problem(CFG, els, [(0, 1, A1), (1, 2, A2)], 1.0, P0, CP * T0)
     rn = solve(pn)
     assert rn.converged
     pc, xc = _orifice_composite()
@@ -124,7 +128,7 @@ def test_lossy_nozzle_lossless_limit_conserves_total_pressure():
     pti, at = 110000.0, 2.0e-3
 
     def pt_drop(el):
-        prob = cat.build_problem(
+        prob = build_problem(
             CFG,
             [cat.total_pressure_inlet(pti, T0), el, cat.pressure_outlet(P0, T0)],
             [(0, 1, A1), (1, 2, A2)],
@@ -262,7 +266,7 @@ def test_is_composite_discriminates():
 def _fanno(n, length=8.0, diameter=0.05, friction=0.03, mdot=0.55):
     area = np.pi * diameter**2 / 4.0
     els = [cat.mass_flow_inlet(mdot, T0), cat.fanno_pipe(length, diameter, friction, n), cat.pressure_outlet(P0, T0)]
-    prob = cat.build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot, P0, CP * T0)
+    prob = build_problem(CFG, els, [(0, 1, area), (1, 2, area)], mdot, P0, CP * T0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -277,7 +281,7 @@ def test_fanno_pipe_chain_converges_in_n():
         exits.append(float(states_table(prob, x)[ES_M, 1]))
     assert abs(exits[-1] - exits[-2]) < 1e-3  # converged between N=16 and N=64
     # the lumped pipe atom is the N=1 limit
-    pp = cat.build_problem(
+    pp = build_problem(
         CFG,
         [cat.mass_flow_inlet(0.55, T0), cat.pipe(8.0, 0.05, 0.03), cat.pressure_outlet(P0, T0)],
         [(0, 1, np.pi * 0.05**2 / 4), (1, 2, np.pi * 0.05**2 / 4)],
@@ -392,6 +396,94 @@ def test_grid_refine_reports_convergence():
     gr = grid_refine(build, 16, lambda est: {"M_exit": float(est[ES_M, 1])})
     assert gr.n_coarse == 16 and gr.n_fine == 32
     assert gr.converged(tol=1e-2) and gr.worst < 1e-2
+
+
+def test_tapered_duct_scattering_matrix_converges_with_refinement():
+    # The mean flow of a taper is N-exact, but its ACOUSTICS are not: a compact area change
+    # reflects strongly and carries no transit phase; a refined (distributed) horn is a gradual
+    # impedance match.  This pins (a) that a tapered_duct assembles acoustically at all -- its
+    # internal ducts are correctly port-wired (port 0 in, port 1 out) -- and (b) that the
+    # scattering matrix genuinely moves under refinement and settles.
+    L, Ain, Aout = 0.4, 4.0e-3, 2.0e-3
+
+    def area(x):
+        return Ain + (Aout - Ain) * (x / L)
+
+    def S(n, f=1500.0):
+        els = [
+            cat.total_pressure_inlet(1.08e5, T0),
+            cat.tapered_duct(area, length=L, n_segments=n),
+            cat.pressure_outlet(P0, T0),
+        ]
+        prob = build_problem(CFG, els, [(0, 1, Ain), (1, 2, Aout)], 4.0, P0, CP * T0)
+        resp = perturbation_response(prob, solve(prob).x, np.array([f]), excite=("acoustic",))
+        return np.asarray(resp.scattering_matrix(0, prob.n_edges - 1)).reshape(2, 2)
+
+    S1, S8, S16, S32 = S(1), S(8), S(16), S(32)
+    # the compact (N=1) reflection is far from the resolved horn (empirically ~0.48 vs ~0.04)
+    assert abs(S1[0, 0]) > 3.0 * abs(S32[0, 0])
+    # and refinement converges: the N=16 -> N=32 change is smaller than N=8 -> N=32
+    assert np.linalg.norm(S16 - S32) < np.linalg.norm(S8 - S32)
+
+
+def test_auto_refine_converges_on_a_fanno_pipe():
+    from nefes.elements.composite import auto_refine, GridRefinement
+
+    def build(n):
+        prob, x = _fanno(n)
+        return states_table(prob, x)
+
+    ar = auto_refine(build, 4, lambda est: {"M_exit": float(est[ES_M, 1])}, tol=1e-2, max_refine=6)
+    assert ar.converged
+    assert ar.worst < 1e-2
+    # the doubling history is exposed, oldest first, each a coarse->fine GridRefinement
+    assert all(isinstance(s, GridRefinement) for s in ar.steps)
+    assert ar.n_refine == len(ar.steps) and ar.n_refine >= 1
+    assert ar.steps[0].n_coarse == 4 and ar.steps[0].n_fine == 8
+    assert ar.n_final == 4 * 2**ar.n_refine  # finest resolution actually solved
+    assert "M_exit" in ar.final
+
+
+def test_auto_refine_respects_the_max_refine_cap():
+    from nefes.elements.composite import auto_refine
+
+    # a quantity that keeps drifting (never settles) must stop at the cap, not run forever
+    calls = []
+
+    def build(n):
+        calls.append(n)
+        return n
+
+    def probe(n):
+        return {"q": float(np.log(n))}  # log(N) never converges under doubling
+
+    ar = auto_refine(build, 2, probe, tol=1e-3, max_refine=3)
+    assert not ar.converged
+    assert ar.n_refine == 3  # exactly the cap
+    assert ar.n_final == 2 * 2**3
+    assert calls == [2, 4, 8, 16]  # coarsest once, then one solve per doubling
+
+
+def test_auto_refine_stops_as_soon_as_it_settles():
+    from nefes.elements.composite import auto_refine
+
+    # q(N) = 1 + 1/N: the relative step change halves each doubling, crossing 1% partway
+    def probe(n):
+        return {"q": 1.0 + 1.0 / n}
+
+    ar = auto_refine(lambda n: n, 4, probe, tol=1e-2, max_refine=8)
+    assert ar.converged
+    # first step below tol is 64->128 (rel ~ 1/128 / 1.0078 ~ 0.0077 < 1e-2)
+    assert ar.n_final == 128 and ar.n_refine == 5
+
+
+def test_auto_refine_validates_inputs():
+    from nefes.elements.composite import auto_refine
+
+    with pytest.raises(ValueError, match="n_start must be >= 1"):
+        auto_refine(lambda n: n, 0, lambda s: {"q": 1.0})
+    with pytest.raises(ValueError, match="max_refine must be >= 1"):
+        auto_refine(lambda n: n, 4, lambda s: {"q": 1.0}, max_refine=0)
 
 
 def test_segments_for_frequency():

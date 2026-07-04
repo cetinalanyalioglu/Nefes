@@ -15,7 +15,7 @@ from ..elements.ids import (
     KIND_MASS,
     KIND_PRESSURE,
     KIND_NAMES,
-    RESIDUAL_NAMES,
+    ELEMENT_TYPE_NAMES,
     row_kind_tags,
 )
 from ..assembly.assemble import residual
@@ -235,7 +235,7 @@ def residual_labels(prob):
     for n in range(prob.n_nodes):
         rid = int(prob.node_rid[n])
         deg = int(nrp[n + 1] - nrp[n])
-        type_name = RESIDUAL_NAMES.get(rid, f"residual#{rid}")
+        type_name = ELEMENT_TYPE_NAMES.get(rid, f"residual#{rid}")
         label = names[n] if n < len(names) and names[n] else f"#{n}"
         for tag in row_kind_tags(rid, deg):
             labels.append(f"node {n} [{label}] {type_name}: {KIND_NAMES[tag]}")

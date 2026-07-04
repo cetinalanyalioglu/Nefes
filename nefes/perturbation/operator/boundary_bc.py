@@ -105,7 +105,7 @@ def _eval(value, freq):
     sweep (the forced response, the Nyquist driver), but **not analytic**, so it cannot be
     evaluated at the complex frequencies the stability eigenproblem visits.  Asking for a
     complex ``freq`` raises a pointed error; wrap the table with
-    :func:`~nefes.elements.continuation.rational_fit` to get an analytically-continuable
+    :func:`~nefes.perturbation.continuation.rational_fit` to get an analytically-continuable
     coefficient usable for stability.
     """
     if value is None:
@@ -118,7 +118,7 @@ def _eval(value, freq):
             raise TypeError(
                 "a tabulated reflection/impedance table (freqs, values) cannot be evaluated at a "
                 "complex frequency (real-grid interpolation is not analytic). Use it for the forced "
-                "response / Nyquist sweep, or wrap it with nefes.elements.rational_fit(freqs, values) "
+                "response / Nyquist sweep, or wrap it with nefes.perturbation.rational_fit(freqs, values) "
                 "for the stability eigenproblem."
             )
         xs, ys = np.asarray(value[0], dtype=float), np.asarray(value[1], dtype=complex)

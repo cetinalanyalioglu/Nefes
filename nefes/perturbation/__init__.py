@@ -88,7 +88,7 @@ from .fields.power import (
     ModalEnergyBalance,
 )
 from .fields.drivers import modes_from_det, scattering_2port
-from ..elements.continuation import RationalFit, rational_fit, continuation_warning
+from .continuation import RationalFit, rational_fit, continuation_warning
 from .stability.contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 from .stability.eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
 from .stability.trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning

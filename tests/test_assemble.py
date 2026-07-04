@@ -11,6 +11,7 @@ import pytest
 
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.assembly.assemble import residual, jacobian, jacobian_dense
 
 R_AIR, GAMMA = 287.0, 1.4
@@ -36,7 +37,7 @@ def _chain():
         (3, 4, 0.18),  # loss: constant area
         (4, 5, 0.18),  # duct: constant area
     ]
-    prob = cat.build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
+    prob = build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
     return prob
 
 
@@ -58,7 +59,7 @@ def _branch():
         (3, 4, 0.20),  # loss: constant area
         (4, 5, 0.30),
     ]
-    prob = cat.build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
+    prob = build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
     return prob
 
 

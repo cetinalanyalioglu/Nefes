@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.thermo.configure import equilibrium, perfect_gas
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.shell.network import Network
@@ -52,7 +53,7 @@ def _prob(marker=0.0, edge_models=None):
         cat.pressure_outlet(1.0e5, 300.0, composition=PREMIX, basis="mole"),
     ]
     edges = [(0, 1, AREA), (1, 2, AREA)]
-    return cat.build_problem(
+    return build_problem(
         equilibrium(gas.mech), els, edges, mdot_ref=0.4, p_ref=1e5, h_ref=h_ref, edge_models=edge_models
     )
 

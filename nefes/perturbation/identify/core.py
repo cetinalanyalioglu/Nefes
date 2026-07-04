@@ -24,7 +24,7 @@ diagnostic: it is rank-deficient exactly when the measurement cannot separate th
 (e.g. collinear reference fluctuations for a multi-input flame).
 
 The recovered response is returned as a real-frequency table plus, by default, its rational
-continuation (:class:`~nefes.elements.continuation.RationalFit`) so it drops straight back
+continuation (:class:`~nefes.perturbation.continuation.RationalFit`) so it drops straight back
 into the element / dynamic source and the stability eigensolver.
 """
 
@@ -46,8 +46,8 @@ from ..response.response import (
     _seats_entropy,
     _N_FIXED_CHAR,
 )
-from ...elements.dynamic_source import DynamicSource, FlameResponseTerm, Constant, TransferFunction, Tabulated
-from ...elements.continuation import RationalFit
+from ...elements.dynamic_source import DynamicSource, DynamicResponseTerm, Constant, TransferFunction, Tabulated
+from ..continuation import RationalFit
 
 # ==========================================================================
 # results
@@ -337,7 +337,7 @@ def identify_transfer_function(
         Pin entropy to zero everywhere (acoustics-only); the measured matrix must then be
         acoustic (``N=2``) and ``excite`` acoustic.  Default False.
     **fit_kwargs
-        Forwarded to :class:`~nefes.elements.continuation.RationalFit`.
+        Forwarded to :class:`~nefes.perturbation.continuation.RationalFit`.
 
     Returns
     -------
@@ -353,7 +353,7 @@ def identify_transfer_function(
 
     # A0 := the operator with the source silent (transfer = 0); its stamp structure is unchanged.
     off = DynamicSource(
-        terms=[FlameResponseTerm(Constant(0.0), e, q, g) for (e, q, g) in terms_spec],
+        terms=[DynamicResponseTerm(Constant(0.0), e, q, g) for (e, q, g) in terms_spec],
         target=desc.target,
         q_mean=desc.q_mean,
     )

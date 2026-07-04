@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.ids import ACOUSTIC_DUCT, ACOUSTIC_DEFAULT, ACOUSTIC_FLAME
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
@@ -37,7 +38,7 @@ FULL = ("acoustic", "entropy")  # drive the entropy wave too -> full 3x3 respons
 
 def _single_duct(pt_in, p_out, L, area=0.05):
     net = [cat.total_pressure_inlet(pt_in, 300.0), cat.duct(L), cat.pressure_outlet(p_out, 300.0)]
-    prob = cat.build_problem(CFG, net, [(0, 1, area), (1, 2, area)], 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, [(0, 1, area), (1, 2, area)], 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -52,7 +53,7 @@ def _cascade(pt_in, p_out, L1=0.7, L2=1.1, A1=0.05, A2=0.03):
         cat.pressure_outlet(p_out, 300.0),
     ]
     edges = [(0, 1, A1), (1, 2, A1), (2, 3, A2), (3, 4, A2)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -72,7 +73,7 @@ def _tree_3term(pt_in=110000.0, p_out=101325.0, a_branch=0.03):
         cat.pressure_outlet(p_out, 300.0),
     ]
     edges = [(0, 1, 0.05), (1, 2, 0.05), (2, 3, a_branch), (2, 4, a_branch)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -95,7 +96,7 @@ def _wall_branch(pt_in=110000.0, p_out=101325.0):
         cat.wall(),
     ]
     edges = [(0, 1, 0.05), (1, 2, 0.05), (2, 3, 0.03), (3, 4, 0.03), (2, 5, 0.03), (5, 6, 0.03)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -127,7 +128,7 @@ def _diamond(pt_in=110000.0, p_out=101325.0):
         (5, 6, 0.05),
         (6, 7, 0.05),
     ]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res
@@ -452,7 +453,7 @@ def test_wall_terminated_branch_multiport():
 def test_entropy_quiescent_rejected():
     """Entropy excitation is undefined at a quiescent terminal (no convection); acoustic is fine."""
     net = [cat.mass_flow_inlet(0.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
-    prob = cat.build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     with pytest.raises(ValueError, match="quiescent"):
@@ -486,7 +487,7 @@ def test_branched_reversal_well_posed():
         cat.pressure_outlet(101300.0, 300.0),  # lower pressure -> backflow in the other branch
     ]
     edges = [(0, 1, 0.05), (1, 2, 0.05), (2, 3, 0.03), (3, 4, 0.03), (2, 5, 0.03), (5, 6, 0.03)]
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     assert float(states_table(prob, res.x)[ES_U, 2]) < 0.0  # the (101325) branch reverses
@@ -509,7 +510,7 @@ def test_branched_reversal_well_posed():
 def test_verifier_rejects_reverse_wired_duct():
     net = [cat.total_pressure_inlet(110000.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
     edges = [(1, 2, 0.05), (0, 1, 0.05)]  # outgoing edge first -> port 0 points OUT: banned
-    prob = cat.build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     with pytest.raises(ValueError, match="flow-aligned"):
@@ -561,7 +562,7 @@ def test_source_face_keys_off_the_descriptor_not_the_acoustic_id():
     """
     net = [cat.total_pressure_inlet(110000.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
     net[1].acoustic_id = ACOUSTIC_FLAME  # a bare tag, with no DynamicSource attached
-    prob = cat.build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
+    prob = build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged  # acoustic_id never touches the mean-flow residual
     blocks = build_acoustic_blocks(prob, res.x)

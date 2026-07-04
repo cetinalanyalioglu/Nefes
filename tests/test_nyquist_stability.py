@@ -22,6 +22,7 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import heat_release_response, n_tau_lowpass, tabulated
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import open_loop_response, nyquist_stability, eigenmodes
@@ -60,7 +61,7 @@ def _acoustic_rijke(n, tau, fc, mdot=0.005, dT=400.0, area=0.01, L1=0.6, L2=0.4,
         cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
     ]
     edges = [(0, 1, area), (1, 2, area), (2, 3, area), (3, 4, area)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
     res = solve(prob)
     assert res.converged
     return prob, res.x
@@ -89,7 +90,7 @@ def _choked_rig(n=_CN["N"], tau=_CN["TAU"], fc=_CN["FC"], active=True):
             cat.choked_nozzle_outlet(_CN["A_STAR"]),
         ]
         edges = [(0, 1, _CN["AREA"]), (1, 2, _CN["AREA"]), (2, 3, _CN["AREA"]), (3, 4, _CN["AREA"])]
-        return cat.build_problem(
+        return build_problem(
             perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=_CN["MDOT"], p_ref=1e5, h_ref=CP * 300.0
         )
 
@@ -255,7 +256,7 @@ def test_nyquist_requires_a_dynamic_source():
         cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
     ]
     edges = [(0, 1, 0.01), (1, 2, 0.01)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=0.005, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=0.005, p_ref=1e5, h_ref=CP * 300.0)
     x = solve(prob).x
     with pytest.raises(ValueError, match="dynamic source"):
         open_loop_response(prob, x, np.linspace(0.0, 600.0, 50))

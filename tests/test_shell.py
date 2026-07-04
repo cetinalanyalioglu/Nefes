@@ -8,19 +8,10 @@ import pytest
 from nefes.shell import Network
 from nefes.elements import catalog as cat
 from nefes.thermo.configure import perfect_gas
-from nefes.io import load_connectivity, load_case
+from nefes.io import load_case, load_connectivity
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
-
-DEMO_YAML = os.path.join(
-    os.path.dirname(__file__),
-    "..",
-    "preliminary-study",
-    "docs",
-    "examples",
-    "ConnectivityDemonstrator.yaml",
-)
 
 
 def test_network_api_solves_nozzle():
@@ -397,9 +388,6 @@ def test_warm_restart_is_cheaper():
 CASE_YAML = os.path.join(os.path.dirname(__file__), "..", "examples", "converging_nozzle.yaml")
 
 
-SHOWCASE = os.path.join(os.path.dirname(__file__), "..", "preliminary-study", "examples", "ui_showcase")
-
-
 @pytest.mark.skipif(not os.path.exists(CASE_YAML), reason="example case not present")
 def test_load_case_solves():
     net = load_case(CASE_YAML)
@@ -507,21 +495,91 @@ def test_load_case_sudden_contraction_coefficient(tmp_path):
     assert free.edge(0)["p_t"] - free.edge(1)["p_t"] == pytest.approx(0.0, abs=1.0)
 
 
-@pytest.mark.skipif(not os.path.exists(SHOWCASE), reason="UI showcase cases not present")
-def test_load_multiport_showcase_conserves_mass():
-    # A real UI export with splitters/junctions (multi-port elements) must load
-    # with correct ports and conserve mass at the merge.
-    net = load_case(os.path.join(SHOWCASE, "gas_turbine_splits.yaml"))
-    sol = net.solve()
+def _ui_case(tmp_path, name, nodes, edges, glob=None):
+    """Write a minimal ``fns-flow-network`` UI export to ``tmp_path`` and return its path.
+
+    ``nodes`` are ``(id, type, index, attrs)`` tuples and ``edges`` are
+    ``(id, src, src_port, tgt, tgt_port, index, area)`` tuples, so a test can spell a
+    small topology inline without hand-writing the reactflow handle strings.
+    """
+    import yaml
+
+    g = {
+        "gasConstant": 287.0,
+        "heatCapacityRatio": 1.4,
+        "referencePressure": 101325.0,
+        "referenceTemperature": 300.0,
+        "referenceMassFlow": 10.0,
+    }
+    g.update(glob or {})
+    doc = {
+        "version": "2.0.0",
+        "model": {
+            "id": "fns-flow-network",
+            "globalAttributes": g,
+            "nodes": [
+                {"id": nid, "type": ntype, "attributes": {"label": nid, "index": idx, **attrs}}
+                for (nid, ntype, idx, attrs) in nodes
+            ],
+            "edges": [
+                {
+                    "id": eid,
+                    "source": src,
+                    "target": tgt,
+                    "sourceHandle": f"{src}-port-{sp}",
+                    "targetHandle": f"{tgt}-port-{tp}",
+                    "type": "flow",
+                    "attributes": {"index": idx, "area": area},
+                }
+                for (eid, src, sp, tgt, tp, idx, area) in edges
+            ],
+        },
+    }
+    path = tmp_path / f"{name}.yaml"
+    path.write_text(yaml.safe_dump(doc))
+    return str(path)
+
+
+def test_load_multiport_case_conserves_mass(tmp_path):
+    # A UI export with a splitter and a junction (multi-port elements) must load with
+    # the right ports and conserve mass: a fixed feed splits through two unequal area
+    # changes and remerges, so the two branches sum back to the feed and the outlet.
+    # Per-node ports are one 0..d-1 run (left ports then right ports).
+    nodes = [
+        ("feed", "MassFlowInlet", 0, {"massFlowRate": 10.0, "totalTemperature": 300.0}),
+        ("split", "LosslessSplitter", 1, {}),
+        ("oa", "IsentropicAreaChange", 2, {}),
+        ("ob", "IsentropicAreaChange", 3, {}),
+        ("merge", "JunctionStaticP", 4, {}),
+        ("out", "PressureOutlet", 5, {"pressure": 101325.0, "backflowTotalTemperature": 300.0}),
+    ]
+    edges = [
+        ("e0", "feed", 0, "split", 0, 0, 0.10),
+        ("e1", "split", 1, "oa", 0, 1, 0.05),
+        ("e2", "split", 2, "ob", 0, 2, 0.05),
+        ("e3", "oa", 1, "merge", 0, 3, 0.04),
+        ("e4", "ob", 1, "merge", 1, 4, 0.02),
+        ("e5", "merge", 2, "out", 0, 5, 0.10),
+    ]
+    sol = load_case(_ui_case(tmp_path, "multiport_split", nodes, edges)).solve()
     assert sol.converged
     mdot = sol.field("mdot")
     assert np.isfinite(mdot).all()
+    # feed(e0) -> [branch e3, branch e4] -> outlet(e5); the split remerges losslessly
+    assert mdot[3] + mdot[4] == pytest.approx(mdot[0], rel=1e-9)
+    assert mdot[5] == pytest.approx(mdot[0], rel=1e-9)
 
 
-@pytest.mark.skipif(not os.path.exists(SHOWCASE), reason="UI showcase cases not present")
-def test_deferred_supersonic_raises():
+def test_deferred_supersonic_raises(tmp_path):
+    # v1 is subsonic-scope: a case carrying a deferred supersonic boundary is rejected.
+    nodes = [
+        ("res", "TotalPressureInlet", 0, {"totalPressure": 200000.0, "totalTemperature": 400.0}),
+        ("exit", "SupersonicOutlet", 1, {"pressure": 18786.5}),
+    ]
+    edges = [("e0", "res", 0, "exit", 0, 0, 0.10)]
+    path = _ui_case(tmp_path, "supersonic", nodes, edges, glob={"referencePressure": 200000.0})
     with pytest.raises(ValueError, match="deferred"):
-        load_case(os.path.join(SHOWCASE, "cd_nozzle_supersonic.yaml"))
+        load_case(path)
 
 
 def test_network_repr_summarizes_topology_and_thermo():
@@ -573,13 +631,73 @@ def test_network_repr_handles_empty_and_truncates(recwarn):
     assert "... (7 more)" in text and "... (6 more)" in text
 
 
-@pytest.mark.skipif(not os.path.exists(DEMO_YAML), reason="demonstrator YAML not present")
-def test_demonstrator_yaml_connectivity():
-    conn = load_connectivity(DEMO_YAML)
-    assert conn.n_nodes == 6
-    assert conn.n_edges == 7
-    assert list(conn.tail_node) == [0, 1, 1, 2, 2, 3, 4]
-    assert list(conn.head_node) == [1, 2, 3, 3, 4, 4, 5]
-    assert list(conn.tail_port) == [0, 1, 2, 2, 1, 2, 2]
-    assert list(conn.head_port) == [0, 0, 1, 0, 0, 1, 0]
+def _connectivity_doc(tmp_path):
+    """Write a connectivity-only UI export (a diamond) exercising the topology parser.
+
+    Nodes and edges are listed out of ``index`` order on purpose, so the parser must
+    key on the ``index`` attribute, not document order.  Per-node ports run ``0..d-1``
+    across all incident edges (left/in ports first, then right/out).  Topology::
+
+        N0 -e0-> N1 -e1-> N2
+                  \\-e2-> N3 <-e3- N2
+
+    N1 fans out (ports 1, 2) and N3 merges (ports 0, 1): a non-tree diamond.
+    """
+    import yaml
+
+    doc = {
+        "model": {
+            "id": "generic-network",
+            "nodes": [
+                {"id": "N2", "attributes": {"index": 2}},
+                {"id": "N0", "attributes": {"index": 0}},
+                {"id": "N3", "attributes": {"index": 3}},
+                {"id": "N1", "attributes": {"index": 1}},
+            ],
+            "edges": [
+                {
+                    "source": "N2",
+                    "target": "N3",
+                    "sourceHandle": "N2-port-1",
+                    "targetHandle": "N3-port-1",
+                    "attributes": {"index": 3},
+                },
+                {
+                    "source": "N0",
+                    "target": "N1",
+                    "sourceHandle": "N0-port-0",
+                    "targetHandle": "N1-port-0",
+                    "attributes": {"index": 0},
+                },
+                {
+                    "source": "N1",
+                    "target": "N3",
+                    "sourceHandle": "N1-port-2",
+                    "targetHandle": "N3-port-0",
+                    "attributes": {"index": 2},
+                },
+                {
+                    "source": "N1",
+                    "target": "N2",
+                    "sourceHandle": "N1-port-1",
+                    "targetHandle": "N2-port-0",
+                    "attributes": {"index": 1},
+                },
+            ],
+        },
+    }
+    path = tmp_path / "connectivity.yaml"
+    path.write_text(yaml.safe_dump(doc))
+    return str(path)
+
+
+def test_connectivity_yaml_parses_topology(tmp_path):
+    conn = load_connectivity(_connectivity_doc(tmp_path))
+    assert conn.n_nodes == 4
+    assert conn.n_edges == 4
+    # endpoints are emitted in edge-index order after the sort
+    assert list(conn.tail_node) == [0, 1, 1, 2]
+    assert list(conn.head_node) == [1, 2, 3, 3]
+    assert list(conn.tail_port) == [0, 1, 2, 1]
+    assert list(conn.head_port) == [0, 0, 0, 1]
     assert int(conn.row_ptr[-1]) == 2 * conn.n_edges

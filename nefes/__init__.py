@@ -3,7 +3,7 @@
 Nefes (Turkish for "breath") models a fluid system as a directed graph and solves
 for the steady mean flow and the linear perturbation behavior around it (two
 acoustic characteristics plus the entropy wave), without resolving the full 3-D
-field.  Reacting flows and their thermoacoustics are first-class citizens.
+field.  Reacting flows and their thermoacoustics are among the target applications.
 
 State lives on edges ``(mdot, p, h_t)``; equations live on nodes (elements)
 plus one transport equation per edge, giving a square ``3E`` system that is

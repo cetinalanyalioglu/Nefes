@@ -4,6 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nefes"
+authors = [
+    { name = "Cetin Alanyalioglu" },
+]
 version = "0.1.0"
 description = "Network solver for reacting compressible flows and thermoacoustics"
 requires-python = ">=3.11"

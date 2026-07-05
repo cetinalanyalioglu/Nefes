@@ -1,4 +1,4 @@
-"""Thermo subpackage: pluggable gas-model boundary (AD-3)."""
+"""Thermo subpackage: pluggable gas-model boundary."""
 
 from .api import (
     thermo_update,

@@ -1,11 +1,10 @@
 """Compiled (``@njit``) chemistry kernel: the Nefes-side of the thermolib boundary.
 
-This is **Part B** of the reactive-flow split (REQUIREMENTS A/B).  ``thermolib``
-(Part A) is the standalone, pure-numpy authority: it ingests NASA-7 (Cantera
+``thermolib`` is the standalone, pure-numpy authority: it ingests NASA-7 (Cantera
 YAML) and NASA-9 (NASA Glenn / CEA ``thermo.inp``) data into one **canonical
 9-term** representation, solves chemical equilibrium, and is validated against
-Cantera.  But it is deliberately *not* numba-compiled, so it cannot be called
-from inside the network's ``@njit`` residual/Jacobian loop.
+Cantera.  It is deliberately *not* numba-compiled, so it cannot be called from
+inside the network's ``@njit`` residual/Jacobian loop.
 
 This module re-implements the same element-potential equilibrium math in numba,
 consuming the flat NASA-9 arrays ``thermolib.SpeciesLibrary.nasa9_arrays()``
@@ -38,8 +37,7 @@ import numpy as np
 from numba import njit, types
 from numba.extending import overload
 
-# Universal gas constant [J/(mol*K)] -- identical to thermolib.constants.
-RU = 8.31446261815324
+from thermolib.constants import R_UNIVERSAL as RU  # universal gas constant [J/(mol*K)]
 
 # Equilibrium-solver controls.
 MAX_ITER = 300
@@ -55,9 +53,18 @@ LN_TRACE_CAP = 9.2103404  # -ln(1e-4): caps trace-species growth per step
 def species_thermo9(coeffs, Tint, T, cpR, hRT, gRT):
     """Fill ``cp/R, h/RT, g/RT`` for every species at temperature ``T``.
 
-    ``coeffs`` is ``(Ns, MI, 9)``; ``Tint`` is ``(Ns, MI-1)`` interior
-    breakpoints padded with ``+inf``.  Output buffers follow ``T``'s dtype.  The
-    interval is chosen on ``T.real`` so a complex perturbation never changes it.
+    Parameters
+    ----------
+    coeffs : numpy.ndarray
+        Canonical 9-term coefficients, shape ``(Ns, MI, 9)``.
+    Tint : numpy.ndarray
+        Interior temperature breakpoints, shape ``(Ns, MI-1)``, padded with ``+inf``.
+    T : float or complex
+        Temperature [K].  The interval is chosen on ``T.real`` so a complex
+        perturbation never changes it.
+    cpR, hRT, gRT : numpy.ndarray
+        Output buffers of length ``Ns`` for ``cp/R``, ``h/RT`` and ``g/RT``; their
+        dtype follows ``T``.
     """
     Ns = coeffs.shape[0]
     m = Tint.shape[1]

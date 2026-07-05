@@ -73,7 +73,7 @@ def recover_edge(model_id, tf, ti, mdot, p, ht, area, Z_el, marker, out, nj_io):
         T, rho, c, W = eq_frozen_state_ke(tf, ti, Z_el, mdot, p, ht, area, nj_io)
     u = mdot / (rho * area)
     M = u / c
-    pt = thermo_total_pressure(model_id, tf, ti, Z_el, M, p, T, c, W)
+    pt = thermo_total_pressure(model_id, tf, M, p, T, c, W)
     out[ES_MDOT] = mdot
     out[ES_P] = p
     out[ES_HT] = ht

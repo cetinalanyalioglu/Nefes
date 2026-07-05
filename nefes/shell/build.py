@@ -15,11 +15,11 @@ import numpy as np
 
 from ..chem.composition import build_streams, enthalpy_mass, species_mass_fractions
 from ..graph.connectivity import (
-    connectivity_from_directed_edges,
     build_connectivity,
     build_jacobian_pattern,
     Connectivity,
 )
+from . import checks
 from .problem import CompiledProblem
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from ..thermo.configure import ThermoConfig
@@ -40,12 +40,26 @@ from ..elements.ids import (
     ELEMENT_TYPE_NAMES,
     KIND_MASS,
     KIND_PRESSURE,
+    PORT_SOURCE,
+    PORT_TARGET,
+    PORT_ANY,
+    port_kinds,
     row_kind_tags,
     STREAM_INTRODUCING,
 )
 
 # Relative tolerance for the equal-area check on constant-area elements.
 _AREA_RTOL = 1e-9
+
+# Boundaries that fix an *absolute pressure* (total_pressure_inlet, pressure_outlet) or tie the
+# pressure level via a flow<->pressure relation (choked_nozzle_outlet).  At least one is needed or
+# the mean-flow pressure level is a free gauge.
+_PRESSURE_REFERENCE_RIDS = (PT_INLET, P_OUTLET, CHOKED_NOZZLE_OUTLET)
+
+# Boundaries that prescribe an advected-scalar (h_t + composition) donor on ingestion.  The
+# mass-flow / choked-nozzle outlets are outflow-only (no backflow), so they carry no such donor --
+# their edge inherits the interior scalars (scalar-transparent, see node_donor).
+_SCALAR_BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
 
 
 def _node_label(n: int, el: ElementSpec) -> str:
@@ -55,7 +69,58 @@ def _node_label(n: int, el: ElementSpec) -> str:
     return f"element {n}{name} ({typ})"
 
 
-def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.ndarray) -> None:
+def _take_port(kinds, used, allowed):
+    """Claim the lowest free local port whose kind is in ``allowed`` (or any free one).
+
+    Returns the chosen port index and marks it used.  When ``kinds`` is ``None`` (the node's
+    degree does not match its declared port count, an error :func:`validate_network` reports)
+    or no kind-matching port is free, it falls back to the lowest free port so assignment still
+    completes -- e.g. a boundary edge drawn against its nominal direction lands on the element's
+    only port, and the mean-flow solve reverses the sign there.
+    """
+    if kinds is not None:
+        for i, k in enumerate(kinds):
+            if not used[i] and k in allowed:
+                used[i] = True
+                return i
+    for i in range(len(used)):  # fallback: lowest free port, regardless of kind
+        if not used[i]:
+            used[i] = True
+            return i
+    raise AssertionError("no free port")  # unreachable: exactly deg edges touch each node
+
+
+def _assign_ports_by_kind(elements: List[ElementSpec], edges) -> list:
+    """Assign each directed edge to a kind-matching local port at both endpoints.
+
+    The tail (source side) claims the lowest free source / bidirectional port and the head
+    (target side) the lowest free target / bidirectional port, so port 0 of a two-port through
+    element is always its inflow regardless of the order edges were attached.  Returns the
+    endpoint table ``[(tail, tail_port, head, head_port), ...]`` for :func:`build_connectivity`.
+    """
+    n = len(elements)
+    deg = [0] * n
+    for e in edges:
+        deg[e[0]] += 1
+        deg[e[1]] += 1
+    # per-node port kinds when the degree is consistent, else None (order-based fallback so the
+    # degree mismatch surfaces as validate_network's port-count error, not an assignment crash)
+    node_kinds = []
+    for i in range(n):
+        k = port_kinds(elements[i].residual_id, deg[i])
+        node_kinds.append(k if len(k) == deg[i] else None)
+    used = [[False] * deg[i] for i in range(n)]
+    endpoints = []
+    for t, h, *_rest in edges:
+        tp = _take_port(node_kinds[t], used[t], (PORT_SOURCE, PORT_ANY))
+        hp = _take_port(node_kinds[h], used[h], (PORT_TARGET, PORT_ANY))
+        endpoints.append((t, tp, h, hp))
+    return endpoints
+
+
+def validate_network(
+    elements: List[ElementSpec], conn: Connectivity, area: np.ndarray, require_connected=None
+) -> None:
     """Check structural and area-consistency invariants before compiling.
 
     Also normalizes element display names to be unique (see
@@ -71,7 +136,12 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
       ``False`` -- the constant-area duct) carry one shared area across all their
       incident edges.  An intended area change at an area-agnostic element (e.g. a
       sudden expansion) must use an ``isentropic_area_change`` or
-      ``sudden_area_change`` element.
+      ``sudden_area_change`` element;
+    * a pressure reference exists (see :func:`_check_pressure_reference`);
+    * unless disabled, the elements form a single connected sub-network (see
+      :func:`nefes.shell.checks.assert_single_component`);
+    * unless disabled, no edge joins an incompatible element-type pairing (see
+      :func:`nefes.shell.checks.assert_allowed_connections`).
 
     Parameters
     ----------
@@ -81,7 +151,13 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
         The compiled connectivity (per-node incident edges and degrees).
     area : ndarray
         Per-edge cross-sectional area, indexed by global edge id.
+    require_connected : bool, optional
+        Reject a model that splits into disconnected sub-networks.  ``None`` (default) follows
+        the process-wide :data:`nefes.shell.checks.CHECK_CONNECTED` toggle; pass ``True`` /
+        ``False`` to force the check on / off for this call.
     """
+    if require_connected is None:
+        require_connected = checks.CHECK_CONNECTED
     ensure_unique_names(elements)
     area = np.asarray(area, dtype=np.float64)
     if area.size != conn.n_edges:
@@ -145,12 +221,10 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
                     )
 
     _check_pressure_reference(elements)
-
-
-# Boundaries that fix an *absolute pressure* (total_pressure_inlet, pressure_outlet) or tie
-# the pressure level via a flow<->pressure relation (choked_nozzle_outlet).  At least one is
-# needed or the mean-flow pressure level is a free gauge.
-_PRESSURE_REFERENCE_RIDS = (PT_INLET, P_OUTLET, CHOKED_NOZZLE_OUTLET)
+    if require_connected:
+        checks.assert_single_component(conn)
+    if checks.CHECK_CONNECTIONS:
+        checks.assert_allowed_connections(elements, conn)
 
 
 def _check_pressure_reference(elements: List[ElementSpec]) -> None:
@@ -297,7 +371,7 @@ def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec]):
     packs the per-stream forward-blend maps -- so the user only ever names species at
     the elements that introduce them, and the transported scalar count equals the
     number of distinct feeds (never the chemical-element count, never the product
-    species).  The deferred ``equilibrium(library)`` config is finalized here.
+    species).
 
     Returns
     -------
@@ -353,18 +427,37 @@ def build_problem(
     p_ref: float,
     h_ref: float,
     edge_models=None,
+    require_connected=None,
 ) -> CompiledProblem:
-    """Assemble a CompiledProblem from elements and directed (tail, head, area) edges.
+    """Assemble a CompiledProblem from elements and directed ``(tail, head, area)`` edges.
 
-    This is the lower-level functional builder; the user-facing path is
+    The lower-level functional builder; the user-facing path is
     :class:`nefes.shell.network.Network`, whose constructor accepts the same ``nodes`` /
-    ``edges`` lists (and auto-derives the reference scales), then ``.solve()``.
+    ``edges`` lists (and auto-derives the reference scales), then ``.solve()``.  Ports are
+    auto-assigned in attachment order; use :func:`build_problem_from_connectivity` to supply
+    explicit ports (e.g. a UI export where the port ordinals carry meaning).
 
-    Ports are auto-assigned in attachment order.  Use
-    ``build_problem_from_connectivity`` to supply explicit ports (e.g. a UI
-    export where the port ordinals carry meaning).  ``edge_models`` optionally
-    overrides the per-edge thermo model id (default: the config's model on every
-    edge) -- e.g. frozen upstream, equilibrium downstream of a flame.
+    Parameters
+    ----------
+    thermo : ThermoConfig
+        The thermodynamic model (perfect gas, frozen, or reacting equilibrium).
+    elements : list of ElementSpec
+        The network elements, in node order.
+    edges : list of tuple
+        Directed ``(tail, head, area)`` edges referencing node indices.
+    mdot_ref, p_ref, h_ref : float
+        Reference mass flow, pressure and total enthalpy for the residual/variable scaling.
+    edge_models : sequence of int, optional
+        Per-edge thermo-model id override aligned with ``edges``; ``None`` uses the config's
+        model on every edge.
+    require_connected : bool, optional
+        Reject a model that splits into disconnected sub-networks; ``None`` (default) follows
+        the :data:`nefes.shell.checks.CHECK_CONNECTED` toggle.
+
+    Returns
+    -------
+    CompiledProblem
+        The immutable compiled problem ready for the solver.
     """
     # expand any composite elements (build-time graph transform) into atomic elements +
     # internal edges; a composite-free network passes through unchanged (composite_map None).
@@ -376,9 +469,18 @@ def build_problem(
         # sub-element's edges land on the right ports (port 0 in, port 1 out).
         conn = build_connectivity(n_nodes, [(t, tp, h, hp) for (t, h, _a, tp, hp) in edges])
     else:
-        conn = connectivity_from_directed_edges(n_nodes, [(t, h) for (t, h, _a) in edges])
+        conn = build_connectivity(n_nodes, _assign_ports_by_kind(elements, edges))
     return build_problem_from_connectivity(
-        thermo, elements, conn, area, mdot_ref, p_ref, h_ref, edge_models=edge_models, composite_map=composite_map
+        thermo,
+        elements,
+        conn,
+        area,
+        mdot_ref,
+        p_ref,
+        h_ref,
+        edge_models=edge_models,
+        composite_map=composite_map,
+        require_connected=require_connected,
     )
 
 
@@ -392,17 +494,40 @@ def build_problem_from_connectivity(
     h_ref: float,
     edge_models=None,
     composite_map=None,
+    require_connected=None,
 ) -> CompiledProblem:
     """Assemble a CompiledProblem from elements and a prebuilt Connectivity.
 
-    The connectivity carries explicit per-edge ports (``tail_port``/
-    ``head_port``), so port-ordering conventions are preserved exactly.
-    ``composite_map`` (set by :func:`build_problem` when the network carried composite
-    elements) bridges the user-facing ids to the expanded ones; ``None`` otherwise.
+    Parameters
+    ----------
+    thermo : ThermoConfig
+        The thermodynamic model (perfect gas, frozen, or reacting equilibrium).
+    elements : list of ElementSpec
+        The network elements, in node order.
+    conn : Connectivity
+        The compiled connectivity, carrying explicit per-edge ports (``tail_port`` /
+        ``head_port``), so port-ordering conventions are preserved exactly.
+    area : ndarray
+        Per-edge cross-sectional area, indexed by global edge id.
+    mdot_ref, p_ref, h_ref : float
+        Reference mass flow, pressure and total enthalpy for the residual/variable scaling.
+    edge_models : sequence of int, optional
+        Per-edge thermo-model id override; ``None`` uses the config's model on every edge.
+    composite_map : CompositeMap, optional
+        Bridges the user-facing element ids to the expanded ones when the network carried
+        composite elements (set by :func:`build_problem`); ``None`` otherwise.
+    require_connected : bool, optional
+        Reject a model that splits into disconnected sub-networks; ``None`` (default) follows
+        the :data:`nefes.shell.checks.CHECK_CONNECTED` toggle.
+
+    Returns
+    -------
+    CompiledProblem
+        The immutable compiled problem ready for the solver.
     """
     n_nodes = len(elements)
     area = np.ascontiguousarray(area, dtype=np.float64)
-    validate_network(elements, conn, area)
+    validate_network(elements, conn, area, require_connected=require_connected)
 
     # discover the feed streams from the network and finalize the (reacting) thermo
     # bundle: the transported mixture fractions are the distinct injected compositions.
@@ -416,9 +541,8 @@ def build_problem_from_connectivity(
     # least one equilibrium flame and no explicit per-edge override runs EQ_MARKER on every edge
     # and transports one extra "burnt" marker scalar (the last advected scalar) that gates the
     # frozen/equilibrium blend.  The marker rides the *signed* mass flow, so it labels "downstream
-    # of a flame" robustly regardless of how the edges were drawn -- demoting the old topology
-    # flood-fill to the marker's initial guess.  An explicit ``edge_models`` keeps the hard
-    # per-edge closure (EQ_FROZEN/EQ_KERNEL, no marker), the power-user escape hatch.
+    # of a flame" robustly regardless of how the edges were drawn.  An explicit ``edge_models``
+    # keeps the hard per-edge closure (EQ_FROZEN/EQ_KERNEL, no marker), the power-user escape hatch.
     flame_nodes = {n for n in range(n_nodes) if int(node_rid[n]) == FLAME_EQUILIBRIUM}
     marker_gated = thermo.model_id == EQ_KERNEL and bool(flame_nodes) and edge_models is None
     n_marker = 1 if marker_gated else 0
@@ -439,10 +563,6 @@ def build_problem_from_connectivity(
     # the remaining n_elem slots the feed/backflow elemental composition -- so the
     # donor kernel indexes npar_f[pb + 1 + s] for advected scalar s (s = 0 is h_t).
     n_elem = thermo.n_elem
-    # boundaries that prescribe an advected-scalar (h_t + composition) donor on ingestion.
-    # The mass-flow / choked-nozzle outlets are outflow-only (no backflow), so they carry no
-    # such donor -- their edge inherits the interior scalars (scalar-transparent, see node_donor).
-    boundary_rids = (MASS_FLOW_INLET, PT_INLET, P_OUTLET)
     # The burnt marker is the *last* advected scalar, so its donor param sits after the
     # composition.  A fresh feed/backflow enters with marker = 0 (the default); a boundary
     # may set ``marker = 1`` to inject already-burnt gas (e.g. exhaust-gas recirculation).
@@ -453,7 +573,7 @@ def build_problem_from_connectivity(
         fp = list(el.fparams)
         k = -1 if node_stream is None else node_stream.get(n, -1)
         marker_param = [float(el.marker)] if n_marker else []
-        if el.residual_id in boundary_rids and len(fp) >= 2:
+        if el.residual_id in _SCALAR_BOUNDARY_RIDS and len(fp) >= 2:
             base, Tt = float(fp[0]), float(fp[1])
             fp = [base] + _boundary_scalars(thermo, el, Tt, n_elem, _node_label(n, el), k) + marker_param
         elif el.residual_id == MASS_SOURCE:
@@ -517,10 +637,9 @@ def build_problem_from_connectivity(
                 "for the frozen closure to reconstruct from"
             )
 
-    # burnt-marker initial guess: the old topology flood-fill, demoted to the marker's seed
-    # (b = 1 downstream of a flame along the declared arrows, b = 0 elsewhere).  Correctness no
-    # longer depends on it -- the transport self-corrects a backward-drawn flame -- it only warms
-    # the start.  None when the network carries no marker.
+    # burnt-marker initial guess by a topology flood-fill (b = 1 downstream of a flame along the
+    # declared arrows, b = 0 elsewhere); only warms the start, the transport self-corrects a
+    # backward-drawn flame at convergence.  None when the network carries no marker.
     marker_seed = _burnt_seed(conn, flame_nodes) if marker_gated else None
 
     return CompiledProblem(

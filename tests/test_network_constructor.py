@@ -212,3 +212,15 @@ def test_problem_property_caches_and_invalidates():
     assert first is net.problem and net._compiled is first  # cached: same object on re-access
     net.add(cat.duct(0.1))  # any topology change drops the cache
     assert net._compiled is None
+
+
+def test_kind_aware_ports_put_inflow_on_port_zero():
+    # Kind-aware auto-assignment claims each edge a direction-matching port: a two-port through
+    # element's port 0 is its inflow (orient -1) and port 1 its outflow (orient +1), independent
+    # of the order edges were attached.
+    nodes = [cat.total_pressure_inlet(1.2e5, 300.0), cat.duct(), cat.pressure_outlet(1.0e5, 300.0)]
+    for edges in ([(0, 1, 0.05), (1, 2, 0.05)], [(1, 2, 0.05), (0, 1, 0.05)]):  # forward / reverse-listed
+        prob = build_problem(CFG, nodes, edges, 10.0, 1.0e5, CP * 300.0)
+        base = int(prob.row_ptr[1])  # the duct node
+        assert int(prob.orient[base]) == -1  # port 0 points into the duct
+        assert int(prob.orient[base + 1]) == +1  # port 1 out of it

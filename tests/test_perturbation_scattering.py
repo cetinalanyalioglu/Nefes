@@ -12,7 +12,8 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
+from nefes.shell.build import build_problem, build_problem_from_connectivity
+from nefes.graph.connectivity import build_connectivity
 from nefes.elements.ids import ACOUSTIC_DUCT, ACOUSTIC_DEFAULT, ACOUSTIC_FLAME
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
@@ -507,10 +508,26 @@ def test_branched_reversal_well_posed():
     assert sum(s.startswith("h_{") for s in out) == 1  # one genuine outlet carries outgoing entropy
 
 
-def test_verifier_rejects_reverse_wired_duct():
+def test_reverse_listed_duct_is_auto_flow_aligned():
+    # Kind-aware port assignment claims each edge a direction-matching port, so port 0 of a
+    # duct is its inflow regardless of the order edges were listed: a reverse-listed duct is
+    # auto-corrected and passes the acoustic flow-alignment verifier.
     net = [cat.total_pressure_inlet(110000.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
-    edges = [(1, 2, 0.05), (0, 1, 0.05)]  # outgoing edge first -> port 0 points OUT: banned
+    edges = [(1, 2, 0.05), (0, 1, 0.05)]  # outgoing edge listed first
     prob = build_problem(CFG, net, edges, 10.0, 101325.0, CP * 300.0)
+    res = solve(prob)
+    assert res.converged
+    verify_acoustic(prob, res.x)  # no raise: port 0 points into the duct
+
+
+def test_verifier_rejects_reverse_wired_duct():
+    # Explicitly pinned ports bypass kind-aware assignment: pin the duct's port 0 to its
+    # outgoing edge so it points OUT, and the acoustic verifier still rejects it.
+    net = [cat.total_pressure_inlet(110000.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
+    endpoints = [(0, 0, 1, 1), (1, 0, 2, 0)]  # duct port 0 = outgoing edge (orient +1: points OUT)
+    conn = build_connectivity(3, endpoints)
+    area = np.array([0.05, 0.05])
+    prob = build_problem_from_connectivity(CFG, net, conn, area, 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
     assert res.converged
     with pytest.raises(ValueError, match="flow-aligned"):

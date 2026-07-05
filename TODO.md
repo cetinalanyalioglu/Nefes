@@ -3,11 +3,13 @@
 - [ ] Proper estimation of friction coefficient for the pipe element, could be Moody charts or some other correlation.
 - [ ] Full-nozzle composite carrying both distinct area reductions of De Domenico Fig. 3 in one element: the sub-throat vena contracta (`A_min = Gamma*A_T <= A_T`, sets the effective throat / choke) *and* the recovery jet plane (`A_j = beta*A_2 >= A_T`). Existing `lossy_nozzle` has only `A_j`; `sudden_contraction` only a downstream-referenced vena contracta. Stage `A_1 ->isen-> A_T ->isen-> Gamma*A_T ->isen-> A_j ->Borda-> A_2` with `Gamma`, `beta` inputs (later geometry-derived, see `scratch/nozzle-shape-loss-prediction.md`).
 - [ ] Combined linear+quadratic (Forchheimer) flow resistance: `linear_resistance` alone only captures the viscous low-flow regime and undershoots real screens/dampers at higher mass flow, while `loss` (quadratic) alone loses all acoustic resistance at the quiescent (M->0) limit; add a combined element (`dpt = a*mdot + b*mdot*abs(mdot)`) or a composite chaining the two existing atoms so both regimes and the quiescent damping hold together.
+- [ ] We should support Cantera YAML, and do not have our own format for species library / mechanism files. Only the "thermo.inp" style input for species library, and Cantera style input for species library and mechanisms (mechanisms not implented yet)
 
 ## To document
 
 - [ ] We would prefer numbered, hierarchical sections for ease in referencing
 - [ ] "Solution variables and state recovery", the section describes the thermo derivatives for the case of perfect gas, but we'd like to see here how the equilibrium solver gets into play through derivative (without going into internals of equilibrium solver)
+- [ ] A proper flowchart for mean flow solver
 
 ## To verify
 
@@ -19,6 +21,7 @@
 ## To discuss
 
 - [ ] "C_c" and "C_d" (discharge coefficient) distinction, we should made it clear. And if we not do so already, we should start supporting "C_d".
+- [ ] We have a nice way of accessing and bundling a generic species library. How about viscosity and such transport properties? How can we handle this? How does NASA CEA and Cantera handle this?
 
 ## To test
 
@@ -29,6 +32,7 @@
 - [ ] The LaTeX rendering, especially inline rendering in Quarto docs still has a large font size, we need to reduce this a bit.
 - [ ] In notebooks, we seem to have too many imports from our package, looking a bit intimidating. It is too much for the user, and perhaps some functionality could be offered as class methods? We should discuss.
 - [ ] We don't have any mechanism to prevent connecting incompatible elements with each other - see the guardrails we put in the UI. Perhaps we were too strict, this is open to re-evalute.
+- [ ] UI/solver parity: the solver's `CHECK_CONNECTED` rejects multiple disconnected sub-networks, but the UI validity pass only flags fully-isolated nodes. Add a connected-components check to the UI so a UI-valid model can't fail on solve.
 
 ## Deferred
 

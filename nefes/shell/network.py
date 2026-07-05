@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
+from thermolib.constants import R_UNIVERSAL
 
 from ..thermo.configure import ThermoConfig, perfect_gas
 from ..thermo.api import PERFECT_GAS, EQ_KERNEL
 from ..graph.connectivity import build_connectivity
 from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
+from . import checks
 from .build import build_problem, build_problem_from_connectivity
 from ..elements.composite import is_composite, CompositeView
 from ..elements.ids import ELEMENT_TYPE_NAMES, CHOKED_NOZZLE_OUTLET
@@ -56,18 +58,15 @@ class Network:
         nodes=None,
         edges=None,
         *,
-        p_ref=101325.0,
-        T_ref=300.0,
-        mdot_ref=None,
-        h_ref=None,
         edge_models=None,
+        require_connected=None,
+        **refs,
     ):
         """Create a network, optionally fully specified in one shot.
 
         The three positional arguments -- ``gas``, ``nodes`` and ``edges`` -- are the whole
         interface for the common one-shot case; the one-shot form supersedes the lower-level
-        :func:`nefes.shell.build.build_problem`.  The remaining keyword-only arguments
-        are seldom-touched reference/advanced overrides.
+        :func:`nefes.shell.build.build_problem`.
 
         Parameters
         ----------
@@ -79,26 +78,42 @@ class Network:
             Directed edges referencing node indices, attached via :meth:`connect`.  Each is
             ``(tail, head, area)`` or, to pin the local ports, ``(tail, head, area, tail_port,
             head_port)``; ports left unspecified are auto-assigned in attachment order.
-        p_ref : float, optional
-            Absolute-pressure gauge reference [Pa] (default 101325).
-        T_ref : float, optional
-            Reference temperature [K] for the initial guess (default 300).
-        mdot_ref, h_ref : float, optional
-            Advanced seed overrides for the residual scaling; normally auto-derived and
-            re-measured during the solve, so rarely set.
         edge_models : sequence of int, optional
             Advanced per-edge thermo-model id override aligned with ``edges`` (a hard
             frozen/equilibrium closure); ``None`` entries use the gas default.  Normally left
             unset -- a reacting network with an equilibrium flame gates the closure
             automatically off the transported burnt marker.
+        require_connected : bool, optional
+            Reject a model that splits into disconnected sub-networks.  ``None`` (default)
+            follows the process-wide :data:`nefes.shell.checks.CHECK_CONNECTED` toggle; pass
+            ``True`` / ``False`` to force it for this network.
+
+        Other Parameters
+        ----------------
+        p_ref : float, optional
+            Absolute-pressure gauge reference [Pa] (default 101325).
+        T_ref : float, optional
+            Reference temperature [K] for the initial guess (default 300).
+        mdot_ref, h_ref : float, optional
+            Seed overrides for the residual scaling; normally auto-derived and re-measured
+            during the solve, so rarely set.
+
+        Notes
+        -----
+        The reference scales (``p_ref``, ``T_ref``, ``mdot_ref``, ``h_ref``) are keyword-only
+        advanced overrides accepted through ``**refs``: the casual user leaves them alone and
+        they are auto-derived, while an advanced user can still pin any of them by name.
         """
         self.gas = gas if gas is not None else perfect_gas()
-        self.p_ref = p_ref
-        self.T_ref = T_ref
-        self._mdot_ref = mdot_ref
+        self.require_connected = require_connected
+        self.p_ref = refs.pop("p_ref", 101325.0)
+        self.T_ref = refs.pop("T_ref", 300.0)
+        self._mdot_ref = refs.pop("mdot_ref", None)
         # Explicit absolute-enthalpy datum; if None, falls back to ``cp * T_ref`` (perfect-gas convention).
         # Reacting closures need the gas's absolute-enthalpy reference here instead.
-        self._h_ref = h_ref
+        self._h_ref = refs.pop("h_ref", None)
+        if refs:
+            raise TypeError(f"unexpected keyword argument(s): {', '.join(sorted(refs))}")
         self._elements: List[ElementSpec] = []
         self._edges: List[Tuple[int, int, float]] = []
         self._ports: List[Tuple[Optional[int], Optional[int]]] = []
@@ -334,10 +349,25 @@ class Network:
             conn = build_connectivity(len(self._elements), endpoints)
             area = np.array([a for (_t, _h, a) in self._edges], dtype=np.float64)
             return build_problem_from_connectivity(
-                self.gas, self._elements, conn, area, mdot_ref, self.p_ref, h_ref, edge_models=edge_models
+                self.gas,
+                self._elements,
+                conn,
+                area,
+                mdot_ref,
+                self.p_ref,
+                h_ref,
+                edge_models=edge_models,
+                require_connected=self.require_connected,
             )
         return build_problem(
-            self.gas, self._elements, self._edges, mdot_ref, self.p_ref, h_ref, edge_models=edge_models
+            self.gas,
+            self._elements,
+            self._edges,
+            mdot_ref,
+            self.p_ref,
+            h_ref,
+            edge_models=edge_models,
+            require_connected=self.require_connected,
         )
 
     def solve(self, x0=None, **kw) -> "Solution":
@@ -369,15 +399,8 @@ class Network:
         res = _solve(prob, x0=x0, **kw)
         sol = Solution(self, prob, res)
         if res.converged:
-            for nz in sol.unchoked_nozzles():
-                warnings.warn(
-                    f"choked_nozzle_outlet {nz['name']!r} (edge {nz['edge']}): the specified back pressure "
-                    f"{nz['back_pressure']:.4g} Pa exceeds the throat's critical pressure "
-                    f"{nz['critical_pressure']:.4g} Pa, so the nozzle would not choke -- the compact choked-nozzle "
-                    f"model does not apply here; use a pressure_outlet, which handles the choked/unchoked transition "
-                    f"against a back pressure.",
-                    stacklevel=2,
-                )
+            for message in sol.verify():
+                warnings.warn(message, stacklevel=2)
         return sol
 
     def initial_guess(self, **kw):
@@ -538,7 +561,8 @@ class Network:
             "<b>Network</b> &nbsp;&middot;&nbsp; " + " &nbsp;|&nbsp; ".join(parts) + "</div>"
         )
 
-        out = [header]
+        # Each listing becomes one flex column so the element and edge tables sit side by side.
+        blocks = []
         if n_el:
             body = []
             for i, el in enumerate(self._elements[:_REPR_MAX_ROWS]):
@@ -550,21 +574,28 @@ class Network:
                 body.append(
                     [str(i), self._node_label(i), self._type_name(el) + src],
                 )
-            out.append(_html_table(("#", "name", "type"), body, ("right", "left", "left")))
+            block = [_caption("Elements"), _html_table(("#", "name", "type"), body, ("right", "left", "left"))]
             if n_el > _REPR_MAX_ROWS:
-                out.append(f"<div style='color:#888;font-size:0.85em'>... ({n_el - _REPR_MAX_ROWS} more)</div>")
+                block.append(f"<div style='color:#888;font-size:0.85em'>... ({n_el - _REPR_MAX_ROWS} more)</div>")
+            blocks.append("".join(block))
 
         if n_ed:
             body = [
                 [str(i), f"{self._node_label(t)} &rarr; {self._node_label(h)}", f"{a:.4g}", self._edge_names[i]]
                 for i, (t, h, a) in enumerate(self._edges[:_REPR_MAX_ROWS])
             ]
-            out.append(
-                _html_table(("#", "connection", "area [m&sup2;]", "name"), body, ("right", "left", "right", "left"))
-            )
+            block = [
+                _caption("Edges"),
+                _html_table(("#", "connection", "area [m&sup2;]", "name"), body, ("right", "left", "right", "left")),
+            ]
             if n_ed > _REPR_MAX_ROWS:
-                out.append(f"<div style='color:#888;font-size:0.85em'>... ({n_ed - _REPR_MAX_ROWS} more)</div>")
-        return "".join(out)
+                block.append(f"<div style='color:#888;font-size:0.85em'>... ({n_ed - _REPR_MAX_ROWS} more)</div>")
+            blocks.append("".join(block))
+
+        columns = "".join(f"<div>{b}</div>" for b in blocks)
+        flex = "display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap"
+        tables = f"<div style='{flex}'>{columns}</div>" if blocks else ""
+        return header + tables
 
 
 def _text_table(headers, rows, align, indent=0):
@@ -580,6 +611,11 @@ def _text_table(headers, rows, align, indent=0):
         return pad + "  " + "  ".join(out).rstrip()
 
     return [fmt(headers)] + [fmt(r) for r in rows]
+
+
+def _caption(text):
+    """Small bold caption above a repr table (labels the side-by-side element/edge columns)."""
+    return f"<div style='font-family:sans-serif;font-size:0.85em;font-weight:bold;margin-bottom:2px'>{text}</div>"
 
 
 def _html_table(headers, rows, align):
@@ -857,7 +893,7 @@ class Solution:
         heats, ``g = c^2 W / (R_u T)``).  For every such element given a ``back_pressure`` at
         construction, this compares it to ``p*`` at the converged state and returns the nozzles
         that would *not* actually choke -- the compact choked-nozzle model does not apply to
-        them.  :meth:`Network.solve` calls this and warns for each; call it directly to inspect.
+        them.  One of the checks :meth:`verify` runs after a solve; call it directly to inspect.
 
         Returns
         -------
@@ -866,7 +902,6 @@ class Solution:
             "critical_pressure", "p_t"}``.  Empty when every nozzle with a set back pressure is
             genuinely choked (or none set one).
         """
-        RU = 8.31446261815324  # universal gas constant [J/(mol K)] (matches thermolib.constants)
         p_t, c, W, T = self.field("p_t"), self.field("c"), self.field("W"), self.field("T")
         cmap = getattr(self.problem, "composite_map", None)
         out = []
@@ -879,7 +914,7 @@ class Solution:
             # map the user node id to its compiled (expanded) node id, then to its single edge
             node = cmap.expanded_nodes(user_n)[0] if cmap is not None else user_n
             e = int(self.problem.col_edge[self.problem.row_ptr[node]])
-            gamma = float(c[e]) ** 2 * float(W[e]) / (RU * float(T[e]))
+            gamma = float(c[e]) ** 2 * float(W[e]) / (R_UNIVERSAL * float(T[e]))
             p_crit = float(p_t[e]) * (2.0 / (gamma + 1.0)) ** (gamma / (gamma - 1.0))
             if float(el.back_pressure) > p_crit:
                 out.append(
@@ -893,6 +928,34 @@ class Solution:
                     }
                 )
         return out
+
+    def verify(self) -> list:
+        """Run the post-solve model-validity checks and return one message per issue found.
+
+        The single home for checks that can only be evaluated once the mean flow is converged
+        (as opposed to the structural checks :func:`nefes.shell.build.validate_network` runs at
+        compile time).  Each check is gated by its ``CHECK_*`` toggle in
+        :mod:`nefes.shell.checks`; currently this is the choked-nozzle back-pressure check
+        (:meth:`unchoked_nozzles`, gated by ``CHECK_CHOKED_NOZZLE``).  :meth:`Network.solve`
+        calls this on a converged solution and re-emits each message as a warning; call it
+        directly to collect them without the warnings machinery.
+
+        Returns
+        -------
+        list of str
+            Human-readable messages, one per issue; empty when the solution passes every check.
+        """
+        messages = []
+        if checks.CHECK_CHOKED_NOZZLE:
+            for nz in self.unchoked_nozzles():
+                messages.append(
+                    f"choked_nozzle_outlet {nz['name']!r} (edge {nz['edge']}): the specified back pressure "
+                    f"{nz['back_pressure']:.4g} Pa exceeds the throat's critical pressure "
+                    f"{nz['critical_pressure']:.4g} Pa, so the nozzle would not choke -- the compact choked-nozzle "
+                    f"model does not apply here; use a pressure_outlet, which handles the choked/unchoked "
+                    f"transition against a back pressure."
+                )
+        return messages
 
     def mixture_fractions(self, e: int) -> dict:
         """Transported feed-stream mixture fractions ``{stream_label: xi}`` on edge ``e``.

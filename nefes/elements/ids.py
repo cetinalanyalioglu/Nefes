@@ -43,6 +43,17 @@ KIND_ENTHALPY = 2
 # Human-readable kind names, for per-equation residual reporting.
 KIND_NAMES = {KIND_MASS: "mass", KIND_PRESSURE: "pressure", KIND_ENTHALPY: "enthalpy"}
 
+# Port-kind tags: the nominal flow direction an element declares at a local port.  This is a
+# topological label (which way the drawn edge points), not a physical constraint -- the solved
+# mean flow may still reverse.  An edge joins a source port (its tail) to a target port (its
+# head); a PORT_ANY manifold port accepts either end.
+PORT_TARGET = 0  # flow enters the element here (the edge's head; orient -1)
+PORT_SOURCE = 1  # flow leaves the element here (the edge's tail; orient +1)
+PORT_ANY = 2  # symmetric manifold port with no fixed role (junction / lossless splitter)
+
+# Human-readable port-kind names, for validation / reporting messages.
+PORT_KIND_NAMES = {PORT_TARGET: "target", PORT_SOURCE: "source", PORT_ANY: "any"}
+
 
 def row_kind_tags(rid, deg):
     """Equation-kind tag (``KIND_*``) for each balance row an element emits.
@@ -99,6 +110,69 @@ FIXED_NPORTS = {
     PIPE: 2,
     TRANSFER_MATRIX: 2,
 }
+
+# Per-local-port nominal flow direction for each fixed-port element, in port order.  Inlets
+# emit into their edge (source); outlets and the impermeable terminations receive (target); a
+# two-port through element takes flow in at port 0 (target) and out at port 1 (source).  The
+# variable-port manifolds are handled by rule in :func:`port_kinds` (they are absent here).
+_PORT_KINDS_FIXED = {
+    MASS_FLOW_INLET: (PORT_SOURCE,),
+    PT_INLET: (PORT_SOURCE,),
+    SUPERSONIC_INLET: (PORT_SOURCE,),
+    P_OUTLET: (PORT_TARGET,),
+    MASS_FLOW_OUTLET: (PORT_TARGET,),
+    CHOKED_NOZZLE_OUTLET: (PORT_TARGET,),
+    SUPERSONIC_OUTLET: (PORT_TARGET,),
+    WALL: (PORT_TARGET,),
+    CAVITY: (PORT_TARGET,),
+    ISEN_AREA_CHANGE: (PORT_TARGET, PORT_SOURCE),
+    SUDDEN_AREA_CHANGE: (PORT_TARGET, PORT_SOURCE),
+    LOSS: (PORT_TARGET, PORT_SOURCE),
+    LINEAR_RESISTANCE: (PORT_TARGET, PORT_SOURCE),
+    DUCT: (PORT_TARGET, PORT_SOURCE),
+    PIPE: (PORT_TARGET, PORT_SOURCE),
+    FLAME_HEAT_RELEASE: (PORT_TARGET, PORT_SOURCE),
+    FLAME_EQUILIBRIUM: (PORT_TARGET, PORT_SOURCE),
+    MASS_SOURCE: (PORT_TARGET, PORT_SOURCE),
+    TRANSFER_MATRIX: (PORT_TARGET, PORT_SOURCE),
+}
+
+
+def port_kinds(rid, deg):
+    """Nominal flow-direction tag (``PORT_*``) for each local port of an element.
+
+    The single source of truth for an element's per-port roles, keyed on the local integer
+    port index (port ``i`` is entry ``i`` of the returned list).  Fixed-port elements read the
+    :data:`_PORT_KINDS_FIXED` table; the variable-port manifolds are handled by rule -- the
+    static-pressure junction and the lossless splitter are symmetric (every port
+    :data:`PORT_ANY`), while the forced splitter pins port 0 as its single inflow
+    (:data:`PORT_TARGET`) and the remaining ``deg - 1`` outflows as :data:`PORT_SOURCE`.
+
+    Parameters
+    ----------
+    rid : int
+        The element's ``residual_id``.
+    deg : int
+        The element's degree (its number of ports).
+
+    Returns
+    -------
+    list of int
+        One ``PORT_*`` tag per local port, in port order.
+
+    See Also
+    --------
+    row_kind_tags : the analogous per-residual-row equation-kind tags.
+    """
+    fixed = _PORT_KINDS_FIXED.get(rid)
+    if fixed is not None:
+        return list(fixed)
+    if rid in (JUNCTION, SPLITTER):
+        return [PORT_ANY] * deg
+    if rid == FORCED_SPLITTER:
+        return [PORT_TARGET] + [PORT_SOURCE] * (deg - 1)
+    raise KeyError(f"no port-kind rule for residual id {rid}")
+
 
 # Whether an element permits an area change across it (its incident edges may carry
 # different areas).  Most elements are area-agnostic; the exceptions are the ones
@@ -162,3 +236,15 @@ STREAM_INTRODUCING = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE)
 # Single-port boundary terminations (one equation row, one incident edge): the inlets,
 # outlets and wall.  Shared by the perturbation terminals and the YAML writer.
 BOUNDARY_RIDS = (MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_FLOW_OUTLET, CHOKED_NOZZLE_OUTLET, WALL)
+
+# Element-type pairs that must not sit across a single edge -- a modeling guardrail, not a
+# physical law.  Keyed by residual id -> the set of residual ids it may not be directly
+# connected to; declared on both sides and checked symmetrically (an edge is rejected when
+# either endpoint's type is in the other's set), so it is robust to how the edge was drawn.
+# Seeded with the only rule the UI enforces: two prescribed-inflow boundaries back to back
+# would doubly fix the same edge's flow.  Absent ids (most elements) impose no restriction.
+_INLET_RIDS = frozenset((MASS_FLOW_INLET, PT_INLET))
+DISALLOWED_NEIGHBORS = {
+    MASS_FLOW_INLET: _INLET_RIDS,
+    PT_INLET: _INLET_RIDS,
+}

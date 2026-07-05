@@ -1,14 +1,15 @@
 """Mixture thermodynamic properties from species polynomials.
 
-Implements REQUIREMENTS R-A3.2 (mixture properties composable from species),
-R-A3.4 (frozen *and* equilibrium speed of sound) -- the frozen part lives here;
-the equilibrium part lives in :mod:`thermolib.equilibrium`.
+Mixture properties are composed from the per-species values. The frozen speed of sound
+lives here; the equilibrium speed of sound lives in :mod:`thermolib.equilibrium`.
 
-All functions are complex-analytic in ``T``, ``p`` and the composition vector
-``Y`` (mass fractions): they use only ``+ - * /``, integer powers, ``log`` and
-``sqrt`` with a positive real part, so complex-step differentiation propagates
-through them (R-A6.1).  Mole fractions are floored inside ``log`` by a tiny
-constant to keep ``0 * log 0`` well defined without branching (R-A6.2).
+All functions are complex-analytic in ``T``, ``p`` and the composition vector ``Y`` (mass
+fractions): they use only ``+ - * /``, integer powers, ``log`` and ``sqrt`` with a
+positive real part, so complex-step differentiation propagates through them. Mole
+fractions are floored inside ``log`` by a tiny constant to keep ``0 * log 0`` well defined
+without branching.
+
+Public: :class:`MixtureState`, :func:`mixture_properties`.
 """
 
 from __future__ import annotations

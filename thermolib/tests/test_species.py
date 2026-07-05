@@ -1,8 +1,7 @@
 """SpeciesLibrary: vectorized thermo, NASA7/9 unification, library<->mechanism.
 
-These tests are Cantera-free.  They cover TODO #2 (the species-library naming /
-separation from 'mechanism') and TODO #3 (the array-vectorized thermo core that
-keeps the complex-step contract).
+These tests are Cantera-free. They cover the species-library naming (separation from
+'mechanism') and the array-vectorized thermo core that keeps the complex-step contract.
 """
 
 import numpy as np
@@ -17,8 +16,8 @@ from thermolib import (
 
 
 def test_library_has_no_reactions_concept(native_lib):
-    # A species library is just thermo data: it has species + elements, and is
-    # all equilibrium needs -- there is no 'reactions' on it.
+    # A species library is just thermo data: it has species + elements, and is all
+    # equilibrium needs; there is no 'reactions' on it.
     assert native_lib.n_species == 10
     assert set(native_lib.elements) == {"O", "H", "Ar", "N"}
     assert not hasattr(native_lib, "reactions")

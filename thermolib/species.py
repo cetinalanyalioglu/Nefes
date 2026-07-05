@@ -1,25 +1,24 @@
 """Species thermodynamic data and the :class:`SpeciesLibrary` container.
 
-A **species library** is the thermochemical *material database*: a set of
-chemical species, each with an element composition, a molar mass and a NASA
-polynomial for its standard-state ``cp/h/s/g`` as a function of temperature.
-It carries **no reactions** -- chemical equilibrium needs only the per-species
-thermodynamics (the element-potential formulation, R-A4.1).  Reactions live in a
-:class:`thermolib.mechanism.Mechanism`, which *associates* a species library with
-a reaction set (the jargon "mechanism" is reserved for that combination).
+A **species library** is the thermochemical *material database*: a set of chemical
+species, each with an element composition, a molar mass and a NASA polynomial for its
+standard-state ``cp/h/s/g`` as a function of temperature. It carries **no reactions**;
+chemical equilibrium needs only the per-species thermodynamics (the element-potential
+formulation). Reactions live in a :class:`thermolib.mechanism.Mechanism`, which
+*associates* a species library with a reaction set (the term "mechanism" is reserved for
+that combination).
 
-Implements REQUIREMENTS:
+The native file format is a subset of Cantera's YAML; an optional offline importer builds
+a library from a full Cantera phase. Per-species ``cp,h,s,g(T)`` are evaluated
+complex-analytically in ``T``.
 
-* R-A2.1 -- load element set, species list, per-species NASA coefficients.
-* R-A2.2 -- the native file format is a *subset of Cantera's YAML*.
-* R-A2.3 -- optional offline importer from a full Cantera phase.
-* R-A3.1 -- per-species ``cp,h,s,g(T)`` evaluated *complex-analytically* in ``T``.
+All species share one **canonical 9-term NASA representation** and are evaluated in a
+single vectorized expression over ``(n_species, 9)`` coefficient arrays, with no
+per-species Python loop. Temperature-interval selection branches only on ``Re(T)``
+("locate on the real part"), so the whole evaluation stays complex-step differentiable.
 
-Performance / differentiation (TODO #3, R-A8.1 + A.6): all species share one
-**canonical 9-term NASA representation** and are evaluated in a single vectorized
-expression over ``(n_species, 9)`` coefficient arrays -- no per-species Python
-loop.  Temperature-interval selection branches only on ``Re(T)`` ("locate on the
-real part"), so the whole evaluation stays complex-step differentiable.
+Public: :class:`ThermoPoly`, :func:`NASA7`, :func:`NASA9`, :class:`Species`,
+:class:`SpeciesLibrary`.
 """
 
 from __future__ import annotations
@@ -100,7 +99,7 @@ class ThermoPoly:
         return float(self.Tranges[-1])
 
     def _row(self, T):
-        # Branch on the real part only -> complex-step safe (R-A6.1).
+        # Branch on the real part only -> complex-step safe.
         interior = self.Tranges[1:-1]
         k = int(np.sum(np.asarray(interior, float) <= np.real(T)))
         return self.coeffs[k]
@@ -185,11 +184,10 @@ class Species:
 class SpeciesLibrary:
     """An ordered set of species with their thermodynamic data (no reactions).
 
-    The element matrix ``element_matrix[i, j]`` is the number of atoms of
-    element ``i`` in species ``j`` -- exactly the constraint matrix of the
-    element-potential equilibrium formulation (R-A4.1).  ``P_ref`` is the
-    standard-state pressure the polynomials are referenced to (one atm for the
-    Cantera/YAML path, one bar for the NASA Glenn ``thermo.inp`` path).
+    The element matrix ``element_matrix[i, j]`` is the number of atoms of element ``i`` in
+    species ``j``, exactly the constraint matrix of the element-potential equilibrium
+    formulation. ``P_ref`` is the standard-state pressure the polynomials are referenced to
+    (one atm for the Cantera/YAML path, one bar for the NASA Glenn ``thermo.inp`` path).
     """
 
     elements: list
@@ -256,17 +254,15 @@ class SpeciesLibrary:
         return self._coeffs[self._arangeS, k]  # (n_species, 9)
 
     def nasa9_arrays(self):
-        """Dense NASA-9 arrays for a JIT consumer: ``(coeffs, Tint)``.
+        """Dense NASA-9 arrays for a compiled consumer: ``(coeffs, Tint)``.
 
-        ``coeffs`` is ``(n_species, max_intervals, 9)`` (zero-padded for species
-        with fewer intervals); ``Tint`` is ``(n_species, max_intervals - 1)`` of
-        interior breakpoints, padded with ``+inf`` so an unused slot never
-        advances the interval index.  The active interval for species ``j`` at
-        temperature ``T`` is ``sum(Tint[j] <= T)`` -- the same locate-on-real rule
-        the pure-numpy path uses.  Provided so a compiled (e.g. numba) consumer
-        evaluates the identical thermodynamics from flat arrays without importing
-        this package's Python objects (the Part-A/Part-B boundary: thermolib
-        authors the data, the network kernel consumes the arrays).
+        ``coeffs`` is ``(n_species, max_intervals, 9)`` (zero-padded for species with fewer
+        intervals); ``Tint`` is ``(n_species, max_intervals - 1)`` of interior breakpoints,
+        padded with ``+inf`` so an unused slot never advances the interval index. The active
+        interval for species ``j`` at temperature ``T`` is ``sum(Tint[j] <= T)``, the same
+        locate-on-real rule the pure-numpy path uses. Provided so a compiled (e.g. numba)
+        consumer evaluates the identical thermodynamics from flat arrays without importing
+        this package's Python objects.
         """
         coeffs = np.ascontiguousarray(self._coeffs, dtype=float)
         if self._Tint is None:
@@ -308,7 +304,7 @@ class SpeciesLibrary:
     # -- loaders ---------------------------------------------------------
     @classmethod
     def from_native(cls, path):
-        """Load a native species library (a subset of Cantera YAML), R-A2.2."""
+        """Load a native species library (a subset of Cantera YAML)."""
         with open(path, "r") as fh:
             doc = yaml.safe_load(fh)
         return cls.from_dict(doc)
@@ -321,11 +317,10 @@ class SpeciesLibrary:
 
     @classmethod
     def from_cantera(cls, source, phase_name=None):
-        """Offline importer: species + thermo from a Cantera phase (R-A2.3).
+        """Offline importer: species and thermo from a Cantera phase.
 
-        ``source`` may be a Cantera YAML path or a ``ct.Solution``.  Requires
-        Cantera, but this is an *offline* path, never on the runtime/equilibrium
-        code path (R-A1.2, R-A8.2).
+        ``source`` may be a Cantera YAML path or a ``ct.Solution``. Requires Cantera, but
+        this is an offline path, never on the runtime/equilibrium code path.
         """
         gas = _cantera_solution(source)
         species = [_species_from_cantera(gas, name) for name in gas.species_names]
@@ -333,12 +328,12 @@ class SpeciesLibrary:
 
     @classmethod
     def from_cea(cls, path=None, species=None, P_ref=None):
-        """Build a library from a NASA Glenn / CEA ``thermo.inp`` file (R-A2.1).
+        """Build a library from a NASA Glenn / CEA ``thermo.inp`` file.
 
         ``path`` defaults to the packaged ``thermo.inp`` (so the database need not be
-        named).  ``species`` selects a subset by name (recommended -- ``thermo.inp``
-        holds ~2000 species); ``None`` loads every gaseous record.  ``P_ref`` defaults
-        to one bar (the database's standard state).
+        named). ``species`` selects a subset by name (recommended, as ``thermo.inp`` holds
+        ~2000 species); ``None`` loads every gaseous record. ``P_ref`` defaults to one bar
+        (the database's standard state).
         """
         from .cea import ThermoInp
 
@@ -346,7 +341,7 @@ class SpeciesLibrary:
 
     # -- writer ----------------------------------------------------------
     def to_native_dict(self):
-        """Serialize to a native-YAML-compatible dict (R-A2.2 round-trip)."""
+        """Serialize to a native-YAML-compatible dict (round-trips with :meth:`from_dict`)."""
         return {
             "phases": [
                 {
@@ -365,7 +360,7 @@ class SpeciesLibrary:
 
 
 # ---------------------------------------------------------------------------
-# Shared (de)serialization helpers -- used by both SpeciesLibrary and Mechanism
+# Shared (de)serialization helpers used by both SpeciesLibrary and Mechanism
 # ---------------------------------------------------------------------------
 def _parse_native_doc(doc):
     """Return ``(elements, species, raw_reactions)`` from a native-YAML doc."""

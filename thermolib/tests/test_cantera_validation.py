@@ -1,7 +1,7 @@
-"""Validation oracle: compare thermolib to Cantera when available (R-A8.4).
+"""Validation oracle: compare thermolib to Cantera when available.
 
-Every test here is skipped (not failed) if Cantera is absent (R-A8.2), via the
-``cantera`` fixture's ``importorskip``.
+Every test here is skipped (not failed) if Cantera is absent, via the ``cantera``
+fixture's ``importorskip``.
 """
 
 import numpy as np
@@ -104,7 +104,7 @@ def test_methane_air_flame_via_gri30(setup):
 
 
 def test_kc_matches_cantera(setup):
-    # Shared-Gibbs equilibrium constants (R-A5.2) match Cantera's Kc.
+    # Shared-Gibbs equilibrium constants match Cantera's Kc.
     ct, mech, gas, ctg = setup
     T = 1800.0
     ctg.TP = T, ctg.reference_pressure

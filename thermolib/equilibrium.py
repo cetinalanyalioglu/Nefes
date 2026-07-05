@@ -1,22 +1,22 @@
-"""Backend D: native CEA-style chemical-equilibrium kernel.
+"""Native CEA-style chemical-equilibrium kernel.
 
-Implements the **element-potential (Lagrange-multiplier / CEA-style)**
-formulation (REQUIREMENTS R-A4.1): unknowns are element potentials plus species
-moles, with element conservation as the constraint.  Provides HP equilibrium
-(mandatory MVP, R-A4.1) and TP equilibrium (for validation/reuse, R-A4.3), plus
-the **equilibrium speed of sound** (R-A3.4) from the converged sensitivity
-block.
+Implements the **element-potential (Lagrange-multiplier / CEA-style)** formulation:
+unknowns are element potentials plus species moles, with element conservation as the
+constraint. Provides HP equilibrium and TP equilibrium, plus the **equilibrium speed of
+sound** from the converged sensitivity block.
 
-Differentiation contract (R-A4.2 / R-A6.1): the solve converges on the *real*
-parts of the inputs, then -- if any input is complex -- takes one undamped
-Newton step in log-variables from the converged real state with the full
-complex inputs.  Because the real residual is zero there, that step is exactly
-the implicit-function-theorem sensitivity, so a complex-step perturbation on
-``h``, ``p`` or the composition propagates exact derivatives through the solve.
+Differentiation contract: the solve converges on the *real* parts of the inputs, then, if
+any input is complex, takes one undamped Newton step in log-variables from the converged
+real state with the full complex inputs. Because the real residual is zero there, that
+step is exactly the implicit-function-theorem sensitivity, so a complex-step perturbation
+on ``h``, ``p`` or the composition propagates exact derivatives through the solve.
 
-Algorithm reference: Gordon & McBride, "Computer Program for Calculation of
-Complex Chemical Equilibrium Compositions and Applications", NASA RP-1311
-(1994), Sections 2-3 (all-gas reduced equations and damping).
+Algorithm reference: Gordon & McBride, "Computer Program for Calculation of Complex
+Chemical Equilibrium Compositions and Applications", NASA RP-1311 (1994), Sections 2-3
+(all-gas reduced equations and damping).
+
+Public: :class:`EquilibriumResult`, :func:`equilibrate_HP`, :func:`equilibrate_TP`,
+:func:`elemental_abundance`.
 """
 
 from __future__ import annotations
@@ -199,7 +199,7 @@ def _solve_subset(lib, b, p, h_target, T_init, max_iter=400, tol=1e-11):
             converged = True
             break
 
-    # Phase 2: propagate complex perturbations (R-A4.2 / R-A6.1).
+    # Phase 2: propagate complex perturbations.
     if np.iscomplexobj(b) or np.iscomplexobj(p) or (hp and np.iscomplexobj(h_target)):
         n = n.astype(complex)
         nt = complex(nt)
@@ -239,11 +239,10 @@ def _finalize(lib, n_full, T, p, iterations, converged):
 
 
 def equilibrate_TP(lib, Z_elem, T, p, max_iter=400, tol=1e-11):
-    """Equilibrium at fixed temperature and pressure (R-A4.3).
+    """Equilibrium at fixed temperature and pressure.
 
     ``lib``: a :class:`~thermolib.species.SpeciesLibrary` (or ``Mechanism``).
-    ``Z_elem``: elemental mass fractions (dict or array aligned to
-    ``lib.elements``).
+    ``Z_elem``: elemental mass fractions (dict or array aligned to ``lib.elements``).
     """
     b = elemental_abundance(lib, Z_elem)
     n_full, Tout, it, conv = _solve_subset(lib, b, p, None, T, max_iter=max_iter, tol=tol)
@@ -251,12 +250,11 @@ def equilibrate_TP(lib, Z_elem, T, p, max_iter=400, tol=1e-11):
 
 
 def equilibrate_HP(lib, Z_elem, h, p, T_guess=2000.0, max_iter=400, tol=1e-11):
-    """HP equilibrium: given elemental composition, enthalpy and pressure,
-    return ``T, rho, composition`` and derived properties (R-A4.1).
+    """HP equilibrium: given elemental composition, enthalpy and pressure, return
+    ``T, rho, composition`` and derived properties.
 
     ``lib``: a :class:`~thermolib.species.SpeciesLibrary` (or ``Mechanism``).
-    ``Z_elem``: elemental mass fractions (dict or array aligned to
-    ``lib.elements``).
+    ``Z_elem``: elemental mass fractions (dict or array aligned to ``lib.elements``).
     """
     b = elemental_abundance(lib, Z_elem)
     n_full, Tout, it, conv = _solve_subset(lib, b, p, h, T_guess, max_iter=max_iter, tol=tol)
@@ -266,10 +264,10 @@ def equilibrate_HP(lib, Z_elem, h, p, T_guess=2000.0, max_iter=400, tol=1e-11):
 def _equilibrium_sound_speed(lib, n_full, T, p):
     """Equilibrium speed of sound from the converged sensitivity block.
 
-    Uses the CEA reduced matrix evaluated at the converged composition and the
-    analytic ``(d ln V/d ln T)_P`` / ``(d ln V/d ln P)_T`` / ``cp_eq`` to form
-    the equilibrium ``gamma_s`` and ``a_eq = sqrt(gamma_s * p/rho)`` (R-A3.4).
-    Real-arithmetic linear solves; reuse-friendly and complex-step compatible.
+    Uses the CEA reduced matrix evaluated at the converged composition and the analytic
+    ``(d ln V/d ln T)_P`` / ``(d ln V/d ln P)_T`` / ``cp_eq`` to form the equilibrium
+    ``gamma_s`` and ``a_eq = sqrt(gamma_s * p/rho)``. Real-arithmetic linear solves;
+    reuse-friendly and complex-step compatible.
     """
     afull = lib.element_matrix
     n_real = np.real(n_full)

@@ -1,8 +1,7 @@
-"""NASA Glenn / CEA ``thermo.inp`` reader (TODO #1).
+"""NASA Glenn / CEA ``thermo.inp`` reader.
 
-The bulk is Cantera-free (parse, search, build a library, run equilibrium on
-NASA-9 data).  A final cross-check against Cantera is skipped when Cantera or
-``thermo.inp`` is absent (R-A8.4).
+The bulk is Cantera-free (parse, search, build a library, run equilibrium on NASA-9 data).
+A final cross-check against Cantera is skipped when Cantera or ``thermo.inp`` is absent.
 """
 
 import numpy as np

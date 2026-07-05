@@ -1,13 +1,14 @@
-"""The public ``Thermo`` facade -- the uniform, backend-selectable API (A.9).
+"""The public ``Thermo`` facade: the uniform, backend-selectable API.
 
-Network-agnostic: inputs and outputs are purely thermodynamic
-(composition, ``T``/``h``, ``p``, derived properties) per R-A1.3.
+Network-agnostic: inputs and outputs are purely thermodynamic (composition, ``T``/``h``,
+``p``, derived properties).
 
-A ``Thermo`` is built from a :class:`~thermolib.species.SpeciesLibrary` -- that
-is all equilibrium and mixture properties need.  Passing a
-:class:`~thermolib.mechanism.Mechanism` (a library *plus* reactions) is also
-accepted; the reactions then enable the shared-Gibbs ``K_c`` route and the
-finite-rate design hook.
+A ``Thermo`` is built from a :class:`~thermolib.species.SpeciesLibrary`, which is all
+equilibrium and mixture properties need. Passing a
+:class:`~thermolib.mechanism.Mechanism` (a library *plus* reactions) is also accepted; the
+reactions then enable the shared-Gibbs ``K_c`` route and the finite-rate design hook.
+
+Public: :class:`Thermo`.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ class Thermo:
     Example::
 
         lib  = SpeciesLibrary.from_native("h2o2.yaml")   # or ThermoInp(...).library(...)
-        gas  = Thermo(lib, backend="kernel")             # Backend D (native kernel)
+        gas  = Thermo(lib, backend="kernel")             # native equilibrium kernel
         props = gas.properties(Y, T, p)
         eq    = gas.equilibrate_HP(Z_elem, h, p)
     """
@@ -39,31 +40,29 @@ class Thermo:
         self.backend = make_backend(backend, self.library)
 
     @property
-    def mech(self):  # backward-compatible alias
+    def mech(self):  # alias for the underlying species library
         return self.library
 
     # -- properties ------------------------------------------------------
     def properties(self, Y, T, p):
-        """Mixture properties at ``(Y, T, p)``: cp, cv, gamma, h, s, rho,
-        a_frozen, ... (R-A3.2, R-A3.4 frozen part).
-        """
+        """Mixture properties at ``(Y, T, p)``: cp, cv, gamma, h, s, rho, a_frozen, ..."""
         return self.backend.properties(Y, T, p)
 
     # -- equilibrium -----------------------------------------------------
     def equilibrate_HP(self, Z_elem, h, p, **kw):
-        """HP equilibrium -> T, rho, Y, a_equilibrium, ... (R-A4.1)."""
+        """HP equilibrium -> T, rho, Y, a_equilibrium, ..."""
         return self.backend.equilibrate_HP(Z_elem, h, p, **kw)
 
     def equilibrate_TP(self, Z_elem, T, p, **kw):
-        """TP equilibrium (validation/reuse, R-A4.3)."""
+        """TP equilibrium (validation/reuse)."""
         return self.backend.equilibrate_TP(Z_elem, T, p, **kw)
 
     # -- composition helpers (thermodynamic, network-agnostic) -----------
     def elemental_mass_fractions(self, Y):
         """Elemental mass fractions ``Z`` from species mass fractions ``Y``.
 
-        ``Z_i = W_i * sum_j (a_ij Y_j / W_j)``.  Lets a consumer obtain the
-        first-class elemental descriptor (D-2) from a species state.
+        ``Z_i = W_i * sum_j (a_ij Y_j / W_j)``. Lets a consumer obtain the elemental
+        descriptor from a species state.
         """
         Y = np.asarray(Y)
         Yn = Y / np.sum(Y)
@@ -72,13 +71,13 @@ class Thermo:
         return Z / np.sum(Z)
 
     def enthalpy_mass(self, Y, T):
-        """Mixture specific enthalpy [J/kg] at ``(Y, T)`` (datum: D-1 absolute,
-        formation-inclusive, as carried by the NASA polynomials)."""
+        """Mixture specific enthalpy [J/kg] at ``(Y, T)`` (absolute, formation-inclusive
+        datum, as carried by the NASA polynomials)."""
         Y = np.asarray(Y)
         Yn = Y / np.sum(Y)
         return R_UNIVERSAL * T * np.sum(Yn * self.library.h_RT(T) / self.library.molar_masses)
 
-    # -- finite-rate design hook (secondary target, A.5) -----------------
+    # -- finite-rate design hook -----------------------------------------
     def _require_reactions(self):
         if not self.reactions:
             raise ValueError(
@@ -91,11 +90,10 @@ class Thermo:
     def equilibrium_constants_Kc(self, T):
         """Concentration equilibrium constants ``K_c(T)`` per reaction.
 
-        Derived from the *same* species Gibbs energies used by the equilibrium
-        solver (detailed balance, R-A5.2 / R-A3.3), guaranteeing that a future
-        finite-rate model relaxes exactly to this equilibrium model as t->inf.
-        Provided now so the reverse-rate route is wired even though
-        :meth:`net_rates` itself is a design hook in the MVP.
+        Derived from the *same* species Gibbs energies used by the equilibrium solver
+        (detailed balance), guaranteeing that a future finite-rate model relaxes exactly to
+        this equilibrium model as t->inf. Provided so the reverse-rate route is wired even
+        though :meth:`net_rates` itself is a design hook.
         """
         reactions = self._require_reactions()
         gRT = self.library.g_RT(T)  # dimensionless standard Gibbs
@@ -120,17 +118,16 @@ class Thermo:
         return np.array(Kc)
 
     def net_rates(self, Y, T, p):
-        """Net molar production rates ``wdot(T, p, Y)`` -- *design hook only*.
+        """Net molar production rates ``wdot(T, p, Y)``, a *design hook only*.
 
-        REQUIREMENTS A.5 (secondary target): the architecture is structured so
-        that complex-analytic ``net_rates`` and their derivatives can be added
-        later, with reverse rates from :meth:`equilibrium_constants_Kc` (R-A5.2).
-        The forward/reverse rate assembly is intentionally not implemented in
-        this equilibrium-focused MVP.
+        The architecture is structured so that complex-analytic ``net_rates`` and their
+        derivatives can be added later, with reverse rates from
+        :meth:`equilibrium_constants_Kc`. The forward/reverse rate assembly is not
+        implemented; this path computes chemical equilibrium only.
         """
         raise NotImplementedError(
-            "net_rates is a forward-compatibility design hook (REQUIREMENTS A.5, "
-            "secondary target). The MVP implements chemical equilibrium only. "
-            "Reaction data and the shared K_c route (equilibrium_constants_Kc) "
-            "are wired so this can be completed without an architectural change."
+            "net_rates is a forward-compatibility design hook; chemical equilibrium is "
+            "implemented, finite-rate kinetics is not. Reaction data and the shared K_c "
+            "route (equilibrium_constants_Kc) are wired so this can be completed without "
+            "an architectural change."
         )

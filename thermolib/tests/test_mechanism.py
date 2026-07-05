@@ -1,4 +1,4 @@
-"""Mechanism ingestion and round-trip -- R-A2.1, R-A2.2, R-A2.3."""
+"""Mechanism ingestion and round-trip."""
 
 import numpy as np
 

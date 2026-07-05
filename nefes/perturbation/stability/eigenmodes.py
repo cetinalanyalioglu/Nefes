@@ -42,7 +42,7 @@ import scipy.sparse.linalg as spla
 
 from ..operator.operator import build_acoustic_blocks, assemble_acoustic
 from ..operator.stamps import storage_stamps_from_est
-from ..operator.characteristics import edge_transforms, basis_block_from_state, edge_caloric
+from ..operator.characteristics import edge_transforms, basis_block_from_state
 from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
 from ..operator.terminals import find_terminals
 from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry
@@ -109,27 +109,21 @@ def build_operator(prob, x_bar, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentrop
     blocks : AcousticBlocks
         Frozen per-edge stamps (delays, sources, characteristic transforms).
     est : ndarray
-        Frozen mean edge-state table.
-    K : float
-        ``cp / R`` of the mean gas.
-    cals : list
-        Per-edge caloric rows (reacting "network" flavor).
+        Frozen mean edge-state table (with caloric columns filled).
     L : list of ndarray
         Per-edge ``dx_to_char`` (3x3) maps at the mean state.
     """
-    K = float(prob.tf[0]) / float(prob.tf[1])
-    est = states_table(prob, x_bar)
-    cals = edge_caloric(prob, x_bar)
-    _, L = edge_transforms(est, K, cals)
+    est = states_table(prob, x_bar, caloric=True)
+    _, L = edge_transforms(est)
     # decouple the entropy wave on near-stagnant ducts (tau_0 -> inf would overflow at
-    # complex omega); never affects the acoustic spectrum (theory.md s12.6).
+    # complex omega); never affects the acoustic spectrum.
     u_floor = max(u_floor, _ENTROPY_DECOUPLE_MACH * float(np.max(est[ES_C])))
     blocks = build_acoustic_blocks(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
 
     def A_of(omega):
         return assemble_acoustic(omega, blocks, with_boundaries=True)
 
-    return A_of, blocks, est, K, cals, L
+    return A_of, blocks, est, L
 
 
 def _max_tau(blocks) -> float:
@@ -436,9 +430,7 @@ def eigenmodes(
     degeneracies therefore read as uncertified.  A large ``round_error`` or a mode on
     the region boundary likewise leaves the count ambiguous and is warned about.
     """
-    A_of, blocks, est, K, cals, L = build_operator(
-        prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic
-    )
+    A_of, blocks, est, L = build_operator(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     terminals = find_terminals(prob, x_bar)
     n = int(blocks.J_alg.shape[0])
 
@@ -564,8 +556,6 @@ def eigenmodes(
         residuals=resid,
         L=L,
         est=est,
-        K=K,
-        cals=cals,
         terminals=terminals,
         n_solve=int(prob.n_solve),
         n_edges=int(prob.n_edges),
@@ -573,11 +563,9 @@ def eigenmodes(
         node_names=tuple(getattr(prob, "node_names", ()) or ()),
         expected=expected,
         geometry=build_geometry(prob),
-        storage=storage_stamps_from_est(prob, est, K, cals),
+        storage=storage_stamps_from_est(prob, est),
     )
 
-
-_CHAR_SYM = ("f", "g", "h")
 
 # Cap on the number of mode rows shown in the plain-text repr (the HTML repr lists all of them).
 _REPR_MAX_ROWS = 20
@@ -604,9 +592,7 @@ class EigenmodeResult:
     L : list of ndarray
         Per-edge ``dx_to_char`` (3x3) maps at the frozen mean state.
     est : ndarray
-        Frozen mean edge-state table.
-    K : float
-        ``cp / R`` of the mean gas.
+        Frozen mean edge-state table (with caloric columns filled).
     n_solve : int
         Solve-variable stride per edge in the nodal vector.
     n_edges : int
@@ -626,14 +612,11 @@ class EigenmodeResult:
     residuals: np.ndarray
     L: List[np.ndarray]
     est: np.ndarray
-    K: float
     n_solve: int
     n_edges: int
     contour: Optional[Contour] = None
     node_names: tuple = field(default=())
     expected: Optional[int] = None
-    # per-edge caloric rows (characteristics.edge_caloric) for the reacting "network" flavor
-    cals: Optional[list] = None
     # 1-port boundary terminals (terminals.find_terminals) for acoustic-power diagnostics
     terminals: Optional[list] = None
     # topology + duct lengths for spatial mode-shape reconstruction (modeshape.build_geometry)
@@ -837,8 +820,7 @@ class EigenmodeResult:
         for e in range(self.n_edges):
             w = self.mode_waves(i, e)
             if basis != "char":
-                cal = None if self.cals is None else self.cals[e]
-                w = basis_block_from_state(basis, self.est[:, e], self.K, cal) @ w
+                w = basis_block_from_state(basis, self.est[:, e]) @ w
             out[e] = w
         return out
 
@@ -943,13 +925,11 @@ class EigenmodeResult:
             self.geometry,
             lambda e: self.mode_waves(i, e),
             self.est,
-            self.K,
             complex(self.omega[i]),
             variable=variable,
             spec=spec,
             root=root,
             n_x=n_x,
-            cals=self.cals,
         )
 
     def intensity_along_network(self, i, *, energy_density=False, root=None, n_x=160):

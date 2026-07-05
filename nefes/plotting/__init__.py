@@ -21,7 +21,7 @@ switch every Nefes figure to a Unicode plain-text fallback.
 """
 
 from .theme import COLORWAY, FONT_FAMILY, NEFES_TEMPLATE_NAME, nefes_template, use_nefes_theme
-from .labels import use_latex, latex_enabled, mathify, tex, detex
+from .labels import use_latex, latex_enabled, mathify, tex, detex, tex_text
 from .complex_matrix import (
     plot_complex_matrix,
     plot_transfer_matrix,
@@ -45,6 +45,7 @@ __all__ = [
     "mathify",
     "tex",
     "detex",
+    "tex_text",
     "plot_complex_matrix",
     "plot_transfer_matrix",
     "plot_scattering_matrix",

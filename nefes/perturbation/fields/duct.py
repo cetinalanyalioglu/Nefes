@@ -1,19 +1,19 @@
-"""The length-bearing acoustic duct: phase relations and modal analysis.
+"""Analytic acoustics of a single uniform duct (verification oracle).
 
 A uniform duct of length L carrying mean state ``(c, u)`` delays its three
 characteristic waves by ``tau_+ = L/(u+c)``, ``tau_- = L/(c-u)`` and
-``tau_0 = L/u`` (theory.md s12.3).  With reflection coefficients at the two ends
-the acoustic eigenmodes solve ``det A(omega) = 0``; for a closed-closed
-(rigid-rigid, R = +1) quiescent duct these are ``omega_n = n*pi*c/L``.
-"""
+``tau_0 = L/u``.  With reflection coefficients at the two ends the acoustic
+eigenmodes solve ``det A(omega) = 0``; for a closed-closed (rigid-rigid, R = +1)
+quiescent duct these are ``omega_n = n*pi*c/L``.
 
-# CA: Do we need this file at all?
+``DuctAcoustics`` (the 4x4 system ``A(omega)``) is the known-answer oracle the
+network eigensolver is checked against; ``scattering_2port`` is the analytic
+plane-wave transfer the operator's duct transfer matrix is checked against.
+"""
 
 from dataclasses import dataclass
 
 import numpy as np
-
-from .drivers import modes_from_det
 
 
 @dataclass
@@ -68,13 +68,13 @@ class DuctAcoustics:
             return np.linalg.det(self.system(omega, R0, R1))
 
 
-def duct_modes(c, length, n_modes=4, R0=1.0, R1=1.0, u=0.0, n_grid=4000):
-    """First ``n_modes`` acoustic eigenfrequencies of a uniform duct.
+def scattering_2port(c, length, omega, u=0.0):
+    """Acoustic transfer of a uniform duct: phase delays of the two acoustic waves.
 
-    Closed-closed quiescent default (R0 = R1 = 1, u = 0) gives ``n*pi*c/L``.
+    Returns ``diag(exp(-i*omega*tau_+), exp(-i*omega*tau_-))`` mapping the
+    incoming wave amplitudes (downstream f at the tail, upstream g at the head)
+    to the outgoing ones.  Lossless: both entries have unit modulus.
     """
-    da = DuctAcoustics(c, length, u)
-    w_max = 1.15 * (n_modes + 1) * np.pi * c / length
-    grid = np.linspace(0.05 * np.pi * c / length, w_max, n_grid)
-    roots = modes_from_det(lambda w: da.det(w, R0, R1), grid)
-    return roots[:n_modes]
+    tau_p = length / (u + c)
+    tau_m = length / (c - u)
+    return np.array([[np.exp(-1j * omega * tau_p), 0.0], [0.0, np.exp(-1j * omega * tau_m)]])

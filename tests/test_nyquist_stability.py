@@ -90,9 +90,7 @@ def _choked_rig(n=_CN["N"], tau=_CN["TAU"], fc=_CN["FC"], active=True):
             cat.choked_nozzle_outlet(_CN["A_STAR"]),
         ]
         edges = [(0, 1, _CN["AREA"]), (1, 2, _CN["AREA"]), (2, 3, _CN["AREA"]), (3, 4, _CN["AREA"])]
-        return build_problem(
-            perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=_CN["MDOT"], p_ref=1e5, h_ref=CP * 300.0
-        )
+        return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=_CN["MDOT"], p_ref=1e5, h_ref=CP * 300.0)
 
     dT = _CN["DT"]
     x0 = None

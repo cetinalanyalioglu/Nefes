@@ -239,7 +239,7 @@ def test_mass_flow_outlet_linearizes_to_constant_mass_flow():
     row = np.asarray(blocks.J_alg[r0, ns * e : ns * e + 3].todense()).ravel()
     rho, c, u, p, area = (float(est[k, e]) for k in (ES_RHO, ES_C, ES_U, ES_P, ES_AREA))
     M = float(est[ES_M, e])
-    cf, cg, ch = row @ char_to_dx(rho, c, u, p, area, K)
+    cf, cg, ch = row @ char_to_dx(rho, c, u, area, (-K * p / rho**2, u, K / rho))
     R_inherit, Rs_inherit = -cf / cg, -ch / cg
     R_cmf, Rs_cmf = (1.0 + M) / (1.0 - M), c * M / (rho * (1.0 - M))
     assert R_inherit == pytest.approx(R_cmf, rel=1e-9)
@@ -320,7 +320,7 @@ def test_pt_inlet_linearizes_to_convective_open_end():
     rho, c, u, p, area = (float(est[k, e]) for k in (ES_RHO, ES_C, ES_U, ES_P, ES_AREA))
     M = float(est[ES_M, e])
     # inlet row in characteristic coordinates: cf f + cg g + ch h = 0; with h_in = 0 -> f = -(cg/cf) g
-    cf, cg, ch = row @ char_to_dx(rho, c, u, p, area, K)
+    cf, cg, ch = row @ char_to_dx(rho, c, u, area, (-K * p / rho**2, u, K / rho))
     R_inherit = -cg / cf
     R_open = -(1.0 - M) / (1.0 + M)
     assert R_inherit == pytest.approx(R_open, abs=1e-9)
@@ -355,7 +355,7 @@ def test_choked_nozzle_outlet_linearizes_to_marble_candel():
     rho, c, u, p, area = (float(est[k, e]) for k in (ES_RHO, ES_C, ES_U, ES_P, ES_AREA))
     M = float(est[ES_M, e])
     # outlet row in characteristic coordinates: cf f + cg g + ch h = 0  ->  g = R f + R_s h
-    cf, cg, ch = row @ char_to_dx(rho, c, u, p, area, K)
+    cf, cg, ch = row @ char_to_dx(rho, c, u, area, (-K * p / rho**2, u, K / rho))
     R_inherit, Rs_inherit = -cf / cg, -ch / cg
     gm1 = GAMMA - 1.0
     R_mc = (2.0 - gm1 * M) / (2.0 + gm1 * M)

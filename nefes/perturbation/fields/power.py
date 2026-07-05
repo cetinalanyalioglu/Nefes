@@ -1,10 +1,9 @@
-"""Acoustic-power diagnostics for the perturbation network (theory.md s12).
+"""Acoustic-power diagnostics for the perturbation network.
 
-Linear disturbances on a *moving* mean flow do not carry energy in proportion to
-``|p'|^2``: the mean convection biases the two acoustic characteristics, so a
-downstream wave ``f`` and an upstream wave ``g`` of equal amplitude carry
-different energy.  The time-averaged acoustic energy flux (Myers 1991) and energy
-density across a uniform section ``(rho, c, M = u / c)`` are
+On a moving mean flow, acoustic energy is not proportional to ``|p'|^2``: mean
+convection biases the two characteristics, so downstream ``f`` and upstream ``g``
+waves of equal amplitude carry different energy.  The time-averaged Myers (1991)
+energy flux and density across a uniform section ``(rho, c, M = u / c)`` are
 
 .. math::
 
@@ -13,29 +12,21 @@ density across a uniform section ``(rho, c, M = u / c)`` are
     e &= \\tfrac12 \\rho   \\,[\\,(1+M)   |f|^2 + (1-M)   |g|^2\\,]
         \\quad (\\text{energy / volume})
 
-so a wave's energy travels at its group speed ``u +/- c`` (``I / e = u + c`` for a
-pure ``f`` wave).  Two consequences drive these diagnostics:
+These drive three diagnostics:
 
-* The energy-neutral reflection magnitude of a through-flow boundary is **not** 1.
-  An outlet returns all the acoustic power it receives at ``|R| = (1+M)/(1-M)``
-  (the constant-mass-flow limit); an inlet at ``|R| = (1-M)/(1+M)``.  A larger
-  ``|R|`` *adds* acoustic energy -- such a boundary is a source even though it was
-  specified as merely "partially reflecting".  See :func:`passive_reflection_bound`.
-* For a self-sustained eigenmode (complex ``omega``, growth ``sigma = -Im omega``)
-  with no volume source, the global balance is
-  ``dE/dt = 2 sigma E = sum of boundary power into the domain``.  Since ``E > 0``
-  the **net boundary power and the growth rate share a sign**: :func:`boundary_power`
-  attributes any instability to the boundaries that feed it.
+* The energy-neutral reflection magnitude of a through-flow boundary is not 1 (an
+  outlet at ``|R| = (1+M)/(1-M)``, an inlet at ``(1-M)/(1+M)``); a larger ``|R|``
+  adds energy.  See :func:`passive_reflection_bound`.
+* For an eigenmode (growth ``sigma = -Im omega``), net boundary power and growth
+  rate share a sign, so :func:`boundary_power` attributes an instability to the
+  boundaries feeding it.
+* With interior sources this becomes a node-wise ledger
+  ``2 sigma E = sum_interior Phi_n + boundary flux``, powering the forced-sweep
+  budget (:func:`forced_power_balance`) and an energy-derived growth rate
+  (:func:`modal_energy_balance`).
 
-With interior sources (a flame), this generalizes to a **node-wise ledger**: the
-acoustic power produced at every node telescopes to the storage rate, so
-``2 sigma E = sum_interior Phi_n + boundary flux``.  That powers the forced-sweep
-budget (:func:`forced_power_balance`) and an energy-derived growth rate
-(:func:`modal_energy_balance`), every term a real time-averaged power.
-
-These are post-processing diagnostics on an already-converged complex mode shape,
-not residual math -- they use ``|.|^2`` freely and carry no complex-step
-constraint.
+These are post-processing diagnostics on a converged complex mode shape, not
+residual math -- they use ``|.|^2`` freely and carry no complex-step constraint.
 """
 
 from dataclasses import dataclass
@@ -43,7 +34,7 @@ from typing import List
 
 import numpy as np
 
-from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_M, ES_AREA
+from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_M, ES_P, ES_AREA
 from ...elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
 from ..operator.stamps import storage_stamps_from_est
 
@@ -395,9 +386,9 @@ def _node_power(waves, est, tail, head, n_edges, node):
 def _stored_energy(waves, est, ducts, omega, n_x):
     """Acoustic energy stored in the duct volumes, shape ``(K,)``; ``omega`` shape ``(K,)``.
 
-    The field is reconstructed inside each uniform duct from its face amplitudes -- ``f``
-    riding downstream at ``u + c``, ``g`` upstream at ``c - u`` (theory.md s12.3, a complex
-    ``omega`` capturing a mode's interior growth) -- and the Myers energy density
+    The field is reconstructed inside each uniform duct from its end amplitudes -- ``f``
+    riding downstream at ``u + c``, ``g`` upstream at ``c - u`` (a complex ``omega``
+    capturing a mode's interior growth) -- and the Myers energy density
     (:func:`acoustic_energy_density`) integrated along the length and cross-section.
     """
     omega = np.asarray(omega, dtype=np.complex128)
@@ -422,7 +413,7 @@ def _edge_network_var(w, est, e, v):
 
     ``w`` is ``(K, n_char)`` (``K`` swept frequencies or 1 mode) with columns ``(f, g, h)``;
     the maps are ``p' = rho c (f + g)`` and ``mdot' = A (u rho' + rho u')`` with
-    ``rho' = h + p'/c^2`` and ``u' = f - g`` (theory.md s9.1).  Only ``v = 0`` (mass flow)
+    ``rho' = h + p'/c^2`` and ``u' = f - g``.  Only ``v = 0`` (mass flow)
     and ``v = 1`` (pressure) are reconstructed -- the only solve variables a storage stamp
     couples -- and neither needs the caloric (``h_t``) row.
     """
@@ -452,10 +443,10 @@ def _lumped_storage_energy(stamps, est, waves, n_solve):
     term ``i*omega*val*x'_{e,v}`` onto a conservation row, and stores the time-averaged
     acoustic energy ``0.25 * |val|/rho_e * |x'_{e,v}|^2`` -- a compliance entry (``v = 1``) its
     potential energy ``0.25 (V/c^2)/rho |p'|^2``, an inertance entry (``v = 0``) its kinetic
-    energy ``0.25 (L_eff/A)/rho |mdot'|^2`` (theory ``inertance-end-correction-theory.md`` s8).
-    Walking the stamp triplets makes the ledger pick up any storage element -- cavity, inline
-    area-change/loss, manifold plenum + neck -- with no per-element bookkeeping; the duct
-    stores live only in ``_stored_energy``, so the two never double-count (theory.md s12.5).
+    energy ``0.25 (L_eff/A)/rho |mdot'|^2``.  Walking the stamp triplets makes the ledger pick
+    up any storage element -- cavity, inline area-change/loss, manifold plenum + neck -- with no
+    per-element bookkeeping; the duct stores live only in ``_stored_energy``, so the two never
+    double-count.
 
     Returns scalar ``0.0`` when the network carries no storage stamp (so it adds onto the duct
     energy spectrum harmlessly).
@@ -496,12 +487,15 @@ def _boundary_split(waves, est, terminals, node_bc, freqs):
         e = int(t.edge)
         rho, c = float(est[ES_RHO, e]), float(est[ES_C, e])
         mach, area = float(est[ES_M, e]), float(est[ES_AREA, e])
+        p = float(est[ES_P, e])
         sign = 1.0 if t.at_tail else -1.0
         w = waves(e)
         face_total = sign * acoustic_intensity(rho, c, mach, w[:, 0], w[:, 1]) * area
         bc = node_bc[t.node] if node_bc is not None and t.node < len(node_bc) else None
         if bc is not None and "acoustic" in getattr(bc, "driven", ()):
-            r = np.array([complex(bc.reflection_coefficient(f, rho, c, mach)) for f in freqs])
+            # pass the mean pressure so the choked-nozzle gamma matches the operator assembly
+            # (state form gamma = rho c^2 / p, backend-consistent) rather than the perfect-gas K
+            r = np.array([complex(bc.reflection_coefficient(f, rho, c, mach, p=p)) for f in freqs])
             w_refl = w.copy()
             w_refl[:, t.incoming] = r * w[:, t.outgoing]  # the return wave without the drive
             face_refl = sign * acoustic_intensity(rho, c, mach, w_refl[:, 0], w_refl[:, 1]) * area
@@ -549,7 +543,7 @@ def intensity_along_network(geometry, chars_of_edge, est, omega, *, energy_densi
     """Acoustic **intensity** (or energy density) along the developed length of the network.
 
     Reconstructs the interior field inside every duct (``f`` riding downstream at
-    ``u + c``, ``g`` upstream at ``c - u``; theory.md s12.3) and evaluates the Myers
+    ``u + c``, ``g`` upstream at ``c - u``) and evaluates the Myers
     energy flux per unit area :func:`acoustic_intensity` (downstream positive) at each
     station, returning one developed-length :class:`~nefes.perturbation.fields.modeshape.PathField`
     per root->leaf path.  The companion to the mode-shape field reconstruction, but the

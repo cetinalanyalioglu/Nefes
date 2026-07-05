@@ -164,9 +164,7 @@ def test_branched_mixing_converges_from_seed():
     edges = [(0, 2, A), (1, 2, A), (2, 3, A), (3, 4, A), (4, 5, A)]
     # frozen up to and including the fuel-laden edge; burnt after the flame
     edge_models = [EQ_FROZEN, EQ_FROZEN, EQ_FROZEN, EQ_FROZEN, EQ_KERNEL]
-    prob = build_problem(
-        cfg, els, edges, mdot_ref=mdotA + mdotB, p_ref=p, h_ref=abs(h_mix), edge_models=edge_models
-    )
+    prob = build_problem(cfg, els, edges, mdot_ref=mdotA + mdotB, p_ref=p, h_ref=abs(h_mix), edge_models=edge_models)
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)

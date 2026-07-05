@@ -1,5 +1,4 @@
-"""Transfer- and scattering-matrix algebra for the N-variable perturbation
-network (theory.md s12.2, s12.7).
+"""Transfer- and scattering-matrix algebra for the N-variable perturbation network.
 
 A **transfer matrix** (TM) relates the perturbation variables of two stations
 (edges) along their own arrow: ``v_b = T_ba @ v_a``.  A **scattering matrix**
@@ -7,11 +6,17 @@ A **transfer matrix** (TM) relates the perturbation variables of two stations
 the split coming from characteristic analysis -- the sign of each wave speed
 ``(u+c, u-c, u)`` at the mean state.  The two encode identical information and
 convert into each other; a TM additionally re-expresses in any flavor
-(``characteristics.basis_matrix``) by a per-station similarity.
+(:func:`~nefes.perturbation.operator.characteristics.basis_matrix`) by a
+per-station similarity.
 
 Everything here is plain NumPy and dimension-generic (``n = 3`` for inert flow,
 larger with reacting scalars): inputs are single ``(n, n)`` matrices or batched
 ``(n_omega, n, n)`` stacks.
+
+Public: :func:`wave_speeds`, :func:`wave_signs`, :func:`partition`,
+:func:`scattering_labels`, :func:`multiport_partition`, :func:`tm_in_basis`,
+:func:`tm_to_sm`, :func:`sm_to_tm`, and the 2x2 acoustic helpers
+:func:`tm_pu_to_fg`, :func:`tm_fg_to_pu`, :func:`tm_fg_to_sm2`.
 """
 
 import numpy as np
@@ -28,7 +33,20 @@ def _as_batch(M):
 
 
 def wave_speeds(u, c, n=3):
-    """Characteristic speeds ``(u+c, u-c, u)`` (padded with ``u`` for scalars)."""
+    """Characteristic speeds ``(u+c, u-c, u)`` (padded with ``u`` for scalars).
+
+    Parameters
+    ----------
+    u, c : float
+        Mean axial velocity and sound speed at the station.
+    n : int, optional
+        Characteristic count (``3`` for inert flow; larger with reacting scalars).
+
+    Returns
+    -------
+    ndarray
+        The ``n`` characteristic speeds.
+    """
     return np.array([u + c, u - c] + [u] * (n - 2), dtype=float)
 
 
@@ -38,6 +56,20 @@ def wave_signs(u, c, n=3, u_floor=1e-8):
     The two acoustic waves are unambiguous when subsonic; the convected waves
     (entropy and any scalar) carry the flow, so at a quiescent station
     (``|u| < u_floor``) they are pinned downstream (+1) -- their ``u -> 0+`` limit.
+
+    Parameters
+    ----------
+    u, c : float
+        Mean axial velocity and sound speed at the station.
+    n : int, optional
+        Characteristic count (``3`` for inert flow).
+    u_floor : float, optional
+        Speed below which the station is treated as quiescent.
+
+    Returns
+    -------
+    ndarray
+        Length-``n`` array of ``+1`` / ``-1`` propagation signs.
     """
     s = np.sign(wave_speeds(u, c, n))
     s[1] = -1.0 if (c - u) > 0 else 1.0  # upstream acoustic: -1 whenever subsonic
@@ -50,9 +82,22 @@ def wave_signs(u, c, n=3, u_floor=1e-8):
 def partition(u, c, side, n=3, u_floor=1e-8):
     """Incoming/outgoing characteristic indices at one face of a cut.
 
-    ``side='a'`` is the upstream face of an a->b segment: waves with speed > 0
-    travel into the segment (incoming).  ``side='b'`` is the downstream face:
-    waves with speed < 0 are incoming.  Returns ``(incoming_idx, outgoing_idx)``.
+    Parameters
+    ----------
+    u, c : float
+        Mean axial velocity and sound speed of the incident edge.
+    side : {'a', 'b'}
+        ``'a'`` is the upstream face of an a->b segment (waves with speed > 0 are
+        incoming); ``'b'`` is the downstream face (waves with speed < 0 are incoming).
+    n : int, optional
+        Characteristic count (``3`` for inert flow).
+    u_floor : float, optional
+        Speed below which the station is treated as quiescent.
+
+    Returns
+    -------
+    incoming, outgoing : tuple of int
+        Characteristic indices entering and leaving the segment at this face.
     """
     s = wave_signs(u, c, n, u_floor)
     into = 1.0 if side == "a" else -1.0
@@ -70,9 +115,20 @@ def tm_in_basis(T_char, Ba, Bb):
     """Re-express a characteristic-basis TM in another flavor.
 
     ``T_char`` maps ``w_a -> w_b``; with ``v = B w`` at each station the same map
-    reads ``v_b = (Bb T_char Ba^-1) v_a``.  ``Ba, Bb`` are the per-station
-    ``basis_matrix`` blocks.  Accepts a single matrix or an ``(n_omega, n, n)``
-    stack.
+    reads ``v_b = (Bb T_char Ba^-1) v_a``.
+
+    Parameters
+    ----------
+    T_char : ndarray
+        Characteristic-basis transfer matrix, a single ``(n, n)`` matrix or an
+        ``(n_omega, n, n)`` stack.
+    Ba, Bb : ndarray
+        Per-station ``basis_matrix`` blocks at stations ``a`` and ``b``.
+
+    Returns
+    -------
+    ndarray
+        The transfer matrix in the new flavor, matching the input's batch shape.
     """
     Tb, was2d = _as_batch(T_char)
     Bb = np.asarray(Bb, dtype=complex)
@@ -89,8 +145,22 @@ def tm_in_basis(T_char, Ba, Bb):
 def scattering_labels(ua, ca, ub, cb, n=3, u_floor=1e-8):
     """Ordered (station, char-index) tags of the incoming and outgoing waves.
 
-    Incoming = a's downstream-running waves then b's upstream-running waves;
-    outgoing = a's upstream-running waves then b's downstream-running ones.
+    Parameters
+    ----------
+    ua, ca : float
+        Mean velocity and sound speed at station ``a`` (the segment tail).
+    ub, cb : float
+        Mean velocity and sound speed at station ``b`` (the segment head).
+    n : int, optional
+        Characteristic count (``3`` for inert flow).
+    u_floor : float, optional
+        Speed below which a station is treated as quiescent.
+
+    Returns
+    -------
+    incoming, outgoing : list of (str, int)
+        Incoming = ``a``'s downstream-running waves then ``b``'s upstream-running waves;
+        outgoing = ``a``'s upstream-running waves then ``b``'s downstream-running ones.
     """
     Ia, Oa = partition(ua, ca, "a", n, u_floor)
     Ib, Ob = partition(ub, cb, "b", n, u_floor)
@@ -146,8 +216,24 @@ def tm_to_sm(T_char, ua, ca, ub, cb, u_floor=1e-8):
     """Scattering matrix from a characteristic-basis transfer matrix.
 
     Given ``w_b = T w_a`` and the per-station wave split, returns ``S`` mapping the
-    incoming amplitudes to the outgoing ones, ordered by ``scattering_labels``.
-    Accepts a single matrix or an ``(n_omega, n, n)`` stack.
+    incoming amplitudes to the outgoing ones, ordered by :func:`scattering_labels`.
+
+    Parameters
+    ----------
+    T_char : ndarray
+        Characteristic-basis transfer matrix, a single ``(n, n)`` matrix or an
+        ``(n_omega, n, n)`` stack.
+    ua, ca, ub, cb : float
+        Mean velocity and sound speed at stations ``a`` and ``b``.
+    u_floor : float, optional
+        Speed below which a station is treated as quiescent.
+
+    Returns
+    -------
+    S : ndarray
+        Scattering matrix, matching the input's batch shape.
+    incoming, outgoing : list of (str, int)
+        Wave ordering, as from :func:`scattering_labels`.
     """
     Tb, was2d = _as_batch(T_char)
     n = Tb.shape[-1]
@@ -156,7 +242,7 @@ def tm_to_sm(T_char, ua, ca, ub, cb, u_floor=1e-8):
     if n_in != n:
         raise ValueError(
             f"non-square wave split: {n_in} incoming vs {n} characteristics "
-            "(supersonic or degenerate station -- deferred in v1)"
+            "(supersonic or degenerate station -- not supported)"
         )
 
     def row_of(tag):  # selector row in the [w_a; w_b] (2n) layout
@@ -181,7 +267,22 @@ def tm_to_sm(T_char, ua, ca, ub, cb, u_floor=1e-8):
 
 
 def sm_to_tm(S, ua, ca, ub, cb, u_floor=1e-8):
-    """Inverse of :func:`tm_to_sm`: characteristic transfer matrix from an SM."""
+    """Characteristic transfer matrix from a scattering matrix (inverse of :func:`tm_to_sm`).
+
+    Parameters
+    ----------
+    S : ndarray
+        Scattering matrix, a single ``(n, n)`` matrix or an ``(n_omega, n, n)`` stack.
+    ua, ca, ub, cb : float
+        Mean velocity and sound speed at stations ``a`` and ``b``.
+    u_floor : float, optional
+        Speed below which a station is treated as quiescent.
+
+    Returns
+    -------
+    ndarray
+        Characteristic-basis transfer matrix, matching the input's batch shape.
+    """
     Sb, was2d = _as_batch(S)
     n = Sb.shape[-1]
     incoming, outgoing = scattering_labels(ua, ca, ub, cb, n, u_floor)
@@ -211,21 +312,54 @@ _OMG = np.array([[0.5, 0.5], [0.5, -0.5]])  # (f, g) = OMG @ (p'/(rho c), u')
 
 
 def tm_pu_to_fg(tm_pu):
-    """2x2 acoustic TM from (p'/(rho c), u') to (f, g) coordinates."""
+    """2x2 acoustic TM from ``(p'/(rho c), u')`` to ``(f, g)`` coordinates.
+
+    Parameters
+    ----------
+    tm_pu : ndarray
+        2x2 transfer matrix (or ``(n_omega, 2, 2)`` stack) in ``(p'/(rho c), u')`` coordinates.
+
+    Returns
+    -------
+    ndarray
+        The same map in ``(f, g)`` coordinates.
+    """
     M, was2d = _as_batch(tm_pu)
     out = _OMG[None] @ M @ np.linalg.inv(_OMG)[None]
     return out[0] if was2d else out
 
 
 def tm_fg_to_pu(tm_fg):
-    """2x2 acoustic TM from (f, g) to (p'/(rho c), u') coordinates."""
+    """2x2 acoustic TM from ``(f, g)`` to ``(p'/(rho c), u')`` coordinates.
+
+    Parameters
+    ----------
+    tm_fg : ndarray
+        2x2 transfer matrix (or ``(n_omega, 2, 2)`` stack) in ``(f, g)`` coordinates.
+
+    Returns
+    -------
+    ndarray
+        The same map in ``(p'/(rho c), u')`` coordinates.
+    """
     M, was2d = _as_batch(tm_fg)
     out = np.linalg.inv(_OMG)[None] @ M @ _OMG[None]
     return out[0] if was2d else out
 
 
 def tm_fg_to_sm2(tm_fg):
-    """Classic 2x2 acoustic scattering matrix from a 2x2 (f, g) transfer matrix."""
+    """Classic 2x2 acoustic scattering matrix from a 2x2 ``(f, g)`` transfer matrix.
+
+    Parameters
+    ----------
+    tm_fg : ndarray
+        2x2 ``(f, g)`` transfer matrix (or ``(n_omega, 2, 2)`` stack).
+
+    Returns
+    -------
+    ndarray
+        The 2x2 acoustic scattering matrix.
+    """
     M, was2d = _as_batch(tm_fg)
     S = np.zeros_like(M)
     t11, t12, t21, t22 = M[:, 0, 0], M[:, 0, 1], M[:, 1, 0], M[:, 1, 1]

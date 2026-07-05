@@ -49,8 +49,6 @@ from .response.response import (
     excite_perturbation,
     PerturbationField,
     TransferMatrixWarning,
-    acoustic_response,
-    AcousticResponse,
 )
 from .response.forced import forced_response, ForcedResponse, CompositionalNoiseWarning
 from .operator.stamps import boundary_forcing
@@ -64,7 +62,7 @@ from .operator.matrices import (
     wave_speeds,
     wave_signs,
 )
-from .fields.duct import duct_modes, DuctAcoustics
+from .fields.duct import DuctAcoustics, scattering_2port
 from .fields.cuton import (
     cuton_frequency,
     duct_cuton_frequencies,
@@ -87,7 +85,6 @@ from .fields.power import (
     modal_energy_balance,
     ModalEnergyBalance,
 )
-from .fields.drivers import modes_from_det, scattering_2port
 from .continuation import RationalFit, rational_fit, continuation_warning
 from .stability.contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
 from .stability.eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
@@ -139,8 +136,6 @@ __all__ = [
     "TransferMatrixWarning",
     "find_terminals",
     "Terminal",
-    "acoustic_response",
-    "AcousticResponse",
     "matrices",
     "tm_in_basis",
     "tm_to_sm",
@@ -161,17 +156,15 @@ __all__ = [
     "TransferFunctionIdentification",
     "UnknownTransferMatrix",
     "unknown_dynamic_source",
-    # ducts / drivers
-    "duct_modes",
+    # duct acoustics oracle
     "DuctAcoustics",
+    "scattering_2port",
     # plane-wave validity (higher-order-mode cut-on)
     "cuton_frequency",
     "duct_cuton_frequencies",
     "CutOnReport",
     "DuctCutOn",
     "ALPHA_CIRCULAR",
-    "modes_from_det",
-    "scattering_2port",
     # analytic continuation of tabulated transfer functions / reflection coefficients
     "RationalFit",
     "rational_fit",

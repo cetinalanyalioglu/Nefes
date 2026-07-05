@@ -1,16 +1,15 @@
 """The acoustic operator ``A(omega) = J_alg + i*omega*M + P(omega) + S(omega)``.
 
-``J_alg`` is the converged mean-flow Jacobian -- the zero-frequency acoustic
-operator (theory.md s12.1) -- reused verbatim from the @njit complex-step
-machinery (no new kernel).  ``M`` is the storage block (compliance/inertance),
-``P`` the duct phase propagation, ``S`` the dynamic-source (flame / mass-source)
-feedback.  Each block has producing elements: a length-bearing duct (``P``), a flame
-or mass source carrying a :class:`~nefes.elements.dynamic_source.DynamicSource` (``S``),
-and a finite-volume :func:`~nefes.elements.catalog.cavity` (``M``, the compliance/
-inertance storage; see ``stamps.build_storage``).  All four blocks ride the
-fixed-pattern fast path -- the storage and source contributions are accumulated onto
-their slots per ``omega``, the duct phases overwritten -- so ``A(omega)`` is assembled
-in full without a slow-path fallback (see ``stamps.py``).
+The four blocks are the converged mean-flow Jacobian ``J_alg`` (the zero-frequency
+operator, reused verbatim from the complex-step machinery), the storage block ``M``
+(cavity/inline compliance and inertance), the duct phase propagation ``P(omega)``, and
+the dynamic-source feedback ``S(omega)`` of a flame or mass source.  Each has its
+producing elements and its stamp in ``stamps.py``.  All four ride a fixed-pattern fast
+path: the storage and source contributions accumulate onto their slots per ``omega`` and
+the duct phases overwrite theirs, so ``A(omega)`` is assembled in full with no slow-path
+fallback.
+
+Public: :class:`AcousticBlocks`, :func:`build_acoustic_blocks`, :func:`assemble_acoustic`.
 """
 
 from dataclasses import dataclass, field
@@ -21,7 +20,6 @@ import scipy.sparse as sp
 
 from ...assembly.assemble import jacobian
 from ...solver.report import states_table
-from .characteristics import edge_caloric
 from .terminals import find_terminals
 from .stamps import (
     DuctStamp,
@@ -38,6 +36,9 @@ from .stamps import (
     _terminal_closure,
 )
 
+# Generic non-zero frequency used to capture the (omega-independent) sparsity pattern.
+_PLAN_OMEGA = 1.0
+
 
 @dataclass
 class AcousticBlocks:
@@ -50,12 +51,8 @@ class AcousticBlocks:
     x_bar: np.ndarray  # frozen mean state
     n: int
     u_floor: float = 1e-8
-    # per-edge caloric rows (characteristics.edge_caloric): the dq_to_dx h_t row honoring
-    # the gas's actual caloric coupling (reacting backend != perfect-gas K).  Threaded to
-    # every char-map stamp so the reacting perturbation maps match the mean-flow Jacobian.
-    cals: list = field(default_factory=list)
     # dynamic-source S(omega) data: per-element stamps + the active-flame downstream
-    # edges kept physical under isentropic assembly (theory.md s12.4).  Empty -> no source.
+    # edges kept physical under isentropic assembly.  Empty -> no source.
     source_stamps: list = field(default_factory=list)
     flame_edges: frozenset = field(default_factory=frozenset)
     # transfer-matrix TRANSFER_MATRIX element stamps: each overwrites its acoustic rows
@@ -81,35 +78,43 @@ class AcousticBlocks:
 
 
 def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
-    """Build the frozen blocks at the mean state ``x_bar`` (shape (n_solve, E)).
+    """Build the frozen blocks at the mean state ``x_bar``.
 
-    ``J_alg`` is assembled with the regularizations turned down (the
-    un-regularized variant of theory.md s12.6) at ``kappa = 0``.  ``M`` is the
-    storage block (the cavity compliance; all-zero when no storage element is
-    present).  The duct phase data is precomputed here and restamped cheaply per
-    frequency.
+    ``J_alg`` is assembled with the regularizations turned down (``kappa = 0``).  ``M``
+    is the storage block (all-zero when no storage element is present).  The duct phase
+    data is precomputed here and restamped cheaply per frequency.
 
-    ``isentropic`` (default False) pins the entropy characteristic to zero on every
-    edge (``rho' = p'/c^2``), reducing the operator to the two acoustic waves -- the
-    standard acoustic assumption -- without changing its size; see
-    :func:`stamps.stamp_isentropic`.
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+    x_bar : ndarray
+        Converged mean-flow state, shape ``(n_solve, E)``.
+    eps, eps_fb : float, optional
+        Complex-step and feedback step sizes for the Jacobian assembly.
+    u_floor : float, optional
+        Speed below which a station is treated as quiescent.
+    isentropic : bool, optional
+        Pin the entropy characteristic to zero on every edge (``rho' = p'/c^2``),
+        reducing the operator to the two acoustic waves without changing its size (see
+        :func:`stamps.stamp_isentropic`).  Default False.
+
+    Returns
+    -------
+    AcousticBlocks
+        The frozen operator blocks.
     """
     if eps is None:
         eps = 1e-4 * prob.var_scale[0]
     x_bar = np.ascontiguousarray(x_bar)
     J = jacobian(prob, x_bar, eps, eps_fb, 0.0).astype(np.complex128)
     n = J.shape[0]
-    K = float(prob.tf[0]) / float(prob.tf[1])  # cp / R (perfect-gas fallback)
-    # per-edge caloric: the reacting backend's h_t<->(rho,p) coupling is *not* the
-    # perfect-gas K (theory.md s12.2); compute it from the converged closure so every
-    # char-map stamp is consistent with J_alg.
-    cals = edge_caloric(prob, x_bar)
-    # storage M: the d/dt(integral_V U) block (compliance/inertance), built from the same
-    # caloric map as J_alg so the cavity's drho' matches the mean-flow thermodynamics.
-    M = build_storage(prob, x_bar, K, cals)
-    duct_stamps = build_duct_stamps(prob, x_bar, K, u_floor, cals)
-    source_stamps, flame_edges = build_source_stamps(prob, x_bar, K, u_floor, cals)
-    tm_stamps = build_tm_stamps(prob, x_bar, K, u_floor, cals)
+    # every stamp reads its caloric coupling straight from the edge-state table (filled per
+    # edge by that edge's own thermo model), so the char-map stamps stay consistent with J_alg.
+    M = build_storage(prob, x_bar)
+    duct_stamps = build_duct_stamps(prob, x_bar, u_floor)
+    source_stamps, flame_edges = build_source_stamps(prob, x_bar, u_floor)
+    tm_stamps = build_tm_stamps(prob, x_bar, u_floor)
     return AcousticBlocks(
         J_alg=J.tocsc(),
         M=M,
@@ -122,7 +127,6 @@ def build_acoustic_blocks(prob, x_bar, eps=None, eps_fb=1e-6, u_floor=1e-8, isen
         source_stamps=source_stamps,
         flame_edges=flame_edges,
         tm_stamps=tm_stamps,
-        cals=cals,
     )
 
 
@@ -166,19 +170,14 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, wit
     if with_sources:
         stamp_sources(A, omega, blocks.source_stamps)
     if with_boundaries:
-        stamp_boundaries(A, omega, blocks.prob, blocks.x_bar, blocks.cals)
+        stamp_boundaries(A, omega, blocks.prob, blocks.x_bar)
     if blocks.isentropic:
         # pin the entropy wave to zero on every edge (rho' = p'/c^2); overrides the
         # entropy rows the duct/boundary stamps wrote.  omega-independent.  Active-flame
         # downstream edges are skipped so their heat-release energy row stays physical.
-        est = states_table(blocks.prob, blocks.x_bar)
-        K = float(blocks.prob.tf[0]) / float(blocks.prob.tf[1])
-        stamp_isentropic(A, blocks.prob, est, K, skip_edges=blocks.flame_edges, cals=blocks.cals)
+        est = states_table(blocks.prob, blocks.x_bar, caloric=True)
+        stamp_isentropic(A, blocks.prob, est, skip_edges=blocks.flame_edges)
     return A.tocsc()
-
-
-# Generic non-zero frequency used to capture the (omega-independent) sparsity pattern.
-_PLAN_OMEGA = 1.0
 
 
 class _AssemblyPlan:
@@ -226,8 +225,6 @@ class _AssemblyPlan:
         "phase_coeff",
         "prob",
         "est",
-        "K",
-        "cals",
         "bnd",
         "src_slots",
         "m_slots",
@@ -246,8 +243,6 @@ class _AssemblyPlan:
         phase_coeff,
         prob,
         est,
-        K,
-        cals,
         bnd,
         src_slots,
         m_slots,
@@ -263,22 +258,16 @@ class _AssemblyPlan:
         self.phase_coeff = phase_coeff
         self.prob = prob
         self.est = est
-        self.K = K
-        self.cals = cals
         self.bnd = bnd
-        # storage block i*omega*M: each entry ADDS i*omega*m_coeff onto its data slot (base
-        # holds only J_alg there, the storage assembled out in _build_plan), so a storage row
-        # is J_alg + i*omega*M -- never overwritten, like the dynamic source.
+        # storage block: each entry accumulates i*omega*m_coeff onto its slot (base holds
+        # only J_alg there), so a storage row is J_alg + i*omega*M.
         self.m_slots = m_slots
         self.m_coeff = m_coeff
-        # dynamic-source S(omega) entries: (slot, constant complex coeff, transfer fn).  Each
-        # ADDS coeff*F(omega/2pi) onto its data slot (the probe-frequency contribution baked
-        # into `base` by the reference assembly is removed in _build_plan), so a sourced row
-        # is J_alg + S(omega) -- never overwritten, unlike the duct/boundary fills.
+        # dynamic-source S(omega): (slot, constant coeff, transfer fn); each accumulates
+        # coeff*F(omega/2pi) onto its slot, so a sourced row is J_alg + S(omega).
         self.src_slots = src_slots
-        # transfer-matrix entries: per element, (slotmatrix (n_written x 3), L_up, transfer,
-        # N, n_written).  Each fills data[slot[i,k]] = -(TM(omega) L_up)[i,k] (OVERWRITE, like
-        # the duct); the constant downstream L_down entries live in `base`.
+        # transfer-matrix entries: (slotmatrix (n_written x 3), L_up, transfer, N, n_written);
+        # each overwrites data[slot[i,k]] = -(TM(omega) L_up)[i,k], the L_down part in `base`.
         self.tm_slots = tm_slots
 
     def assemble(self, omega):
@@ -291,8 +280,7 @@ class _AssemblyPlan:
             # the only bulk omega-dependence: each duct phase entry = coeff * e^{-i w tau}
             data[self.phase_slots] = self.phase_coeff * np.exp(-1j * omega * self.phase_tau)
         for t, bc, rowslots in self.bnd:
-            cal = None if not self.cals else self.cals[t.edge]
-            for row, _cols, coeff, _rhs in _terminal_closure(self.prob, self.est, self.K, t, bc, omega, cal):
+            for row, _cols, coeff, _rhs in _terminal_closure(self.prob, self.est, t, bc, omega):
                 slots = rowslots.get(row)
                 if slots is not None:  # entropy rows are dropped under isentropic mode
                     data[slots] = coeff
@@ -343,17 +331,15 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
     # pattern-probe frequency yet be non-zero elsewhere, so every boundary slot is forced
     # into the pattern (added with value 0) rather than read off the probe assembly.
     bnd_meta, forced_rc = [], []
-    est = K = None
+    est = None
     if with_boundaries and prob.node_bc:
-        est = states_table(prob, blocks.x_bar)
-        K = float(prob.tf[0]) / float(prob.tf[1])
+        est = states_table(prob, blocks.x_bar, caloric=True)
         E = int(prob.n_edges)
         for t in find_terminals(prob):
             bc = prob.node_bc[t.node] if t.node < len(prob.node_bc) else None
             if bc is None or not getattr(bc, "stamps_terminal", False):
                 continue
-            cal = None if not blocks.cals else blocks.cals[t.edge]
-            entries = [(row, cols) for row, cols, _c, _r in _terminal_closure(prob, est, K, t, bc, _PLAN_OMEGA, cal)]
+            entries = [(row, cols) for row, cols, _c, _r in _terminal_closure(prob, est, t, bc, _PLAN_OMEGA)]
             if blocks.isentropic:
                 # entropy (transport) rows [tr0, tr0+E) are pinned to h = 0 in base; the boundary
                 # fill must not overwrite them.  Acoustic node rows (< tr0) and scalar transport
@@ -467,8 +453,6 @@ def _build_plan(blocks: AcousticBlocks, with_boundaries):
         phase_coeff,
         prob,
         est,
-        K,
-        blocks.cals,
         bnd,
         src_slots,
         m_slots,

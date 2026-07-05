@@ -5,8 +5,8 @@ matrix ``M_meas`` measured between two of its edges, recover the unknown -- the 
 2-port transfer matrix (:func:`identify_transfer_matrix`) or the transfer function(s) of a
 flame / mass-source feedback (:func:`identify_transfer_function`).
 
-Method (theory.md s12.7)
-------------------------
+Method
+------
 Both unknowns enter the perturbation operator **linearly**, as a low-rank update of the
 known, passive operator ``A0(omega)``::
 
@@ -21,7 +21,7 @@ transfer matrix imposes ``W_b(u) = M_meas W_a(u)``.  Substituting the Woodbury f
 coordinates, solved by least squares -- so one factorization of ``A0`` recovers the unknown,
 for a cascade or a branched network alike.  The system's conditioning is the identifiability
 diagnostic: it is rank-deficient exactly when the measurement cannot separate the unknowns
-(e.g. collinear reference fluctuations for a multi-input flame).
+(e.g. collinear reference fluctuations for a multi-input flame transfer function).
 
 The recovered response is returned as a real-frequency table plus, by default, its rational
 continuation (:class:`~nefes.perturbation.continuation.RationalFit`) so it drops straight back
@@ -37,7 +37,6 @@ from typing import List
 import numpy as np
 
 from ..matrix import TransferMatrix
-from ..operator.characteristics import edge_caloric
 from ..operator.stamps import build_source_stamps, build_tm_stamps
 from ..response.response import (
     _build_excitation_context,
@@ -163,11 +162,12 @@ def identify_transfer_matrix(
 ):
     """Recover the 2-port transfer matrix of any interior element from a network measurement.
 
-    Works for a marked :func:`~nefes.elements.catalog.transfer_matrix_element` **and** for a
-    genuine element whose acoustic 2-port you want -- e.g. an :func:`~nefes.elements.catalog.equilibrium_flame`.
-    The element keeps its own mean-flow kernel (heat addition, dilatation, area change); only
-    its perturbation acoustic rows are treated as the unknown block, so the recovered matrix is
-    the element's full linear 2-port (a flame's active response folds into it).
+    Works for a marked :func:`~nefes.elements.catalog.transfer_matrix_element` **and** for any
+    ordinary interior 2-port element whose linear transfer matrix you want to extract -- e.g. an
+    :func:`~nefes.elements.catalog.equilibrium_flame`.  The element keeps its own mean-flow kernel
+    (heat addition, dilatation, area change); only its perturbation acoustic rows are treated as
+    the unknown block, so the recovered matrix is the element's full linear 2-port (a flame's
+    active response folds into it).
 
     Parameters
     ----------
@@ -187,10 +187,13 @@ def identify_transfer_matrix(
         Driven wave families (default: ``("acoustic", "entropy")`` for ``N=3``, else
         ``("acoustic",)``).
     isentropic : bool, optional
-        Pin entropy to zero everywhere -- the **acoustics-only** identification (``N=2``).  Use
-        this when the measured matrix is a purely acoustic 2-port and entropy generation should
-        not contaminate the recovery.  The measured matrix must have been taken (or synthesized)
-        under the same assumption.  Default False (full acoustic+entropy).
+        Pin the entropy wave to zero everywhere (``rho' = p'/c^2``) -- the **acoustics-only**
+        identification (``N=2``).  Use this when the measured matrix is a purely acoustic 2-port
+        and entropy generation should not contaminate the recovery; the measured matrix must have
+        been taken (or synthesized) under the same assumption.  The flag pins only the entropy
+        characteristic -- a transported reacting scalar is left untouched -- but with ``N=2`` and
+        an acoustic-only excitation the recovered 2-port carries neither entropy nor scalar
+        channels.  Default False (full acoustic+entropy).
     forcing, freeze : optional
         Passed to the measurement driver (which terminals to drive / keep physical).
     continue_ : bool, optional
@@ -220,8 +223,7 @@ def identify_transfer_matrix(
     ctx = _build_excitation_context(
         prob0, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, frozen=freeze, isentropic=isentropic
     )
-    cals = edge_caloric(prob0, x_bar)
-    stamps = build_tm_stamps(prob0, x_bar, ctx.K, u_floor, cals)
+    stamps = build_tm_stamps(prob0, x_bar, u_floor)
     st = next((s for s in stamps if s.node == node), None)
     if st is None:
         raise ValueError(f"node {node} is not an interior 2-port element whose transfer matrix can be identified")
@@ -242,16 +244,21 @@ def identify_transfer_matrix(
     # attach the element's own face states so the result converts flavor / form freely; the
     # recovered matrix relates the element edges (arrow port 0 = e_up -> port 1 = e_down).
     ports = (_port_state(ctx.est, st.e_up), _port_state(ctx.est, st.e_down))
-    tm = TransferMatrix(freqs, Xrec, basis="char", ports=ports, K=ctx.K)
+    tm = TransferMatrix(freqs, Xrec, basis="char", ports=ports)
     if continue_:
         tm = tm.continue_(**fit_kwargs)
     return TransferMatrixIdentification(transfer_matrix=tm, freqs=freqs, conditioning=cond, node=node)
 
 
 def _port_state(est, edge):
-    """A :class:`~nefes.perturbation.matrix.PortState` from the mean edge-state table."""
+    """A :class:`~nefes.perturbation.matrix.PortState` from the mean edge-state table.
+
+    Carries the edge's caloric row (from the ``caloric=True`` state columns) so the recovered
+    matrix converts to the ``network`` flavor reacting-correctly.
+    """
     from ..matrix import PortState
     from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
+    from ..operator.characteristics import caloric_row
 
     return PortState(
         float(est[ES_RHO, edge]),
@@ -259,6 +266,7 @@ def _port_state(est, edge):
         float(est[ES_U, edge]),
         float(est[ES_P, edge]),
         float(est[ES_AREA, edge]),
+        caloric_row(est[:, edge]),
     )
 
 
@@ -318,15 +326,15 @@ def identify_transfer_function(
     """Recover the transfer function(s) of a marked flame / mass-source feedback.
 
     The element at ``node`` carries a
-    :class:`~nefes.elements.dynamic_source.DynamicSource` whose terms declare the reference
-    edges and quantities the response is written against (see
-    :func:`~nefes.perturbation.identify.unknown_dynamic_source`); each term's transfer
-    function is recovered from the measured transfer matrix between edges ``a`` and ``b``.
+    :class:`~nefes.elements.dynamic_source.DynamicSource` built with
+    :func:`~nefes.perturbation.identify.unknown_dynamic_source`; each of its terms names a
+    reference edge and quantity, and one transfer function per term is recovered from the
+    measured transfer matrix between edges ``a`` and ``b``.
 
-    A single measured matrix separates the terms only when its excitations render the
-    reference fluctuations linearly independent -- otherwise the per-frequency linear system
-    is rank-deficient; :attr:`TransferFunctionIdentification.conditioning` reports this, and
-    multiple terms generally need multiple loading conditions.
+    One measured matrix separates the terms only when its excitations make the reference
+    fluctuations linearly independent; otherwise the per-frequency system is rank-deficient
+    (reported by :attr:`TransferFunctionIdentification.conditioning`) and multiple loading
+    conditions are needed.
 
     Parameters
     ----------
@@ -334,8 +342,10 @@ def identify_transfer_function(
         As for :func:`identify_transfer_matrix`; ``excite`` defaults to the full
         acoustic+entropy set (more channels -> better conditioning).
     isentropic : bool, optional
-        Pin entropy to zero everywhere (acoustics-only); the measured matrix must then be
-        acoustic (``N=2``) and ``excite`` acoustic.  Default False.
+        Pin the entropy wave to zero everywhere (acoustics-only); ``excite`` is then reduced to
+        its acoustic entry and the measured matrix must be the matching acoustic 2-port.  Only
+        the entropy characteristic is pinned -- a transported reacting scalar is left untouched.
+        Default False.
     **fit_kwargs
         Forwarded to :class:`~nefes.perturbation.continuation.RationalFit`.
 
@@ -363,8 +373,7 @@ def identify_transfer_function(
     ctx = _build_excitation_context(
         prob0, x_bar, freqs, forcing, eps=eps, eps_fb=eps_fb, u_floor=u_floor, frozen=freeze, isentropic=isentropic
     )
-    cals = edge_caloric(prob0, x_bar)
-    stamps, _ = build_source_stamps(prob0, x_bar, ctx.K, u_floor, cals)
+    stamps, _ = build_source_stamps(prob0, x_bar, u_floor)
     st = next((s for s in stamps if s.node == node), None)
     if st is None:
         raise ValueError(f"node {node} carries no dynamic-source feedback")

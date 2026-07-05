@@ -316,6 +316,32 @@ def test_boundary_split_keeps_the_excitation_out_of_the_reflector_flux():
     assert np.allclose(bal.net_boundary_flux, bal.boundary_reflection + bal.boundary_source)
 
 
+def test_boundary_split_handles_a_driven_choked_nozzle_outlet():
+    """The ledger's reflection recompute must use the same backend-consistent gamma as the
+    operator assembly (``gamma = rho c^2 / p``), not a perfect-gas ``K`` it is never handed.
+
+    A driven ``choked_nozzle`` terminal is the one boundary whose reflection needs the effective
+    gamma, so scoring its power exercises the ``reflection_coefficient`` call in ``_boundary_split``;
+    without the mean pressure that call has no gamma to use and raises.
+    """
+    net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1.0e5, T_ref=300.0, mdot_ref=0.006)
+    bc = PerturbationBC.choked_nozzle(driven=("acoustic",))
+    i_in = net.add(cat.mass_flow_inlet(0.006, 300.0))
+    i_cold = net.add(cat.duct(0.6))
+    i_out = net.add(cat.pressure_outlet(1.0e5, perturbation_bc=bc))
+    net.connect(i_in, i_cold, 0.01)
+    net.connect(i_cold, i_out, 0.01)
+    sol = net.solve()
+    assert sol.converged
+    freqs = np.linspace(60.0, 320.0, 40)
+    bal = forced_power_balance(forced_response(sol.problem, sol.x, freqs, isentropic=True), sol.problem)
+    assert np.all(np.isfinite(bal.boundary_reflection))
+    assert np.all(np.isfinite(bal.boundary_source))
+    # the driven nozzle injects energy -> a non-zero excitation source in the band
+    assert np.max(np.abs(bal.boundary_source)) > 0.0
+    assert np.allclose(bal.net_boundary_flux, bal.boundary_reflection + bal.boundary_source)
+
+
 def test_modal_energy_balance_recovers_growth_rate():
     """The node-wise energy budget reproduces each eigenmode's growth rate (sign and value)."""
     sol = _driven_tube(0.8, 4.0e-3, drive=False)  # eigenmodes use the passive (undriven) ends

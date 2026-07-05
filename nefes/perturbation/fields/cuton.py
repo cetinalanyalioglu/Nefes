@@ -21,6 +21,10 @@ The mean flow always **lowers** the ceiling (``sqrt(1 - M^2) <= 1``), so the
 with-flow value is the conservative limit to keep analyses below.  This module
 reports the per-duct cut-on across a solved network and the network-wide ceiling
 (the widest, hence lowest-cut-on, cross-section).
+
+Public: :func:`cuton_frequency` (single-section cut-on) and
+:func:`duct_cuton_frequencies` (per-duct sweep of a solved network, returning a
+:class:`CutOnReport` of :class:`DuctCutOn` entries).
 """
 
 from dataclasses import dataclass, field

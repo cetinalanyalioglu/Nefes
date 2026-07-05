@@ -1,4 +1,4 @@
-"""Phase 3 validation: residual assembly and the sparse complex-step Jacobian.
+"""Residual assembly and the sparse complex-step Jacobian.
 
 Headline check: the sparse seeded Jacobian equals a dense reference Jacobian
 (full re-eval per column) to ~1e-9, which simultaneously proves the sparsity

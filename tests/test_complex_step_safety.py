@@ -1,7 +1,7 @@
 """Complex-step safety: the analytic (complex-step) Jacobian must equal a real
 finite-difference Jacobian across every element type.
 
-The hard constraint (CLAUDE.md) is that all residual math is complex-step-safe:
+The hard constraint is that all residual math is complex-step-safe:
 smooth, complex-analytic, no ``abs``/``min``/``max``/branch on the flow state.
 The Jacobian is built by complex-step differentiation (``x + 1j*h``), which
 returns the *correct* derivative ONLY for an analytic residual.  A real central
@@ -106,7 +106,7 @@ def _scaled(prob, J):
 
 
 def _all_elements_network(inlet):
-    """A single network exercising every v1 element kernel.
+    """A single network exercising every element kernel.
 
     Layout (areas in m^2)::
 
@@ -414,8 +414,8 @@ PROBES = {
     CHOKED_NOZZLE_OUTLET: _probe_choked_nozzle_outlet,
 }
 
-# Element types that are implemented in v1 (the reserved supersonic boundaries
-# are deferred -- CLAUDE.md -- and have no kernel yet, so they are exempt).
+# Supersonic boundaries are out of the subsonic scope and have no residual kernel
+# yet, so they are exempt from the sweep.
 DEFERRED_RIDS = {SUPERSONIC_INLET, SUPERSONIC_OUTLET}
 # The reacting equilibrium flame needs the absolute-enthalpy datum and a physical
 # reacting state, so the perfect-gas regime sweep here (which imposes h_t = cp*T

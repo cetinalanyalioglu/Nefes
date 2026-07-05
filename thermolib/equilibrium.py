@@ -155,7 +155,7 @@ def _solve_subset(lib, b, p, h_target, T_init, max_iter=400, tol=1e-11):
         has_dropped = np.any(np.real(afull[drop_el, :]) != 0.0, axis=0)
     else:
         has_dropped = np.zeros(S_full, bool)
-    # Restrict the active set to product-eligible species (gas phase in v1).  Condensed
+    # Restrict the active set to product-eligible species (gas phase).  Condensed
     # feed species (e.g. liquid fuel) carry their atoms into ``b`` and their enthalpy into
     # ``h_target`` but never appear as products; an all-gas library leaves this a no-op.
     product = np.asarray(getattr(lib, "product_mask", np.ones(S_full, bool)), bool)

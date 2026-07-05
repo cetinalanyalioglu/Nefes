@@ -1,4 +1,4 @@
-"""Linear-stability eigenmodes: the nonlinear eigenproblem ``det A(omega) = 0`` (theory.md s12.7 (ii)).
+"""Linear-stability eigenmodes: the nonlinear eigenproblem ``det A(omega) = 0``.
 
 The verification is layered against closed form:
 
@@ -9,7 +9,7 @@ The verification is layered against closed form:
   agree.
 * Cross-driver consistency: a mode's frequency coincides with the resonance peak of
   the *forced* response (``forced_response``) on the same network -- the two
-  s12.7 analyses share one operator, so they must.
+  analyses share one operator, so they must.
 
 Sign convention: under the operator's ``e^{+i*omega*t}`` time dependence a passive
 lossy resonator decays for ``Im(omega) > 0``, so the growth rate is ``-Im(omega)``

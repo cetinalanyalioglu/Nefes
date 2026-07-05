@@ -1,5 +1,5 @@
 """Identification: recover an element's dynamic response from a measured network transfer
-matrix (theory.md s12.7).
+matrix.
 
 Plant-recover throughout -- synthesize the measured matrix from a known response with the
 forward machinery, then de-embed and compare:

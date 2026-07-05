@@ -1,4 +1,4 @@
-"""Verification of the perturbation boundary conditions (theory.md s12.4).
+"""Verification of the perturbation boundary conditions.
 
 Every terminal BC is a reflection relation ``w_incoming - R(omega) w_outgoing = b``.
 The physical, non-circular check is a **duct terminated by the BC**: drive an acoustic
@@ -187,8 +187,8 @@ def test_entropy_seat_convects_through_flowing_duct(inlet_bc):
 
 def test_inherited_pressure_outlet_is_pressure_release():
     # An outlet left at 'inherit' keeps its linearized mean BC; for a subsonic
-    # pressure outlet that is p' = 0 -- the ideal open end R = -1 (theory.md s12.4,
-    # "continuity with the steady solution").
+    # pressure outlet that is p' = 0 -- the ideal open end R = -1 (continuity with
+    # the steady solution).
     _, sol = _duct_case(PerturbationBC.anechoic(driven=("acoustic",)), PerturbationBC.inherit())
     u, c = _uc(sol)
     fr = forced_response(sol.problem, sol.x, FREQS)

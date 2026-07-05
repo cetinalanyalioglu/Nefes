@@ -102,7 +102,7 @@ _MAX_REFINE_POINTS = 4000
 # Maximum bisection passes the refinement makes over the whole grid.
 _REFINE_MAX_ITERS = 20
 # Relative amount by which a factorization frequency is nudged off an exact passive resonance
-# (where A_0 is singular) before refactoring; on the real axis, so a real offset suffices.
+# (where A_0 is singular) before it is factorized; on the real axis, so a real offset suffices.
 _NUDGE_REL = 1e-8
 
 

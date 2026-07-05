@@ -98,7 +98,7 @@ def cuton_frequency(area, c, mach=0.0, section="circular", aspect=1.0):
     else:  # square / rectangular: half-wavelength across the larger side
         f0 = c / (2.0 * d)
     m = abs(float(mach))
-    flow = np.sqrt(max(1.0 - m * m, 0.0))  # subsonic v1; M->1 drives the ceiling to 0
+    flow = np.sqrt(max(1.0 - m * m, 0.0))  # subsonic; M->1 drives the ceiling to 0
     return float(f0 * flow)
 
 

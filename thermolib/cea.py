@@ -247,7 +247,7 @@ class ThermoInp:
         elements : iterable of str
             Element symbols present in the feed (the reachable element pool).
         gas_only : bool, optional
-            Drop condensed-phase species (``phase != 0``).  Defaults to ``True``; v1
+            Drop condensed-phase species (``phase != 0``).  Defaults to ``True``;
             equilibrium products are gaseous (condensed species are feed-only).
         exclude_ions : bool, optional
             Drop ionic species (a ``+``/``-`` in the name or an electron ``E`` in the

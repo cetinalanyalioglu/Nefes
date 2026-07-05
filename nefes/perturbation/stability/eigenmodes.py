@@ -81,7 +81,7 @@ _MAX_REFINE_ROUNDS = 3
 _NEWTON_FD_REL = 1e-6
 
 # Relative amount by which a factorization node is nudged off an exact eigenvalue (where A(z)
-# is singular) before refactoring; far below the contour scale, so the moments are unaffected.
+# is singular) before it is factorized; far below the contour scale, so the moments are unaffected.
 _FACTOR_NUDGE_REL = 1e-7
 
 # Cap on the number of mode rows shown in the plain-text repr (the HTML repr lists all of them).
@@ -239,7 +239,7 @@ class _Factorizer:
     A quadrature node must not coincide with an eigenvalue (where ``A(z)`` is exactly
     singular); if it does, the node is nudged by a negligible fraction of ``|z|`` -- far
     below the contour scale, so neither the moment integral nor the winding phase is
-    affected -- and refactored.
+    affected -- and then factorized.
     """
 
     def __init__(self, A_of):

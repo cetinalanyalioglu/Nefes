@@ -1,5 +1,5 @@
-"""Flame elements: the perfect-gas heat-release flame (Phase 4) and the reacting
-equilibrium flame (Phase 5).
+"""Flame elements: the perfect-gas heat-release flame and the reacting
+equilibrium flame.
 
 The heat-release flame conserves mass and total pressure while raising the
 through-flow's total enthalpy by ``Q_dot / mdot``.  The equilibrium flame is its
@@ -77,7 +77,7 @@ def test_zero_heat_release_is_a_passthrough():
 
 
 # --------------------------------------------------------------------------
-# Phase 5: reacting equilibrium flame
+# Reacting equilibrium flame
 # --------------------------------------------------------------------------
 
 

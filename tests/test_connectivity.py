@@ -1,4 +1,4 @@
-"""Phase 2 validation: connectivity CSR/CSC and the Jacobian sparsity pattern."""
+"""Connectivity CSR/CSC and the Jacobian sparsity pattern."""
 
 import pytest
 

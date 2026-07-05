@@ -166,7 +166,7 @@ def test_fuel_pulse_generates_a_convected_mixture_wave():
 def test_forced_response_surfaces_scalar_waves():
     """``ForcedResponse.waves()`` returns the convected scalar wave alongside ``(f, g, h)``.
 
-    Wave-family parity for reacting scalars: the per-edge wave vector now carries one entry per
+    Wave-family parity for reacting scalars: the per-edge wave vector carries one entry per
     transported scalar (named by ``prob.scalar_names``), surfaced directly from the network
     column -- the scalar is already its own convected wave -- so the same field accessor serves
     entropy and the scalars, no hand-indexing of ``X`` required.

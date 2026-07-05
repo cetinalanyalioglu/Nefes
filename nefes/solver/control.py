@@ -11,9 +11,10 @@ backtracking line search on the scaled residual norm, and a Levenberg-Marquardt 
 when the LU step stalls or the Jacobian is singular.  The final stage solves the exact
 equations (``kappa = 0``).
 
-See ``docs/design/solver.md`` for the full account and references (Allgower & Georg,
-*Numerical Continuation Methods*; Todini & Pilati's global gradient algorithm for the
-zero-flow singularity of hydraulic-network solvers).
+The continuation and globalization follow standard treatments (Allgower & Georg,
+*Numerical Continuation Methods*); the artificial-resistance regularization mirrors
+Todini & Pilati's global gradient algorithm for the zero-flow singularity of
+hydraulic-network solvers.
 """
 
 import warnings
@@ -412,10 +413,10 @@ def solve(
         mdot_ref, 1)``, so the injected artificial pressure drop at the reference flow is
         capped at a fraction (``kappa``) of the real driving drop.  The cap means the
         scaling only *softens* the friction for low-``dP`` / high-``mdot`` networks (where
-        the historical absolute drop ``kappa * mdot`` would over-perturb), and is a no-op
+        the constant absolute drop ``kappa * mdot`` would over-perturb), and is a no-op
         for healthy-``dP`` networks (``r_art = 1``).  When no a-priori pressure drop is
         available (a mass-driven network, ``domain_max_dp == 0``) it falls back to the
-        absolute coefficient.  ``"absolute"`` always uses that historical unit coefficient
+        absolute coefficient.  ``"absolute"`` always uses the constant unit coefficient
         (artificial drop ``kappa * mdot``).  Either way ``eps`` tracks the dimensionless
         ``kappa``.
     adaptive_scale : bool, optional
@@ -441,7 +442,7 @@ def solve(
     mdot_ref = prob.var_scale[0]
     # artificial-friction resistance: scale the dimensionless kappa schedule so the
     # injected artificial dP is a fixed fraction of the real driving dP (kappa_scale
-    # == "dp"); fall back to the historical unit coefficient when there is no a-priori
+    # == "dp"); fall back to the constant unit coefficient when there is no a-priori
     # pressure drop or the caller asks for it explicitly.
     if kappa_scale == "dp":
         dp = domain_max_dp(prob)

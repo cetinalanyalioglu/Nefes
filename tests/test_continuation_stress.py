@@ -32,7 +32,7 @@ def _assert_physical(prob, res):
     est = states_table(prob, res.x)
     assert np.all(est[ES_P] > 0.0)
     assert np.all(est[ES_T] > 0.0)
-    assert np.all(np.abs(est[ES_M]) < 1.0)  # v1 subsonic scope
+    assert np.all(np.abs(est[ES_M]) < 1.0)  # subsonic scope
     assert np.all(np.isfinite(res.x))
     return est
 

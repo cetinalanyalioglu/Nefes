@@ -1,4 +1,4 @@
-"""Phase 4 validation: the mean-flow solver vs analytic 1-D compressible flow."""
+"""Mean-flow solver vs analytic 1-D compressible flow."""
 
 import numpy as np
 import pytest

@@ -1,8 +1,8 @@
-"""Perturbation network: N x N transfer / scattering matrices (theory.md s12.7 (i)).
+"""Perturbation network: N x N transfer / scattering matrices.
 
-The operator is ``A(omega) = J_alg + i*omega*M + P(omega) + S(omega)``; v1
-implements the duct phase stamp ``P`` and the force-once / extract-many driver,
-with ``M = 0`` and ``S`` a no-op provision.  A subsonic two-terminal network has
+The operator is ``A(omega) = J_alg + i*omega*M + P(omega) + S(omega)``; the
+implementation covers the duct phase stamp ``P`` and the force-once / extract-many
+driver, with ``M = 0`` and ``S`` a no-op provision.  A subsonic two-terminal network has
 three independent incoming waves -- two acoustic plus **one entropy** -- so the
 matrices are genuinely ``3 x 3``.  Targets are closed-form duct phases, the
 acoustic 2x2 sub-block, and internal consistency (cascade composition, unitarity).
@@ -560,7 +560,7 @@ def test_storage_block_zero_and_shape():
     prob, res = _single_duct(110000.0, 101325.0, 1.0)
     blocks = build_acoustic_blocks(prob, res.x)
     assert blocks.M.shape == (prob.n_eq, prob.n_col)
-    assert blocks.M.nnz == 0  # no finite-volume element in v1
+    assert blocks.M.nnz == 0  # no finite-volume element in this network
 
 
 def test_acoustic_id_provisions():

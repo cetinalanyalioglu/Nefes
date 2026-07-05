@@ -1,4 +1,4 @@
-"""Phase 1 validation: the density recovery and its complex-step Jacobian.
+"""Density recovery and its complex-step Jacobian.
 
 This is the load-bearing test of the project.  If the IFT-spliced complex-step
 derivative through the @njit density solve does not match the analytic

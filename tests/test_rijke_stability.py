@@ -1,4 +1,4 @@
-"""Self-excited thermoacoustic instability of a Rijke tube (theory.md s12.4, s12.7).
+"""Self-excited thermoacoustic instability of a Rijke tube.
 
 A compact flame with an ``n-tau`` heat-release response drives a duct mode unstable.
 The perturbation operator's source face ``S(omega)`` makes it non-self-adjoint, so the

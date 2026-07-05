@@ -3,8 +3,8 @@
 ``sudden_area_change`` carries a vena-contracta contraction coefficient ``cc``:
 reverse (large -> small) flow loses total pressure ``K_c * (1/2 rho u^2)_small``
 with ``K_c = (1/cc - 1)^2``, referenced to the downstream (small) side.
-``cc = 1`` (default) is loss-free and must reproduce the historical
-total-pressure-continuous contraction.  Forward (expanding) flow is unaffected.
+``cc = 1`` (default) is loss-free and reproduces the total-pressure-continuous
+contraction.  Forward (expanding) flow is unaffected.
 
 The ``1/2 rho u^2`` head is the incompressible reduction of the Borda momentum
 balance, so the loss is exact only to ``O(M^2)``; these tests run at modest Mach.
@@ -42,7 +42,7 @@ def _contraction(cc, A_large=0.09, A_small=0.05, pt_in=120000.0, p_out=101325.0)
     assert res.converged
     est = states_table(prob, res.x)
     assert est[ES_M, 1] > est[ES_M, 0]  # contraction accelerates the flow
-    assert est[ES_M, 1] < 0.95  # subsonic (v1 scope)
+    assert est[ES_M, 1] < 0.95  # subsonic
     return est
 
 
@@ -57,8 +57,8 @@ def test_contraction_loss_matches_Kc():
 
 
 def test_contraction_lossless_default_conserves_pt():
-    # cc = 1 (default): the reverse branch is exact total-pressure continuity, i.e.
-    # the historical behaviour, recovered byte-for-byte (K_c = 0).
+    # cc = 1 (default): the reverse branch is exact total-pressure continuity
+    # (K_c = 0), recovered byte-for-byte.
     est = _contraction(1.0)
     assert np.isclose(est[ES_PT, 0], est[ES_PT, 1], rtol=1e-7)
 

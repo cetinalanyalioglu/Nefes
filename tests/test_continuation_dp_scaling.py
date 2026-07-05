@@ -1,12 +1,12 @@
 """dP-scaled continuation start: size the artificial-friction coefficient to the domain dP.
 
 The artificial-resistance continuation stamps an artificial pressure drop ``kappa * R_art * mdot``
-into the interior pressure rows.  Historically ``R_art = 1`` (an absolute coefficient), which
+into the interior pressure rows.  A constant ``R_art = 1`` (an absolute coefficient)
 over-perturbs low-``dP`` / high-``mdot`` networks.  ``kappa_scale="dp"`` (the default) sets
 ``R_art = min(domain_max_dp / mdot_ref, 1)`` so the injected drop is capped at a fraction
-``kappa`` of the real driving drop -- softening the friction where it was too strong while
-leaving healthy-``dP`` networks (``R_art = 1``) and the final exact stage (``kappa = 0``)
-untouched.
+``kappa`` of the real driving drop -- softening the friction where it would otherwise be too
+strong while leaving healthy-``dP`` networks (``R_art = 1``) and the final exact stage
+(``kappa = 0``) untouched.
 """
 
 import numpy as np

@@ -271,9 +271,9 @@ def test_frozen_from_xi_complex_step():
 
 
 def test_comixed_fuels_are_resolvable():
-    """Co-mixed multi-fuel that the old elemental basis could NOT resolve (CH4 +
-    C8H18 + H2 in air, indistinguishable from C,H,O,N) is now recovered exactly:
-    each fuel is its own feed stream, so the forward blend is unambiguous."""
+    """Co-mixed multi-fuel (CH4 + C8H18 + H2 in air, indistinguishable at the
+    C,H,O,N elemental level) is recovered exactly: each fuel is its own feed
+    stream, so the forward blend is unambiguous."""
     from nefes.chem.composition import enthalpy_mass
     from nefes.thermo.equilibrium import eq_frozen_state
     from thermolib import Thermo

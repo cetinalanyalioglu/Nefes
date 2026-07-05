@@ -1,4 +1,4 @@
-"""Phase 1 validation: the closure adapter (AD-3 boundary).
+"""The closure adapter (AD-3 boundary).
 
 Checks that closure_solve returns (rho, h) consistent with the kinetic-energy
 coupling and that its complex-step derivatives w.r.t. the band-1 unknowns match

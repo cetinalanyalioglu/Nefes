@@ -1,9 +1,9 @@
-"""Equilibrium warm-start: identical results, fewer Newton steps (T5).
+"""Equilibrium warm-start: identical results, fewer Newton steps.
 
-The per-edge HP-equilibrium solve is the dominant reacting cost.  Two optimizations cut it:
+The per-edge HP-equilibrium solve is the dominant reacting cost.  Two mechanisms keep it cheap:
 
-* the recovery folds the closure's static density into the single equilibrium solve, so the
-  reacting edge no longer runs the equilibrium twice (closure + thermo state);
+* the recovery folds the closure's static density into a single equilibrium solve, so the
+  reacting edge runs the equilibrium once (closure + thermo state together);
 * the Jacobian seeds each complex-step column's equilibrium from the freshly recovered base
   composition *and* temperature, so it converges in a couple of Newton steps.
 

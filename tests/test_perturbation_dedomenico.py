@@ -1,6 +1,6 @@
 """Replication of De Domenico, Rolland & Hochgreb (2019), JSV 440, 212-230,
 "A generalised model for acoustic and entropic transfer function of nozzles with
-losses" (``scratch/De Domenico et al. - 2019 ...pdf``).
+losses".
 
 That model is **compact** (low frequency), so our ``omega -> 0`` jumps are the
 exact regime.  A lossy nozzle is four stations ``A1 -> AT -> Aj -> A2``: isentropic
@@ -13,8 +13,8 @@ De Domenico ``(P+, P-, sigma)`` flavor (== our ``riemann`` basis, Eqs. 9-11)
 against an **independent** composition of the analytic jumps.
 
 The sudden element is a smooth Borda<->isentropic switch; its mean flow is exact
-Borda, but the frozen perturbation picks up an ``O(eps)`` switch-derivative bias
-(TODO.md).  With a sharp per-element ``eps`` (the flow is one-directional here) the
+Borda, but the frozen perturbation picks up an ``O(eps)`` switch-derivative bias.
+With a sharp per-element ``eps`` (the flow is one-directional here) the
 perturbation recovers the exact Borda jump -- which is what these tests assert.
 """
 
@@ -252,7 +252,7 @@ def test_sudden_eps_sharpens_tm_but_scattering_is_robust():
         res = solve(prob)
         assert res.converged
         est = states_table(prob, res.x)
-        assert est[ES_M, 1] < 1.0  # subsonic throat (v1)
+        assert est[ES_M, 1] < 1.0  # subsonic throat
         resp = perturbation_response(prob, res.x, ZERO, excite=FULL)
         Ra = char_to_dq(est[ES_RHO, 1], est[ES_C, 1])
         Rb = char_to_dq(est[ES_RHO, 2], est[ES_C, 2])

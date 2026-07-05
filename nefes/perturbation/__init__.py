@@ -1,4 +1,4 @@
-"""Perturbation network built on a converged mean flow (theory.md s12).
+"""Perturbation network built on a converged mean flow.
 
 A second analysis over the same compiled network and converged state -- not a
 second solver.  It reuses the connectivity, the complex-step Jacobian (which is
@@ -12,9 +12,9 @@ flow, larger with reacting scalars), each entry complex (magnitude + phase).
 This is more than acoustics: it is the linear-response twin of the mean-flow
 network, sharing its equations exactly.
 
-All Python/SciPy, no new @njit kernel.  v1 implements the transfer / scattering
-matrix analysis (theory s12.7 (i), :func:`perturbation_response`) and the linear
-stability analysis (s12.7 (ii), :func:`eigenmodes` -- the nonlinear eigenproblem
+All Python/SciPy, no new @njit kernel.  Implements the transfer / scattering
+matrix analysis (:func:`perturbation_response`) and the linear
+stability analysis (:func:`eigenmodes` -- the nonlinear eigenproblem
 ``det A(omega) = 0`` by Beyn's contour-integral method).  Both operate on the
 *same* assembled operator ``A(omega) = J_alg + i*omega*M + P + S``: the storage
 ``M`` (a finite-volume :func:`~nefes.elements.catalog.cavity`) and the dynamic source

@@ -479,7 +479,7 @@ def _build_ui_spec(node: dict):
     ntype = node.get("type")
     attrs = node.get("attributes") or {}
     if ntype in _DEFERRED_TYPES:
-        raise ValueError(f"element type {ntype!r} is deferred in v1 (subsonic scope); remove it from the case")
+        raise ValueError(f"element type {ntype!r} is deferred (subsonic scope); remove it from the case")
     try:
         builder = _UI_NODE_BUILDERS[ntype]
     except KeyError:

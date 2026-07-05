@@ -1,4 +1,4 @@
-"""Notebook plotting for the stability spectrum and mode shapes (theory.md s12.7).
+"""Notebook plotting for the stability spectrum and mode shapes.
 
 Two views over an :class:`nefes.perturbation.EigenmodeResult`:
 
@@ -7,7 +7,6 @@ Two views over an :class:`nefes.perturbation.EigenmodeResult`:
 * :func:`plot_mode_shape` -- one mode's wave amplitudes (magnitude over phase)
   along the network's edges.
 """
-# We do not refer to any spec document (e.g. theory.md) in the comments/docstrings.
 
 import numpy as np
 import plotly.graph_objects as go

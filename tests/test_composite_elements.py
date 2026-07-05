@@ -79,7 +79,7 @@ def test_expansion_appends_and_preserves_user_ids():
     assert cmap.user_node_to_expanded == ((0,), (1, 3), (2,))
     assert cmap.internal_nodes == frozenset({3}) and cmap.internal_edges == frozenset({2})
     # user edges keep their endpoints/areas; only the orifice endpoint is rewired.  Each edge
-    # now carries explicit flow-aligned ports (..., tail_port, head_port): a 2-port sub-element
+    # carries explicit flow-aligned ports (..., tail_port, head_port): a 2-port sub-element
     # takes its inflow on port 0 and its outflow on port 1, so the throat's iac/sac are wired
     # port 0 (in) / port 1 (out) exactly as by hand.
     assert out_edges[0] == (0, 1, A1, 0, 0)  # inlet -> iac: iac inflow on port 0
@@ -327,7 +327,7 @@ def test_tapered_duct_throat_is_narrowest_and_fastest():
     assert cv.throat is not None
     assert est[ES_AREA, cv.throat] == pytest.approx(est[ES_AREA].min())  # the narrowest edge
     assert est[ES_M, cv.throat] == pytest.approx(est[ES_M].max(), rel=1e-6)  # the fastest
-    assert est[ES_M, cv.throat] < 1.0  # subsonic (v1)
+    assert est[ES_M, cv.throat] < 1.0  # subsonic
 
 
 def test_tapered_duct_from_callable_matches_table():
@@ -375,7 +375,7 @@ def test_tapered_duct_rejects_inconsistent_n_segments():
 
 
 def test_tapered_duct_rejects_flat_area_list():
-    # the old area-only list is no longer accepted -- the message points at the (x, A) form
+    # a flat area-only list is rejected -- the message points at the (x, A) form
     with pytest.raises(ValueError, match=r"\(x, area\) pairs"):
         cat.tapered_duct([3e-3, 2e-3, 3e-3], length=0.3)
 
@@ -523,7 +523,7 @@ def test_sudden_contraction_resolves_the_vena_contracta():
     assert p_vc < est[ES_P, e_in] and p_vc < est[ES_P, e_out]  # the minimum static pressure
     assert p_vc == pytest.approx(est[ES_P].min())
     assert est[ES_M, cv.throat] > est[ES_M, e_out]  # fastest at the vena contracta, then re-expands
-    assert est[ES_M, cv.throat] < 1.0  # subsonic (v1)
+    assert est[ES_M, cv.throat] < 1.0  # subsonic
 
 
 def test_sudden_contraction_loss_is_compressible():

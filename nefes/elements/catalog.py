@@ -455,8 +455,8 @@ def sudden_area_change(name="sac", cc=1.0, eps=None, l_up=0.0, l_down=0.0, end_c
     cc : float, optional
         Vena-contracta contraction coefficient for the reverse (contracting)
         flow, in ``(0, 1]``.  ``cc = 1`` (default) is the loss-free contraction:
-        the reverse branch reduces to exact total-pressure continuity (the
-        historical behaviour).  Use a tabulated value for the geometry (e.g.
+        the reverse branch reduces to exact total-pressure continuity.  Use a
+        tabulated value for the geometry (e.g.
         ~0.62 for a sharp-edged contraction at a small area ratio; Weisbach /
         Idelchik).  Forward (expanding) flow is unaffected by ``cc``.
 
@@ -471,8 +471,7 @@ def sudden_area_change(name="sac", cc=1.0, eps=None, l_up=0.0, l_down=0.0, end_c
     l_up, l_down, end_correction : float, optional
         Optional storage lengths [m] (default 0).  A sudden change is geometrically thin
         (``l_up = l_down = 0``); supply ``end_correction`` for the entrained-mass inertance
-        the step still carries.  See :func:`isentropic_area_change` and
-        ``scratch/inertance-end-correction-theory.md``.
+        the step still carries.  See :func:`isentropic_area_change`.
     """
     from .ids import SUDDEN_AREA_CHANGE
 
@@ -488,7 +487,7 @@ def loss(K, name="loss", ref_port=0, eps=None, l_up=0.0, l_down=0.0, end_correct
 
     The element conserves mass and drops total pressure by ``K`` dynamic heads,
     with the head's sign tracking the flow direction so reverse flow reverses the
-    drop (modeling-guide.md s4).  The static state on each port is reconstructed
+    drop.  The static state on each port is reconstructed
     from that port's own area, so the loss may straddle an area change: the result
     is an isentropic area change (Pt-preserving static<->dynamic conversion) with
     the concentrated ``K``-loss superposed.
@@ -510,7 +509,7 @@ def loss(K, name="loss", ref_port=0, eps=None, l_up=0.0, l_down=0.0, end_correct
     l_up, l_down, end_correction : float, optional
         Optional storage lengths [m] (default 0): an orifice's thickness / backing length
         (compliance + inertance) and its end correction (inertance only).  See
-        :func:`isentropic_area_change` and ``scratch/inertance-end-correction-theory.md``.
+        :func:`isentropic_area_change`.
         With these the loss becomes an orifice impedance ``Z = R(u) + i*omega*L_eff/A``
         (the steady resistance from ``J_alg``, the reactance from ``M``).
     """
@@ -573,7 +572,7 @@ def heat_release_flame(Qdot, name="flame", dynamic_source=None):
     the mean flame is acoustically passive.  Attach a ``dynamic_source`` (a
     :class:`~nefes.elements.dynamic_source.DynamicSource`, e.g. an ``n-tau`` flame
     transfer function) to give it an active unsteady heat release ``S(omega)`` --
-    the term that drives thermoacoustic instability (theory.md s12.4).
+    the term that drives thermoacoustic instability.
 
     Parameters
     ----------

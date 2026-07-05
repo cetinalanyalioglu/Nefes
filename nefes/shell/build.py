@@ -205,7 +205,8 @@ def validate_network(
                 raise ValueError(
                     f"{label}: choked-nozzle throat area A* = {a_star:g} m^2 must be smaller than "
                     f"the outlet area {a_out:g} m^2 (a contraction). A* >= A_out has no subsonic "
-                    "choked approach; a converging-diverging (supersonic) nozzle is out of v1 scope."
+                    "choked approach; a converging-diverging (supersonic) nozzle currently not "
+                    "supported"
                 )
 
         if not ALLOWS_AREA_CHANGE.get(rid, True) and deg >= 2:

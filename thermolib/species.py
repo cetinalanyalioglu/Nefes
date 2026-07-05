@@ -207,8 +207,8 @@ class SpeciesLibrary:
         self.element_matrix = a
         self.element_weights = np.array([atomic_weight(e) for e in self.elements])
 
-        # Product mask: which species may appear as equilibrium products.  v1 keeps only
-        # gaseous species (CEA phase 0); condensed species are feed-only (they set elements
+        # Product mask: which species may appear as equilibrium products.  Only gaseous
+        # species (CEA phase 0) are kept; condensed species are feed-only (they set elements
         # and enthalpy but their polynomials are not valid at flame temperatures).
         self.product_mask = np.array([getattr(s, "phase", 0) == 0 for s in self.species], dtype=bool)
 

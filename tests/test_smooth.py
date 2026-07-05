@@ -1,4 +1,4 @@
-"""Phase 0 validation: smooth primitives are analytic and complex-step-safe.
+"""Smooth primitives are analytic and complex-step-safe.
 
 Checks, for each primitive:
   * the complex-step derivative matches the analytic derivative to ~1e-12,

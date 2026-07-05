@@ -1,4 +1,4 @@
-"""Phase 5 validation: the Network/Solution shell and YAML connectivity loader."""
+"""The Network/Solution shell and YAML connectivity loader."""
 
 import os
 
@@ -491,7 +491,7 @@ def test_load_case_sudden_contraction_coefficient(tmp_path):
     q_small = 0.5 * dn["rho"] * dn["u"] ** 2
     assert up["p_t"] - dn["p_t"] == pytest.approx(K_c * q_small, rel=1e-5)
 
-    # the attribute-less case defaults to the historical loss-free contraction
+    # the attribute-less case defaults to the loss-free contraction
     assert free.edge(0)["p_t"] - free.edge(1)["p_t"] == pytest.approx(0.0, abs=1.0)
 
 
@@ -571,7 +571,7 @@ def test_load_multiport_case_conserves_mass(tmp_path):
 
 
 def test_deferred_supersonic_raises(tmp_path):
-    # v1 is subsonic-scope: a case carrying a deferred supersonic boundary is rejected.
+    # Supersonic boundaries are out of the subsonic scope: a case carrying one is rejected.
     nodes = [
         ("res", "TotalPressureInlet", 0, {"totalPressure": 200000.0, "totalTemperature": 400.0}),
         ("exit", "SupersonicOutlet", 1, {"pressure": 18786.5}),

@@ -1,4 +1,4 @@
-"""Spatial mode-shape reconstruction: the analytic intra-duct field (theory.md s12.3).
+"""Spatial mode-shape reconstruction: the analytic intra-duct field.
 
 A ``DUCT`` is uniform and lossless, so its interior perturbation field is the duct
 stamp's phase relation evaluated at every station -- exact, not a discretization.

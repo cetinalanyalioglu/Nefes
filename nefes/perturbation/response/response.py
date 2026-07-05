@@ -207,7 +207,7 @@ def _reject_unsupported_families(families, scalar_names=()):
 
 def _validate_excite(excite, scalar_names=()):
     if "acoustic" not in excite:
-        raise ValueError("excite must include 'acoustic' (v1 always drives the acoustic waves)")
+        raise ValueError("excite must include 'acoustic'")
     _reject_unsupported_families(excite, scalar_names)
 
 

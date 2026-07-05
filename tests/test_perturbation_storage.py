@@ -1,6 +1,6 @@
 """Storage block ``M`` and the finite-volume cavity (the operator's compliance face).
 
-Covers (theory.md s12.5, scratch/helmholtz-resonator-plan.md Phase 1-3):
+Covers:
 
 * the cavity is a wall to the mean flow (``mdot = 0``);
 * its compliance populates ``M`` with the single entry ``V/c^2`` on the mass row;
@@ -157,7 +157,6 @@ def test_resonance_scales_with_cavity_volume():
 # ---------------------------------------------------------------------------
 # Generalized storage: per-port compliance + series inertance on the inline
 # pressure elements, and the chamber-volume compliance on the manifolds.
-# (scratch/inertance-end-correction-theory.md)
 # ---------------------------------------------------------------------------
 
 
@@ -274,7 +273,7 @@ def _hr_with_inline_neck(volume, neck_area, l_neck, main_area=3.0e-3, l_main=0.0
 
 
 def test_inline_inertance_matches_neck_duct_resonance():
-    # the duct-equivalence (theory.md s12.5): a neck modeled as an inline inertance (M)
+    # the duct-equivalence: a neck modeled as an inline inertance (M)
     # resonates at the same Helmholtz frequency as the neck modeled as a duct (P).
     V, AN, LN = 1.0e-3, 5.0e-4, 0.02
     freqs = np.linspace(50.0, 1100.0, 1100)

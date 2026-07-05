@@ -1,6 +1,6 @@
-"""Analytic verification of the perturbation network (theory.md s12.1-12.2).
+"""Analytic verification of the perturbation network.
 
-The compact elements of s7 are *instantaneous algebraic* jumps, so the zero-
+The compact elements are *instantaneous algebraic* jumps, so the zero-
 frequency perturbation matrix the solver assembles (the converged complex-step
 Jacobian, transformed by the characteristic maps) *is* the linearised jump
 condition.  This module proves that against **independent** analytic references,
@@ -20,7 +20,7 @@ element by element:
    ``[1,0,0]`` and the enthalpy row ``[0,0,1]`` for every adiabatic element:
    mass and **nodal energy** are conserved across the jump exactly.  This is the
    perturbation-network realisation of the edge total-enthalpy transport rows
-   being a *view* of nodal energy conservation (theory.md s6.2).
+   being a *view* of nodal energy conservation.
 """
 
 import numpy as np

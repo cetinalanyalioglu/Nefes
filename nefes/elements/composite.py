@@ -39,7 +39,7 @@ class CompositeElementSpec:
     name : str
         Display name; sub-elements are namespaced under it (``orifice.iac``).
     sub_elements : list of ElementSpec
-        The atomic elements the composite expands to (all atomic -- no nesting in v1).
+        The atomic elements the composite expands to (all atomic -- no nesting yet).
     internal_edges : list of (int, int, float)
         Directed internal edges ``(tail_sub, head_sub, area)`` between sub-elements, by
         *local* sub-element index.  Each internal edge **is** an intermediate flow state

@@ -86,7 +86,7 @@ def test_zero_frequency_operator_equals_jacobian():
 
 
 def test_quiescent_mean_assembles_cleanly():
-    # pt_in = p_out -> mdot ~ 0 (the M_bar = 0 singular point, theory s12.6).
+    # pt_in = p_out -> mdot ~ 0 (the M_bar = 0 singular point).
     prob = _nozzle(101325.0, 300.0, 101325.0)
     res = solve(prob)
     assert res.converged

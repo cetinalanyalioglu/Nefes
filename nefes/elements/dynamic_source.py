@@ -103,7 +103,7 @@ class NTau(TransferFunction):
     [s].  Entire in frequency, so it is usable in the stability eigenproblem.  Under
     the ``e^{+i omega t}`` convention the factor ``exp(-i omega tau)`` is the causal
     delay of the response behind the driving fluctuation (same sign as the duct
-    propagation phase, theory.md s12.3).
+    propagation phase).
 
     Parameters
     ----------

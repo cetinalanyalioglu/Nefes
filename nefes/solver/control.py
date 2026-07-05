@@ -37,6 +37,19 @@ from .report import _Reporter
 # does not taper with the schedule; it only regularizes the branch, never the equations.
 EPS_FB = 1e-5
 
+# Globalization tuning for the damped Newton in ``_solve_stage``.  These are standard,
+# solver-agnostic line-search / Levenberg-Marquardt defaults, not physics: the exact values
+# only trade robustness against a few extra residual evaluations on hard iterates.
+_LS_MAX_BACKTRACK = 30  # cap on step halvings in the Armijo line search (alpha down to ~2^-30)
+_LS_SHRINK = 0.5  # step-length reduction per backtrack (alpha *= this)
+_LS_ARMIJO = 1e-4  # Armijo sufficient-decrease coefficient
+_LM_MAX_TRIES = 40  # cap on damping trials in the Levenberg-Marquardt fallback
+_LM_INIT = 1e-3  # initial LM damping
+_LM_INCREASE = 4.0  # damping growth when an LM trial is rejected (shorter, safer step)
+_LM_DECREASE = 0.5  # damping relaxation after any accepted step (toward Gauss-Newton)
+_LM_MIN = 1e-12  # damping floor
+_LM_MAX = 1e8  # damping ceiling
+
 
 def _stage_eps(mdot_ref, kappa):
     """Complementarity smoothing width for a continuation stage (vanishes with ``kappa``)."""
@@ -268,21 +281,6 @@ def _merit(prob, x2d, eps, kappa, res_scale):
         return np.inf, None
     R_hat = R / res_scale
     return float(np.linalg.norm(R_hat)), R
-
-
-# Globalization tuning for the damped Newton in ``_solve_stage``.  These are standard,
-# solver-agnostic line-search / Levenberg-Marquardt defaults, not physics: the exact values
-# only trade robustness against a few extra residual evaluations on hard iterates.
-_LS_MAX_BACKTRACK = 30  # cap on step halvings in the Armijo line search (alpha down to ~2^-30)
-_LS_SHRINK = 0.5  # step-length reduction per backtrack (alpha *= this)
-_LS_ARMIJO = 1e-4  # Armijo sufficient-decrease coefficient
-_LM_MAX_TRIES = 40  # cap on damping trials in the Levenberg-Marquardt fallback
-_LM_INIT = 1e-3  # initial LM damping
-_LM_INCREASE = 4.0  # damping growth when an LM trial is rejected (shorter, safer step)
-_LM_DECREASE = 0.5  # damping relaxation after any accepted step (toward Gauss-Newton)
-_LM_MIN = 1e-12  # damping floor
-_LM_MAX = 1e8  # damping ceiling
-# CA: We define constants at the top of the file, if possible. And we ensure they are not duplicated in the codebase.
 
 
 def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, res_scale, var_scale, reporter=None):

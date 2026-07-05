@@ -1,156 +1,159 @@
 # Examples
 
-- **`converging_nozzle.yaml`** — a network **saved from the FNetLibUI tool** (the
-  `fns-flow-network` model): reservoir → feed pipe → isentropic contraction →
-  tailpipe → back-pressure outlet. The two ducts are inert in the mean flow but
-  carry the wave phase used by the perturbation network.
-- **`perturbation_boundary_conditions.ipynb`** — exercises **every** named
-  `PerturbationBC` closure on a single driven duct, checking each against its analytic
-  value: the diagonal reflections (`hard_wall`, `open_end`, `mean_flow_open_end`,
-  `anechoic`, `reflection`, `impedance`/`impedance_polar`) read back as `g/f` at the
-  termination; the `excitation` source term `b` (with `base_R` and acoustic/entropy
-  `family`); the entropy→acoustic coupling `R_s` of the `choked_nozzle` /
-  `constant_mass_flow` outlets (indirect noise, vs Marble–Candel); and the default
-  `inherit`. All via `nefes.perturbation.boundary_response`; Plotly, Nefes theme.
-- **`helmholtz_resonator.ipynb`** — demonstrates the **storage block `M`** and its first
-  producing element, the **`cavity`**. Shows the cavity is a wall to the mean flow
-  (`mdot = 0`) and a compliance `V/c²` to acoustics (its single `M` entry), then composes
-  a **Helmholtz resonator** from primitives (tee + neck `duct` + `cavity`) and reproduces
-  the analytic side-branch transmission-loss peak at `f₀ = c√(Aₙ/(V·l))/2π`, with the
-  resonance tuned across a 16:1 cavity-volume sweep. Plotly, Nefes theme.
-- **`inertance_storage.ipynb`** — generalizes the storage block `M` to the **jump
-  elements**: the **inertance** (`l_up`/`l_down`/`end_correction` on area changes, `loss`,
-  `linear_resistance`) and the **manifold compliance** (`volume` on `junction`/`splitter`).
-  Shows a neck modeled as an inline inertance (`iωM`) resonates at the same `f₀` as a neck
-  `duct` (carried in `P(ω)`); that an `end_correction` lengthens `L_eff` and lowers `f₀`
-  (≈20 % for a flanged `δ ≈ 0.85a`); and that a `junction(volume=V)` reproduces the
-  `cavity(V)` compliance. Plotly, Nefes theme.
-- **`gas_turbine_large.yaml`** — the **large showcase** network (a gas-turbine
-  **secondary-air / cooling** distribution). Two bleed feeds — a `TotalPressureInlet` (HP) and a `MassFlowInlet`
-  (LP) — mix at a static-pressure junction, pass a contraction, and split across
-  three sub-manifolds metering air to ~15 fixed-back-pressure sinks through
-  orifices (`IsentropicAreaChange`), dump nozzles (`+ SuddenAreaChange`) and
-  labyrinth seals (series `LossElement`s). A `LossElement` **cross-bridge** links
-  two sub-manifolds, so the graph is **not a tree**, and one sink sits above the
-  local static pressure, producing **emergent backflow** (ingestion) closed by its
-  `backflowTotalTemperature`. Six **constant-area `Duct`** sections sit on the
-  transport runs (inlet feeds, main manifold pipe, sub-manifold feeds): inert in
-  the mean flow, they carry the wave phase the perturbation network propagates. 63
-  elements / 63 edges; converges in ~13 Newton steps, fully subsonic (max `M` ≈
-  0.65).
-- **`converging_nozzle.ipynb`** — loads the UI case, solves the steady mean flow,
-  prints the converged edge states, sweeps the back pressure to show emergent
-  choking (mass-flow saturation at `M = 1`), and runs the full `3 x 3`
-  **perturbation** transfer / scattering analysis (two acoustic waves **plus the
-  entropy wave**) on top of the converged mean flow. All figures are Plotly,
-  styled with the shared Nefes theme (`nefes.plotting`).
-- **`compositional_noise.ipynb`** — **compositional (indirect) noise** at a choked
-  nozzle. Validates the inert acoustic limit (the inherited `choked_nozzle_outlet`
-  element, the hand-written Marble–Candel closure, and a **resolved** convergent
-  nozzle all agree on the reflection `R`), then shows that the inherited /
-  resolved routes also carry the composition → acoustic coupling `R_xi` — the
-  compositional noise — that the hand-written closure silently drops (the
-  `CompositionalNoiseWarning`), all from the same complex step that gives `R` and
-  the entropy noise `R_s`. Closes with the `M = 1` subsonic-scope note.
-- **`acoustic_refinement.ipynb`** — **when discretization matters for acoustics.** A
-  `tapered_duct` horn's **mean flow is exact at any segment count** `N` (an area change is a
-  state-function relation), but its **scattering matrix is not**: a compact area jump reflects
-  strongly with no transit phase, while a refined (distributed) horn is a gradual impedance
-  match. Sweeps the inlet-outlet scattering matrix over frequency for several `N` (the compact
-  `|S11|` is far off and frequency-flat; it collapses ~an order of magnitude as the horn is
-  resolved), shows the ~`O(1/N)` first-order convergence, and drives `grid_refine` / `auto_refine`
-  on both a mean-flow quantity (converges in **one** doubling) and an acoustic one (needs
-  **several**). `plotly`.
-- **`entropy_generator.ipynb`** — a **validation** notebook replicating De Domenico,
-  Rolland & Hochgreb (2019, *JSV* 440), "nozzles with losses", at the Cambridge
-  Entropy Generator geometry. Builds the orifice-plate / isentropic / non-isentropic
-  nozzles from `isentropic_area_change` + `sudden_area_change`, reproduces the
-  mean-flow pressure rise (their Fig. 5) and the compact acoustic + entropic transfer
-  functions (their Fig. 6), and checks the assembled compact scattering matrix (in the
-  `riemann` = `(P+, P-, σ)` flavour) against an **independent** composition of the
-  analytic jumps. The machine-precision version of that check lives in
-  `tests/test_perturbation_dedomenico.py`.
-- **`gas_turbine_large.ipynb`** — the companion notebook for
-  `gas_turbine_large.yaml`. Loads and solves the secondary-air network, tabulates
-  the converged edge states, checks the global **mass balance**, and charts the
-  per-sink air distribution (the lone negative bar is the **backflow** sink). It
-  then draws the whole network as a **Sankey** laid out on the UI canvas
-  coordinates, and runs the **perturbation** layer: it shows why a 2-port transfer
-  matrix is non-physical across the splitter/junctions (the `TransferMatrixWarning`)
-  and instead uses the rigorous whole-network descriptors — the **multiport
-  scattering matrix** and per-terminal **source attribution** at a chosen sink. All
-  figures are Plotly, styled with the shared Nefes theme (`nefes.plotting`).
+The notebooks are grouped by the layer they exercise.
+A reader new to the tool is best served by starting in **`getting-started/`** and then moving to whichever layer matches their interest.
 
-- **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The standalone
-  `thermolib` HP-equilibrium solver (adiabatic flame temperature vs equivalence ratio
-  for H2/air, straight from the NASA `thermo.inp` data), the perfect-gas **heat-release
-  flame** (`Qdot` total-enthalpy jump with the Rayleigh static-pressure drop), and the
-  reacting **equilibrium flame** (unburnt `EQ_FROZEN` approach → `EQ_KERNEL` products,
-  "ignition" by a per-edge closure switch). The network flame T matches the standalone
-  equilibrium across an equivalence-ratio sweep. Self-contained `matplotlib`.
+- **`getting-started/`** — first contact: load a case, solve the mean flow, serialize a result.
+- **`flow/`** — non-reacting steady mean flow on larger networks, plus element infrastructure.
+- **`combustion/`** — steady reacting mean flow (equilibrium flames, markers, multi-fuel mixing); no acoustics.
+- **`acoustics/`** — the perturbation network on a non-reacting mean flow (closures, storage, mode shapes, eigenmodes).
+- **`thermoacoustics/`** — combustion–acoustic coupling: self-excited instability, indirect noise, flame identification.
+- **`validation/`** — replications of literature benchmarks.
+
+## `getting-started/`
+
+- **`converging_nozzle.ipynb`** (+ **`converging_nozzle.yaml`**) — the canonical first
+  example. Loads a network **saved from the FNetLibUI tool** (reservoir → feed pipe →
+  isentropic contraction → tailpipe → back-pressure outlet), solves the steady mean flow,
+  prints the converged edge states, sweeps the back pressure to show emergent choking
+  (mass-flow saturation at `M = 1`), and runs the full `3 x 3` **perturbation** transfer /
+  scattering analysis (two acoustic waves **plus the entropy wave**) on top of the
+  converged mean flow. Plotly, Nefes theme.
+- **`save_load_demo.ipynb`** — write a solved network back to the UI's native YAML (case
+  **+** result data) and read it in again, round-tripping the mean-flow field.
+
+## `flow/`
+
+- **`gas_turbine_large.ipynb`** (+ **`gas_turbine_large.yaml`**) — the **large showcase**
+  network (a gas-turbine **secondary-air / cooling** distribution). Two bleed feeds mix at a
+  static-pressure junction, pass a contraction, and split across three sub-manifolds metering
+  air to ~15 fixed-back-pressure sinks through orifices, dump nozzles and labyrinth seals. A
+  cross-bridge makes the graph **not a tree**, and one sink sits above the local static
+  pressure, producing **emergent backflow** (ingestion). 63 elements / 63 edges; converges
+  in ~13 Newton steps, fully subsonic (max `M` ≈ 0.65). Tabulates the converged states,
+  checks the global **mass balance**, draws the network as a **Sankey**, and runs the
+  **multiport scattering** perturbation layer with per-terminal source attribution.
+- **`huge_network_stress.ipynb`** — **generates** a 1000+ element network programmatically
+  and solves its steady mean flow as a scale stress test, then extracts its end-to-end
+  perturbation behaviour.
+- **`composite_elements.ipynb`** — a **composite element** presents as one element but
+  expands at build time into a small graph of atomic elements; the solver, Jacobian and
+  perturbation layers never see the composite.
+
+## `combustion/`
+
+- **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The standalone `thermolib`
+  HP-equilibrium solver (adiabatic flame temperature vs equivalence ratio), the perfect-gas
+  **heat-release flame** (`Qdot` total-enthalpy jump with the Rayleigh static-pressure drop),
+  and the reacting **equilibrium flame** (`EQ_FROZEN` → `EQ_KERNEL`). Self-contained `matplotlib`.
 - **`burnt_marker.ipynb`** — the **orientation-proof reacting closure**. A transported
-  **burnt marker** scalar `b` gates a single `EQ_MARKER` blend of the frozen (unburnt) and
+  **burnt marker** scalar `b` gates a single `EQ_MARKER` blend of frozen (unburnt) and
   equilibrium (burnt) states; the flame stamps `b = 1` on whatever edge the flow actually
-  leaves it by (the marker rides the *signed* mass flow), so the frozen/equilibrium split is
-  correct no matter how the edges were drawn. Shows the smooth blend gate, the marker field
-  jumping with `T` across the flame, **seed-independent self-correction** (three scrambled
-  initial guesses recover the same answer), the per-edge marker / species / `W` / `cp`
-  post-processing, and that the acoustic transfer matrix is identical to an explicit
-  hard-closure network (the marker is acoustically passive). `plotly`.
+  leaves it by, so the split is correct no matter how the edges were drawn. Shows
+  seed-independent self-correction and that the marker is acoustically passive. `plotly`.
 - **`gas_turbine_combustor.ipynb`** — a **complete gas-turbine combustor**:
-  compressor-discharge air → a **fuel mass source** (the injector) → an **equilibrium
-  flame** → a **dilution-air mass source** (cooling to the turbine-inlet temperature) →
-  the turbine-inlet outlet. Streams are named by **species** (`{"O2": 0.21, ...}`,
-  `{"CH4": 1.0}`); the network transports one conserved **mixture fraction** per
-  distinct injected composition, discovered automatically at build time. Tabulates the converged edge states, charts the axial temperature
-  (flame jump then dilution cooling), and sweeps fuel flow (equivalence ratio) and
-  dilution air against the flame / turbine-inlet temperatures. Tweak `mdot_fuel`,
-  `mdot_dilution`, `Tair`, `p`.
-- **`rql_combustor.ipynb`** — a **rich-quench-lean (staged) combustor**: a fuel-rich
-  primary zone (`φ ≈ 1.6`, oxygen-limited, so its equilibrium carries CO and H₂) →
-  **quench-air** mass source → a **lean** burnout zone that re-equilibrates and oxidizes the
-  leftover CO / H₂. The lean gas is downstream of the flame yet mixes with fresh air, so it
-  exercises the **sticky burnt marker** (a reachability label transported by a noisy-OR): the
-  quench air cannot dilute the burnt label, so the auto marker-gated path re-equilibrates the
-  lean zone with **no per-edge closure** and reproduces the hand-wired hard closure. Shows the
-  marker staying `b = 1` where a mass-average would fall below the gate, the axial CO/CO₂/O₂
-  profiles, the rich-vs-lean speciation, and a fixed-overall air-split sweep of primary flame
-  temperature and primary NO (the RQL low-NOx lever). `plotly`.
+  compressor-discharge air → **fuel mass source** → **equilibrium flame** → **dilution-air
+  mass source** → turbine-inlet outlet. Streams are named by **species**; the network
+  transports one conserved **mixture fraction** per distinct injected composition. Sweeps
+  fuel flow (equivalence ratio) and dilution air against flame / turbine-inlet temperatures.
+- **`rql_combustor.ipynb`** — a **rich-quench-lean (staged) combustor**: a fuel-rich primary
+  zone → **quench-air** mass source → a **lean** burnout zone that re-equilibrates and
+  oxidizes leftover CO / H₂. Exercises the **sticky burnt marker** (a reachability label
+  transported by a noisy-OR) and a fixed-overall air-split sweep of primary flame temperature
+  and primary NO (the RQL low-NOx lever). `plotly`.
+- **`multiple_fuels.ipynb`** — **two very different fuels at different positions**: n-octane
+  (`C8H18`) in the primary zone, then hydrogen (`H2`) injected into the hot products as a
+  **reheat** stage. Shows the chemistry plumbing is fuel-agnostic; each injected composition
+  is its own transported **mixture fraction**.
+- **`multiple_fuel_manifold.ipynb`** — burns **three different fuels in three parallel
+  branches** off a single air supply, then mixes the hot products back into one outlet;
+  stresses the reacting mean-flow solver on a branched (non-chain) topology.
+
+## `acoustics/`
+
+- **`perturbation_boundary_conditions.ipynb`** — exercises **every** named `PerturbationBC`
+  closure on a single driven duct, checking each against its analytic value (diagonal
+  reflections, the `excitation` source term, the entropy→acoustic coupling `R_s` of the
+  `choked_nozzle` / `constant_mass_flow` outlets, and the default `inherit`).
+- **`frequency_dependent_reflection.ipynb`** — a terminal's `PerturbationBC` carries a
+  reflection coefficient `R` that is a **constant**, a **table** interpolated in frequency,
+  or a **callable**.
+- **`outlet_boundaries.ipynb`** — the two flow-fixing outflow boundaries beyond the
+  static-pressure outlet: `mass_flow_outlet` (`ṁ' = 0`) and the compact `choked_nozzle_outlet`;
+  with acoustic-power accounting.
+- **`helmholtz_resonator.ipynb`** — the **storage block `M`** and its first producing element,
+  the **`cavity`** (a wall to the mean flow, a compliance `V/c²` to acoustics). Composes a
+  **Helmholtz resonator** from primitives and reproduces the analytic transmission-loss peak
+  at `f₀ = c√(Aₙ/(V·l))/2π`.
+- **`inertance_storage.ipynb`** — generalizes the storage block `M` to the **jump elements**:
+  the **inertance** and the **manifold compliance** (`volume` on `junction`/`splitter`).
+- **`mode_shape_animation.ipynb`** — Nefes's **spatially-resolved mode shapes**: the
+  continuous perturbation field *inside* the ducts, animated over one oscillation cycle
+  (the duct's own analytic phase relation, not an approximation).
+- **`eigenmode_analysis.ipynb`** — **linear-stability** analysis: a network's free acoustic
+  oscillations as the roots of `det A(ω) = 0` in the complex plane, via contour integration
+  with a completeness certificate.
+- **`acoustic_refinement.ipynb`** — **when discretization matters for acoustics.** A
+  `tapered_duct` horn's mean flow is exact at any segment count `N`, but its scattering matrix
+  is not; sweeps the inlet-outlet scattering matrix over frequency for several `N`, shows the
+  ~`O(1/N)` convergence, and drives `grid_refine` / `auto_refine`.
+- **`analytic_continuation.ipynb`** — continuing a **tabulated** transfer function / reflection
+  coefficient off the real frequency axis, as the eigensolver requires.
+- **`compositional_noise.ipynb`** — **compositional (indirect) noise** at a choked nozzle.
+  Validates the inert acoustic limit against Marble–Candel and a resolved nozzle, then shows
+  the inherited / resolved routes carry the composition → acoustic coupling `R_xi` that the
+  hand-written closure silently drops.
+
+## `thermoacoustics/`
+
+- **`rijke_tube.ipynb`** — the fundamental thermoacoustic oscillator: a duct with a heat
+  source that, under the right conditions, feeds energy into a duct mode and drives a
+  **self-excited instability** (an `n-τ` active element in the acoustic field).
+- **`equivalence_ratio_instability.ipynb`** — **fuel-supply** combustion instability: a
+  chamber fluctuation modulates the **fuel flow rate** → local **equivalence ratio** → a
+  mixture fluctuation that convects to the flame and burns into unsteady heat release, with
+  the injector-to-flame time lag.
+- **`indirect_noise_instability.ipynb`** — an **entropy-driven** thermoacoustic instability:
+  a compact flame in a duct ending in a **choked nozzle** goes unstable through the entropy
+  spot that convects down the hot duct and is partly converted **back into sound** at the
+  nozzle — a path pure acoustics cannot see.
+- **`entropy_noise.ipynb`** — **indirect combustion noise**: a flame's heat-release
+  fluctuation sheds an entropy spot that is silent until accelerated through a downstream
+  nozzle, where it radiates sound.
 - **`flame_identification.ipynb`** — **identifying a flame's dynamic response** from a
-  network-wide measurement. A **branched** combustor (single air inlet → plenum split into
-  swirler / liner-cooling / dilution passages → **equilibrium flame** on the swirler branch →
-  merges → turbine-inlet) is characterized by its inlet→outlet **transfer matrix**, and the
-  flame — buried inside the branches — is de-embedded two ways with `nefes.perturbation.identify`:
-  as a **transfer matrix** (its full linear 2-port, no model assumed) and as a **transfer
-  function** (the velocity `n-τ` FTF). Shows the full acoustic+entropy recovery, then the
-  **acoustics-only** (`isentropic=True`) workflow that matches how such 2-ports are measured,
-  with the de-embedding **conditioning** as the identifiability diagnostic.
-- **`multiple_fuels.ipynb`** — **two very different fuels at different positions**:
-  n-octane (`C8H18`) burned in the primary zone, then hydrogen (`H2`) injected into the
-  hot products as a **reheat** stage (it re-equilibrates and releases more heat, no
-  extra flame element). Shows the chemistry plumbing is fuel-agnostic — each injected
-  composition is its own transported **mixture fraction**, reconstructed exactly by a
-  forward blend (no element bookkeeping, no distinguishability restriction, so even two
-  carbon-bearing fuels can co-mix unburnt). Prints the per-edge mixture-fraction flow
-  and sweeps the H2 reheat.
+  network-wide measurement. A branched combustor is characterized by its inlet→outlet
+  **transfer matrix**, and the flame — buried inside the branches — is de-embedded with
+  `nefes.perturbation.identify` as a transfer matrix and as a velocity `n-τ` FTF, with the
+  de-embedding **conditioning** as the identifiability diagnostic.
 
-## Running the notebook
+## `validation/`
 
-The notebook adds the repo root to `sys.path`, so no install of `nefes` is needed —
-just run it with a Python that has the project dependencies (`numpy`, `scipy`,
-`numba`, `pyyaml`) plus the notebook stack and Plotly. Install those with the
-`jupyter` extra (`pip install -e ".[jupyter]"`) or use the conda env, then:
+- **`greyvenstein_laurie_network.ipynb`** — verifies Nefes against Greyvenstein & Laurie
+  (1994), Example 3: a **29-pipe compressed-air distribution network** (their only
+  compressible case).
+- **`entropy_generator.ipynb`** — replicates De Domenico, Rolland & Hochgreb (2019, *JSV* 440),
+  "nozzles with losses", at the Cambridge Entropy Generator geometry: the mean-flow pressure
+  rise (their Fig. 5) and the compact acoustic + entropic transfer functions (their Fig. 6).
+- **`dokumaci_expansion_chamber.ipynb`** — validates the acoustic-network layer against
+  Dokumacı (2021), Fig 5.15: a through-flow expansion-chamber muffler transmission loss.
+
+## Running the notebooks
+
+Each notebook prepends the repo root to `sys.path` (walking up until it finds the `nefes`
+package), so no install of `nefes` is needed — just run it with a Python that has the project
+dependencies (`numpy`, `scipy`, `numba`, `pyyaml`) plus the notebook stack and Plotly. Install
+those with the `jupyter` extra (`pip install -e ".[jupyter]"`) or use the conda env, then:
 
 ```bash
 conda activate nefes
-jupyter lab examples/converging_nozzle.ipynb
+jupyter lab examples/getting-started/converging_nozzle.ipynb
 ```
 
 Or solve a UI case in two lines:
 
 ```python
 from nefes.io import load_case
-sol = load_case("examples/converging_nozzle.yaml").solve()
+sol = load_case("examples/getting-started/converging_nozzle.yaml").solve()
 print(sol.edge(1))   # throat state: mdot, M, p, p_t, T, ...
 ```
 
@@ -225,7 +228,7 @@ Python-only):
 | `.choked_nozzle()` / `.compact_nozzle()` | compact choked outlet, `g=Rf+R_s·h` (Marble–Candel) |
 | `.constant_mass_flow()` | outlet pinning `ṁ'=0`, `g=Rf+R_s·h` |
 
-See **`perturbation_boundary_conditions.ipynb`** for a worked demonstration of every
+See **`acoustics/perturbation_boundary_conditions.ipynb`** for a worked demonstration of every
 closure checked against its analytic value. The `Wall` element additionally blocks the
 **mean** flow (`ṁ=0` on its edge). To force the response, attach an excitation (a
 Python-only closure) and solve:

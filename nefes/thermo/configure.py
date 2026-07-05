@@ -11,44 +11,75 @@ from typing import List
 
 import numpy as np
 
-from .api import EQ_KERNEL, PERFECT_GAS
+from thermolib.constants import R_UNIVERSAL
 
-# Universal gas constant [J/(kmol*K)]; molar mass W = RU / R_specific [kg/kmol].
-RU = 8314.462618
+from .api import EQ_KERNEL, PERFECT_GAS
 
 
 @dataclass(frozen=True)
 class ThermoConfig:
-    """Immutable thermo bundle passed read-only through the kernels."""
+    """Immutable thermo bundle passed read-only through the kernels.
 
-    model_id: int
-    tf: np.ndarray  # float64[::1]
-    ti: np.ndarray  # int64[::1]
-    element_names: List[str] = field(default_factory=list)
-    species_names: List[str] = field(default_factory=list)
-    # Parse-time only (never packed/compiled): the thermolib SpeciesLibrary, kept
-    # so element/source builders can resolve species-named compositions to the feed
-    # streams (transported mixture fractions) and the ``Tt -> h_t`` datum.
-    library: object = None
-    # Packing controls for a deferred equilibrium config: when no feed streams were
-    # given at config time they are discovered from the network's inlet/source
-    # compositions and packed at build time (see ``shell.build.finalize_thermo``).
-    t_init: float = 3000.0
-    t_init_frozen: float = 300.0
+    Attributes
+    ----------
+    model_id : int
+        Integer selecting the gas model (``PERFECT_GAS``, ``EQ_KERNEL``, ...).
+    tf : numpy.ndarray
+        Packed float64 data block; layout is model-specific (``[cp, R, W]`` for a
+        perfect gas, the flat NASA/element arrays for equilibrium).
+    ti : numpy.ndarray
+        Packed int64 sizes/indices companion to ``tf`` (empty for a perfect gas).
+    element_names : list of str
+        Labels of the transported band-1 scalars (feed streams / passive scalars).
+    species_names : list of str
+        Species carried by the library (empty for a perfect gas).
+    library : object
+        The thermolib ``SpeciesLibrary``, kept parse-time only (never packed or
+        compiled) so element/source builders can resolve species-named compositions
+        to feed streams and the ``Tt -> h_t`` datum.
+    t_init, t_init_frozen : float
+        Initial temperature guesses [K] for a deferred equilibrium config whose feed
+        streams are discovered and packed at build time.
+    """
+
+    model_id: int  # gas-model selector
+    tf: np.ndarray  # float64[::1] packed real data
+    ti: np.ndarray  # int64[::1] packed sizes/indices
+    element_names: List[str] = field(default_factory=list)  # transported-scalar labels
+    species_names: List[str] = field(default_factory=list)  # library species names
+    library: object = None  # thermolib SpeciesLibrary (parse-time only)
+    t_init: float = 3000.0  # equilibrium temperature guess [K]
+    t_init_frozen: float = 300.0  # frozen temperature guess [K]
 
     @property
     def n_elem(self) -> int:
+        """Number of transported band-1 scalars (feed streams / passive scalars)."""
         return len(self.element_names)
 
     @property
     def n_species(self) -> int:
+        """Number of species carried by the library (zero for a perfect gas)."""
         return len(self.species_names)
 
 
 def perfect_gas(R: float = 287.0, gamma: float = 1.4) -> ThermoConfig:
-    """Calorically-perfect-gas configuration (default: dry air)."""
+    """Calorically-perfect-gas configuration (default: dry air).
+
+    Parameters
+    ----------
+    R : float, optional
+        Specific gas constant [J/(kg*K)] (default 287.0, dry air).
+    gamma : float, optional
+        Ratio of specific heats (default 1.4).
+
+    Returns
+    -------
+    ThermoConfig
+        Bundle with ``tf = [cp, R, W]`` where ``W = R_u / R`` is the molar mass
+        [kg/mol] and ``cp = gamma R / (gamma - 1)``.
+    """
     cp = gamma * R / (gamma - 1.0)
-    W = RU / R
+    W = R_UNIVERSAL / R  # molar mass [kg/mol]
     tf = np.ascontiguousarray([cp, R, W], dtype=np.float64)
     ti = np.empty(0, dtype=np.int64)
     return ThermoConfig(model_id=PERFECT_GAS, tf=tf, ti=ti)
@@ -59,8 +90,24 @@ def perfect_gas_passive_scalars(n_scalars: int, R: float = 287.0, gamma: float =
 
     The thermodynamics are unchanged (the perfect-gas kernels ignore ``Z_el``);
     each scalar simply adds one band-1 unknown and one source-free transport
-    equation per edge.  Used to exercise the composition-transport framework
-    (reactive-flow D-4) without invoking chemistry.
+    equation per edge, exercising the composition-transport framework without
+    invoking chemistry.
+
+    Parameters
+    ----------
+    n_scalars : int
+        Number of passive conserved scalars to advect (must be >= 1).
+    R : float, optional
+        Specific gas constant [J/(kg*K)] (default 287.0).
+    gamma : float, optional
+        Ratio of specific heats (default 1.4).
+    names : sequence of str, optional
+        Scalar labels; defaults to ``scalar0, scalar1, ...``.
+
+    Returns
+    -------
+    ThermoConfig
+        Perfect-gas bundle carrying ``n_scalars`` band-1 scalars.
     """
     if n_scalars < 1:
         raise ValueError("n_scalars must be >= 1")

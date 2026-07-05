@@ -91,7 +91,7 @@ def test_thermo_update_perfect_gas():
     assert out[0] == pytest.approx(T)
     assert out[1] == pytest.approx(p / (R_AIR * T))
     assert out[2] == pytest.approx(np.sqrt(GAMMA * R_AIR * T))
-    assert out[3] == pytest.approx(8314.462618 / R_AIR)  # molar mass
+    assert out[3] == pytest.approx(8.314462618 / R_AIR)  # molar mass [kg/mol]
 
 
 def test_round_trip_physical_state():

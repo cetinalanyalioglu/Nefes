@@ -1,4 +1,4 @@
-"""Equilibrium / frozen thermo backend: the ``nefes`` side of ``thermolib`` (AD-3).
+"""Equilibrium / frozen thermo backend: the ``nefes`` side of ``thermolib``.
 
 A :class:`thermolib.SpeciesLibrary` (the species *data* -- NASA polynomials and
 the element matrix, all chemical equilibrium needs) is packed into the immutable
@@ -162,7 +162,8 @@ def eq_kernel_state_from_Z(tf, ti, Z_el, h, p):
         sb += b0[i].real
     guess = sb / (2.0 * Np)
     nj_init = np.full(Np, guess)
-    T, rho, c, ntot, flag, nit = equil_state_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_init, nj_init)
+    # flag/nit are the solver's convergence diagnostics; unused on this path
+    T, rho, c, ntot, _flag, _nit = equil_state_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_init, nj_init)
     return T, rho, c, 1.0 / ntot
 
 
@@ -201,7 +202,8 @@ def eq_kernel_state_from_Z_warm(tf, ti, Z_el, h, p, cache):
             if cache[j] > 0.0:
                 nj_init[j] = cache[j]  # exactly-zero (underflowed) species keep the uniform guess
 
-    T, nj, ntot, flag, nit = equilibrate_hp_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_start, nj_init)
+    # flag/nit are the solver's convergence diagnostics; unused on this path
+    T, nj, ntot, _flag, _nit = equilibrate_hp_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_start, nj_init)
     rho = p / (RU * ntot * T)
     c = equilibrium_sound_speed(coeffs, Tint, Af, nj, ntot, T, p)
     if has_cache:  # store the converged (real) composition + temperature for the next solve
@@ -330,24 +332,13 @@ def eq_total_pressure(M, p, T, c, W):
 
 
 # ---------------------------------------------------------------------------
-# Kinetic-energy coupling for the reacting closures (R-B2.2)
+# Kinetic-energy coupling for the reacting closures
 # ---------------------------------------------------------------------------
-# The static enthalpy ``h`` an element residual sees is the transported total
-# enthalpy ``h_t`` minus the kinetic energy, ``h = h_t - u^2/2`` with
-# ``u = mdot/(rho A)``.  Because ``rho`` itself is the equilibrium/frozen density
-# at ``h``, this is an implicit (outer) relation on top of the inner composition
-# solve.  Fixing the *static* pressure ``p`` (a band-1 unknown) makes it a
-# strictly monotone scalar root, exactly like the perfect gas's ``F(rho)`` -- so it
-# is solved by a safeguarded bracketed iteration on the real part, with the
-# imaginary part attached by the implicit-function theorem.  No subsonic/supersonic
-# branch ambiguity, no caps, no clamps: the bracket confines every closure
-# evaluation to a physical static enthalpy.
-#
-# ``frozen`` selects the inner closure (0 = HP equilibrium / burnt, 1 = frozen /
-# unburnt) so the same outer machinery serves both; the marker blend runs the two
-# *separately* (each leg with its own density, hence its own ``u`` and ``h``) and
-# blends the recovered states -- the frozen leg then never sees the burnt edge's
-# large kinetic energy.
+# The ``ke`` wrappers solve the outer static-enthalpy root ``h = h_t - u^2/2``
+# described in the module docstring.  ``frozen`` selects the inner closure
+# (0 = HP equilibrium / burnt, 1 = frozen / unburnt) so the same machinery serves
+# both legs; the marker blend runs the two separately, each with its own density
+# and hence its own ``u`` and ``h``.
 
 
 @njit(cache=True)

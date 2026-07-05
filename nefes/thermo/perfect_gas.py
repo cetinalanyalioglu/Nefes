@@ -1,4 +1,4 @@
-"""Calorically-perfect-gas thermo kernels (the only v1 backend).
+"""Calorically-perfect-gas thermo kernels.
 
 The density recovery is the load-bearing, complex-step-critical routine of the
 whole solver.  Given mass-flux ``m = mdot/A``, static pressure ``p`` and total
@@ -15,11 +15,6 @@ part -- all that complex-step differentiation needs -- is then attached
 analytically by the implicit function theorem:
 
     drho = -(F_m * Im(m) + F_p * Im(p) + F_h * Im(h_t)) / F_rho
-
-``_attach_density_imag`` is dtype-dispatched via ``numba.extending.overload``:
-the float64 specialization returns the bare real root (the IFT term is absent,
-so the residual stays real), the complex128 specialization adds the spliced
-imaginary part.  Same source, two compiled paths.
 """
 
 import numpy as np

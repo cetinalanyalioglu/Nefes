@@ -31,6 +31,6 @@ def thermo_inp():
 
 @pytest.fixture(scope="session")
 def cantera():
-    """Cantera module, or skip the test if it is not installed (R-A8.4)."""
+    """Cantera module, or skip the test if it is not installed."""
     ct = pytest.importorskip("cantera")
     return ct

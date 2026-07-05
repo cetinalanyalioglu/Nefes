@@ -1,4 +1,4 @@
-"""Species and mixture thermodynamics -- R-A3.1, R-A3.2, R-A3.4, A.6."""
+"""Species and mixture thermodynamics."""
 
 import numpy as np
 import pytest

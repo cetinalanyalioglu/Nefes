@@ -1,11 +1,11 @@
 """Standard atomic weights for the common combustion elements.
 
-Used to convert between *elemental mass fractions* (the first-class composition
-descriptor, REQUIREMENTS D-2 / R-A4.1) and *gram-atoms per kilogram* (the
-abundance vector ``b`` consumed by the element-potential equilibrium solver).
+Used to convert between elemental mass fractions (the composition descriptor) and
+gram-atoms per kilogram (the abundance vector ``b`` consumed by the element-potential
+equilibrium solver).
 
-Values are in kg/mol and match Cantera's defaults closely enough for
-validation; a mechanism may override them via the YAML ``elements`` block.
+Values are in kg/mol and match Cantera's defaults closely enough for validation; a
+mechanism may override them via the YAML ``elements`` block.
 """
 
 # kg/mol

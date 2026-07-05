@@ -1,18 +1,17 @@
-"""Selectable thermochemistry backends behind one uniform API (R-A7.1).
+"""Selectable thermochemistry backends behind one uniform API.
 
-Two backends are envisaged (REQUIREMENTS D-3):
+Two backends are envisaged:
 
-* **Backend D -- "kernel"**: the standalone native CEA-style kernel.  Built
-  first; this is the MVP backend.  Differentiation mode: *complex-transparent*
-  (R-A6.1 mode 1) -- it is callable with complex arguments directly, and the
-  equilibrium solve propagates complex perturbations via a final IFT step.
+* **kernel**: the standalone native CEA-style equilibrium kernel. Its differentiation mode
+  is *complex-transparent*: it is callable with complex arguments directly, and the
+  equilibrium solve propagates complex perturbations via a final implicit-function step.
 
-* **Backend A -- "table"**: an offline tabulation + analytic surrogate
-  (optional/later).  Structured here as a selectable option but intentionally
-  not implemented in the MVP; selecting it raises a clear error.
+* **table**: an offline tabulation plus analytic surrogate. Structured here as a
+  selectable option but not implemented; selecting it raises a clear error.
 
-The consumer selects a backend by name and uses the same ``Thermo`` API
-regardless (R-A7.1, A.9).
+The consumer selects a backend by name and uses the same ``Thermo`` API regardless.
+
+Public: :class:`KernelBackend`, :class:`TableBackend`, :func:`make_backend`.
 """
 
 from __future__ import annotations
@@ -29,10 +28,10 @@ DIFF_MODES = {
 
 
 class KernelBackend:
-    """Backend D: native element-potential kernel."""
+    """Native element-potential equilibrium kernel."""
 
     name = "kernel"
-    diff_mode = "complex-transparent"  # R-A6.1 mode 1
+    diff_mode = "complex-transparent"
 
     def __init__(self, lib):
         self.lib = lib
@@ -48,22 +47,20 @@ class KernelBackend:
 
 
 class TableBackend:
-    """Backend A: offline table + analytic surrogate (not built in the MVP)."""
+    """Offline table plus analytic surrogate (not implemented)."""
 
     name = "table"
     diff_mode = "complex-transparent"
 
     def __init__(self, lib):
         raise NotImplementedError(
-            "Backend A (table/surrogate) is an optional, later backend "
-            "(REQUIREMENTS D-3 / phasing step 3). The MVP ships Backend D "
-            "('kernel'). Use Thermo(lib, backend='kernel')."
+            "the 'table' backend (offline table/surrogate) is not implemented; use Thermo(lib, backend='kernel')."
         )
 
 
 _BACKENDS = {
-    "kernel": KernelBackend,  # Backend D
-    "table": TableBackend,  # Backend A
+    "kernel": KernelBackend,
+    "table": TableBackend,
 }
 
 

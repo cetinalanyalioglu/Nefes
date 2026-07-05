@@ -1,18 +1,22 @@
 """Species-slate reduction: trim a candidate product set to what actually matters.
 
-A CEA-style candidate slate (every species reachable from the fed-in elements) is
-correct but bloated -- a hydrocarbon/air pool admits ~100+ gas species while only ~20
-are ever non-trace at equilibrium.  The bloat is pure cost: the element-potential Newton
-solve scales super-linearly in the species count.  A :class:`SpeciesReducer` takes the
-candidate library plus a handful of representative thermodynamic states and returns the
-subset worth keeping.
+A CEA-style candidate slate (every species reachable from the fed-in elements) is correct
+but bloated: a hydrocarbon/air pool admits ~100+ gas species while only ~20 are ever
+non-trace at equilibrium. The bloat is pure cost, since the element-potential Newton solve
+scales super-linearly in the species count. A :class:`SpeciesReducer` takes the candidate
+library plus a handful of representative thermodynamic states and returns the subset worth
+keeping.
 
-The reducer is intentionally pluggable: the orchestration code selects one by name via
-:func:`get_reducer`, so a future algorithm (kinetics-informed, sensitivity-based, ...)
-can be dropped in with :func:`register_reducer` without touching callers.
+The reducer is pluggable: the orchestration code selects one by name via
+:func:`get_reducer`, so a future algorithm (kinetics-informed, sensitivity-based, ...) can
+be dropped in with :func:`register_reducer` without touching callers.
 
 This runs at **setup time** on real-valued states, off the complex-step residual path, so
 it is free to use thresholds and branches.
+
+Public: :class:`SampleState`, :class:`ReductionResult`, :class:`SpeciesReducer`,
+:class:`NullReducer`, :class:`EquilibriumSamplingReducer`, :func:`get_reducer`,
+:func:`register_reducer`, :func:`available_reducers`.
 """
 
 from abc import ABC, abstractmethod
@@ -63,8 +67,8 @@ class ReductionResult:
     species : list of str
         Kept species names.
     report : dict
-        Diagnostics (candidate/kept counts, per-species peak mole fraction, samples used)
-        -- intended to be echoed so the reduction is auditable rather than a black box.
+        Diagnostics (candidate/kept counts, per-species peak mole fraction, samples used),
+        intended to be echoed so the reduction is auditable rather than a black box.
     """
 
     species: List[str]
@@ -114,8 +118,8 @@ class EquilibriumSamplingReducer(SpeciesReducer):
 
     For each :class:`SampleState` the candidate slate is equilibrated (TP) and every
     species' mole fraction recorded; the union of species exceeding a (margin-relaxed)
-    trace threshold at *any* sample is kept.  Sampling several states -- e.g. along the
-    feed-mixing line from lean to rich -- guards against a single operating point missing
+    trace threshold at *any* sample is kept. Sampling several states, e.g. along the
+    feed-mixing line from lean to rich, guards against a single operating point missing
     species that matter elsewhere in the network.
 
     Parameters
@@ -123,9 +127,9 @@ class EquilibriumSamplingReducer(SpeciesReducer):
     threshold : float, optional
         Runtime trace threshold the kept set should reproduce (default ``1e-8``).
     margin : float, optional
-        Safety factor: species are kept down to ``threshold / margin`` so a species that
-        is marginally trace at a sample but matters slightly off-sample is not dropped
-        (default ``100`` -> keep down to ``1e-10``).
+        Safety factor: species are kept down to ``threshold / margin`` so a species that is
+        marginally trace at a sample but matters slightly off-sample is not dropped
+        (default ``100``, keeping down to ``1e-10``).
     """
 
     name = "equilibrium_sampling"
@@ -155,7 +159,7 @@ class EquilibriumSamplingReducer(SpeciesReducer):
                     peak[name] = float(X[j])
 
         if n_ok == 0:
-            # No sample converged -- fall back to keeping everything rather than nothing.
+            # No sample converged; fall back to keeping everything rather than nothing.
             kept = list(names)
         else:
             kept = [name for name in names if peak[name] >= keep_floor]

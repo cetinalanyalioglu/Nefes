@@ -1,11 +1,10 @@
-"""Reader for the NASA Glenn / CEA ``thermo.inp`` species database (R-A2.1).
+"""Reader for the NASA Glenn / CEA ``thermo.inp`` species database.
 
-``thermo.inp`` is the canonical NASA-9 thermodynamic database used by CEA
-(McBride & Gordon).  It holds ~2000 species in a fixed-column FORTRAN format.
-This module gives an *easy interface* over it: parse once, search by name, and
-``select`` the handful of species you actually need into a
-:class:`~thermolib.species.SpeciesLibrary` that the equilibrium/property code
-consumes directly.
+``thermo.inp`` is the canonical NASA-9 thermodynamic database used by CEA (McBride &
+Gordon). It holds ~2000 species in a fixed-column FORTRAN format. This module gives an
+easy interface over it: parse once, search by name, and select the handful of species you
+actually need into a :class:`~thermolib.species.SpeciesLibrary` that the
+equilibrium/property code consumes directly.
 
     from thermolib import ThermoInp, Thermo
     db   = ThermoInp("data/thermo.inp")
@@ -15,15 +14,16 @@ consumes directly.
 
 Record layout (per species), mirroring CEA's ``thermo.inp`` reader:
 
-* line 1 -- ``name`` then a free-text reference/comment;
-* line 2 -- interval count, code, up to five ``element count`` pairs, a phase
-  flag, the molar mass [g/mol] and the formation enthalpy;
-* then, per interval, three lines: an interval header (``T_lo T_hi n_coef`` and
-  the term exponents) followed by two coefficient lines in FORTRAN ``D``
-  exponent notation.
+* line 1: ``name`` then a free-text reference/comment;
+* line 2: interval count, code, up to five ``element count`` pairs, a phase flag, the
+  molar mass [g/mol] and the formation enthalpy;
+* then, per interval, three lines: an interval header (``T_lo T_hi n_coef`` and the term
+  exponents) followed by two coefficient lines in FORTRAN ``D`` exponent notation.
 
-The exponents are the standard NASA-9 set ``[-2,-1,0,1,2,3,4]``; coefficients
-are stored as the canonical 9-term row ``[a1..a7, b1, b2]``.
+The exponents are the standard NASA-9 set ``[-2,-1,0,1,2,3,4]``; coefficients are stored
+as the canonical 9-term row ``[a1..a7, b1, b2]``.
+
+Public: :class:`ThermoInp`, :func:`read_thermo_inp`, :func:`default_thermo_inp`.
 """
 
 from __future__ import annotations
@@ -238,8 +238,8 @@ class ThermoInp:
     def candidate_species(self, elements, *, gas_only=True, exclude_ions=True):
         """Database species reachable from a pool of ``elements`` (CEA-style product slate).
 
-        Returns every species whose elemental composition is a subset of ``elements`` --
-        the candidate equilibrium products that can form from the fed-in atoms.  This is the
+        Returns every species whose elemental composition is a subset of ``elements``, the
+        candidate equilibrium products that can form from the fed-in atoms. This is the
         un-reduced slate; a :class:`~thermolib.reduction.SpeciesReducer` trims it down.
 
         Parameters
@@ -251,7 +251,7 @@ class ThermoInp:
             equilibrium products are gaseous (condensed species are feed-only).
         exclude_ions : bool, optional
             Drop ionic species (a ``+``/``-`` in the name or an electron ``E`` in the
-            composition).  Defaults to ``True`` -- ionization is negligible for subsonic
+            composition). Defaults to ``True``, since ionization is negligible for subsonic
             combustion and the charge balance adds cost for no benefit.
 
         Returns

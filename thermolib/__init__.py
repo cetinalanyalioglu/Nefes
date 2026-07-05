@@ -1,19 +1,18 @@
-"""thermolib -- a standalone, network-agnostic thermochemistry library.
+"""thermolib: a standalone, network-agnostic thermochemistry library.
 
-Standalone chemical-equilibrium (HP) thermochemistry for arbitrary gaseous
-mixtures.  No runtime dependency on Cantera or on any flow solver; Cantera is
-used only as an *offline* importer and validation oracle (REQUIREMENTS O-3,
-R-A1.1, R-A1.2).
+Standalone chemical-equilibrium (HP) thermochemistry for arbitrary gaseous mixtures. No
+runtime dependency on Cantera or on any flow solver; Cantera is used only as an offline
+importer and validation oracle.
 
-Vocabulary: a :class:`SpeciesLibrary` is the thermochemical material database
-(species + NASA polynomials -- all that equilibrium needs).  A :class:`Mechanism`
-associates a species library with a set of :class:`Reaction` objects (kinetics).
+Vocabulary: a :class:`SpeciesLibrary` is the thermochemical material database (species
+plus NASA polynomials, all that equilibrium needs). A :class:`Mechanism` associates a
+species library with a set of :class:`Reaction` objects (kinetics).
 
-Public API (REQUIREMENTS A.9)::
+Public API::
 
     from thermolib import SpeciesLibrary, Thermo
     lib   = SpeciesLibrary.from_native("h2o2.yaml")  # or ThermoInp("thermo.inp").library([...])
-    gas   = Thermo(lib, backend="kernel")            # Backend D (native kernel)
+    gas   = Thermo(lib, backend="kernel")            # native equilibrium kernel
     props = gas.properties(Y, T, p)                  # cp, h, s, rho, a_frozen, ...
     eq    = gas.equilibrate_HP(Z_elem, h, p)         # -> T, rho, Y, a_equilibrium
 """

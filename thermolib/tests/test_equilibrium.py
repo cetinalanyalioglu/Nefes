@@ -1,7 +1,7 @@
-"""Chemical equilibrium (Backend D) -- R-A4.1, R-A4.2, R-A4.3, R-A3.4.
+"""Chemical equilibrium via the native element-potential kernel.
 
-These tests are Cantera-free: they check internal consistency
-(conservation, realizability, HP<->TP round-trips, differentiation).
+These tests are Cantera-free: they check internal consistency (conservation,
+realizability, HP<->TP round-trips, differentiation).
 """
 
 import numpy as np
@@ -43,7 +43,7 @@ def test_tp_equilibrium_realizable_and_conserved(gas, native_mech, Z_stoich):
 
 def test_hp_equilibrium_conserves_enthalpy(gas, native_mech, Z_stoich):
     # Pick a target enthalpy from a known (T, composition); equilibrate at HP
-    # and confirm the resulting mixture enthalpy equals the target (R-A4.1).
+    # and confirm the resulting mixture enthalpy equals the target.
     p = 101325.0
     res_tp = gas.equilibrate_TP(Z_stoich, T=2200.0, p=p)
     h_target = res_tp.properties.h
@@ -63,7 +63,7 @@ def test_equilibrium_sound_speed_below_frozen(gas, Z_stoich):
 
 
 def test_hp_complex_step_sensitivities(gas, Z_stoich):
-    # dT/dh and dT/dp via complex step match finite differences (R-A4.2).
+    # dT/dh and dT/dp via complex step match finite differences.
     p = 101325.0
     res = gas.equilibrate_TP(Z_stoich, T=2300.0, p=p)
     h0 = res.properties.h
@@ -81,7 +81,7 @@ def test_hp_complex_step_sensitivities(gas, Z_stoich):
 
 
 def test_pressure_is_ordinary_input(gas, native_mech, Z_stoich):
-    # R-A4.1a: pressure is an ordinary input; higher p suppresses dissociation,
+    # Pressure is an ordinary input; higher p suppresses dissociation,
     # raising the adiabatic flame temperature for a fixed reactant enthalpy.
     p = 101325.0
     idx = native_mech.species_index

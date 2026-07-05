@@ -1,4 +1,4 @@
-"""Smooth (branch-free, complex-analytic) helpers -- R-A6.2."""
+"""Smooth (branch-free, complex-analytic) helpers."""
 
 import numpy as np
 

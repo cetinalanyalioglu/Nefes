@@ -1,17 +1,16 @@
 """Smooth (branch-free) replacements for ``abs``/``min``/``max``/step.
 
-Differentiation contract (REQUIREMENTS R-A6.2): no in-library residual or
-property path may use ``abs``/``sign``/``max`` or branch on a *complex*
-argument, because the consumer differentiates the whole call path by the
-complex-step method.  These helpers are smooth and complex-analytic, so a
-perturbation ``x + i*eps`` propagates a meaningful derivative through them.
+Differentiation contract: no in-library residual or property path may use
+``abs``/``sign``/``max`` or branch on a *complex* argument, because the consumer
+differentiates the whole call path by the complex-step method. These helpers are smooth
+and complex-analytic, so a perturbation ``x + i*eps`` propagates a meaningful derivative
+through them.
 
-The library carries its **own** copy of these helpers; per AD-2 it never
-imports ``cbnflow`` (which has an analogous ``cbnflow.smooth``).
+Each function takes a smoothing scale ``eps`` controlling the width of the region over
+which the kink is rounded. With ``eps -> 0`` they recover the non-smooth function exactly.
 
-Each function takes a smoothing scale ``eps`` controlling the width of the
-region over which the kink is rounded.  With ``eps -> 0`` they recover the
-non-smooth function exactly.
+Public: :func:`smooth_abs`, :func:`smooth_max`, :func:`smooth_min`, :func:`smooth_pos`,
+:func:`smooth_heaviside`.
 """
 
 import numpy as np
@@ -22,9 +21,13 @@ __all__ = ["smooth_abs", "smooth_max", "smooth_min", "smooth_heaviside", "smooth
 def smooth_abs(x, eps=1e-12):
     """Smooth absolute value: ``sqrt(x**2 + eps**2)``.
 
-    Analytic everywhere (no branch); ``-> |x|`` as ``eps -> 0``.
+    Analytic everywhere (no branch); ``-> |x|`` as ``eps -> 0``. The root is taken as
+    ``(...) ** 0.5`` rather than ``np.sqrt``: numpy's complex ``sqrt`` flushes a very small
+    imaginary part to zero near the positive real axis, which would kill the complex-step
+    derivative at a step size like ``1e-200``; the power form routes through ``exp/log`` and
+    keeps it.
     """
-    return np.sqrt(x * x + eps * eps)
+    return (x * x + eps * eps) ** 0.5
 
 
 def smooth_max(a, b, eps=1e-12):

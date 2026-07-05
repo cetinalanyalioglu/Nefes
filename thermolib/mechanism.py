@@ -1,17 +1,18 @@
 """Reaction sets and the :class:`Mechanism` (species library + reactions).
 
-Naming (per the project's vocabulary): the thermochemical *material database* is
-a :class:`~thermolib.species.SpeciesLibrary` -- a set of species with their NASA
-polynomials, and all that chemical equilibrium needs.  A **mechanism** is the
-*combination* of such a library with a set of **reactions** whose participants
-refer to species in that library.  Reactions are needed only for the finite-rate
-path (the design hook, REQUIREMENTS A.5) and for the shared-Gibbs ``K_c`` route
-(R-A5.2); equilibrium and mixture properties never need them.
+The thermochemical *material database* is a :class:`~thermolib.species.SpeciesLibrary`, a
+set of species with their NASA polynomials, and all that chemical equilibrium needs. A
+**mechanism** is the *combination* of such a library with a set of **reactions** whose
+participants refer to species in that library. Reactions are needed only for the
+finite-rate path and for the shared-Gibbs ``K_c`` route; equilibrium and mixture
+properties never need them.
 
-Implements R-A2.1 (reaction stoichiometry + Arrhenius data), R-A2.2 (native
-format is a Cantera-YAML subset, round-trips), R-A2.3 (offline Cantera import).
-``Mechanism`` proxies the library's thermo interface so it can be passed
-anywhere a :class:`SpeciesLibrary` is expected.
+Reaction stoichiometry and modified-Arrhenius data are carried; the native format is a
+Cantera-YAML subset that round-trips, and an offline Cantera importer is provided.
+``Mechanism`` proxies the library's thermo interface so it can be passed anywhere a
+:class:`SpeciesLibrary` is expected.
+
+Public: :class:`Reaction`, :class:`Mechanism`.
 """
 
 from __future__ import annotations
@@ -33,9 +34,8 @@ __all__ = ["Reaction", "Mechanism"]
 class Reaction:
     """Elementary reaction with modified-Arrhenius parameters.
 
-    Stored for the finite-rate *design hook* (REQUIREMENTS A.5).  The rate
-    machinery itself is intentionally not built in the MVP; only the data and
-    the shared ``K_c`` route (via species Gibbs energies, R-A5.2) are wired.
+    Stored for the finite-rate path. The rate machinery itself is not implemented; only the
+    data and the shared ``K_c`` route (via species Gibbs energies) are wired.
     """
 
     reactants: dict  # species name -> stoichiometric coefficient
@@ -116,7 +116,7 @@ class Mechanism:
     # -- loaders ---------------------------------------------------------
     @classmethod
     def from_native(cls, path):
-        """Load a native mechanism (species library + reactions), R-A2.2."""
+        """Load a native mechanism (species library + reactions)."""
         with open(path, "r") as fh:
             doc = yaml.safe_load(fh)
         return cls.from_dict(doc)
@@ -131,7 +131,7 @@ class Mechanism:
 
     @classmethod
     def from_cantera(cls, source, phase_name=None):
-        """Offline importer from a full Cantera mechanism (R-A2.3)."""
+        """Offline importer from a full Cantera mechanism."""
         gas = _cantera_solution(source)
         library = SpeciesLibrary.from_cantera(gas)
         reactions = [_reaction_from_cantera(rxn) for rxn in gas.reactions()]
@@ -139,7 +139,7 @@ class Mechanism:
 
     # -- writer ----------------------------------------------------------
     def to_native_dict(self):
-        """Serialize to a native-YAML-compatible dict (R-A2.2 round-trip)."""
+        """Serialize to a native-YAML-compatible dict (round-trips with :meth:`from_dict`)."""
         doc = self.library.to_native_dict()
         if self.reactions:
             doc["reactions"] = [

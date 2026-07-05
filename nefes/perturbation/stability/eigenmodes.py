@@ -1,36 +1,39 @@
-"""Linear-stability eigenmodes of the perturbation network (theory.md s12.7 (ii)).
+"""Linear-stability eigenmodes of the perturbation network.
 
 The stability question is the nonlinear eigenproblem
 
     det A(omega) = 0,   omega = omega_r + i*omega_i in C,
 
-whose roots are the network's free oscillations: ``omega_r/(2*pi)`` the modal
-frequency (Hz), ``omega_i`` the growth rate (theory.md s12.7).  ``A(omega)`` is the
-*same* assembled operator the forced/scattering driver uses
-(:func:`operator.assemble_acoustic`), now searched for the complex frequencies that
-make it singular instead of solved against a forcing -- so the stability analysis
-adds **no** new operator and **no** new kernel.  Because every ``omega``-dependence
-(``i*omega*M``, the duct phases, and -- when present -- a source/BC transfer
-function) is summed into ``A(omega)`` already, an active element (e.g. a flame
-``S(omega)``) drops into the spectrum with no change here.
+whose roots are the network's free oscillations: ``omega_r/(2*pi)`` is the modal
+frequency (Hz) and ``omega_i`` sets the growth rate.  ``A(omega)`` is the *same*
+assembled operator the forced/scattering driver uses
+(:func:`operator.assemble_acoustic`), searched now for the complex frequencies that
+make it singular rather than solved against a forcing, so the stability analysis
+adds no new operator and no new kernel.  Every ``omega``-dependence (``i*omega*M``,
+the duct phases, and any source/BC transfer function) is already summed into
+``A(omega)``, so an active element (e.g. a flame ``S(omega)``) drops into the
+spectrum with no change here.
 
-The driver mirrors :func:`response.perturbation_response`: take a converged mean
-state, build the frozen blocks once, and sweep the operator -- here over a
-quadrature *contour* in the complex plane rather than a real-frequency line --
-returning an :class:`EigenmodeResult` from which modal frequencies, growth rates,
-and mode shapes are read.  The eigenvalues come from :func:`contour.beyn` (the
-control-integral technique); each is then polished by a Newton step on
-``A(omega) v = 0`` and validated by its residual, so spurious quadrature artifacts
-are dropped.
+The driver takes a converged mean state, builds the frozen blocks once, and sweeps
+the operator over a quadrature *contour* in the complex plane (rather than a
+real-frequency line).  The eigenvalues come from :func:`contour.beyn`; each is then
+Newton-polished on ``A(omega) v = 0`` (:func:`_refine`) and kept only if its scaled
+residual is small, so spurious quadrature artifacts are dropped.  The result is an
+:class:`EigenmodeResult` exposing modal frequencies, growth rates, and mode shapes.
 
 Sign convention.  The operator's time dependence is ``e^{+i*omega*t}`` (the duct
-propagation ``f_head = e^{-i*omega*tau} f_tail`` of theory.md s12.3 is the causal
-delay of a downstream wave under that convention, as the forced-response tests
-confirm).  A free mode then evolves as ``e^{+i*omega*t} = e^{i*omega_r*t}
-e^{-omega_i*t}``, so a **passive lossy resonator decays for ``Im(omega) > 0``**.
-Hence the **growth rate is ``-Im(omega)``** and a mode is *unstable* iff ``Im(omega)
-< 0``.  (This corrects the loose wording of theory.md s12.7; it is pinned by the
-lossy-duct test, where ``Im(omega) > 0`` must come out decaying.)
+delay ``f_head = e^{-i*omega*tau} f_tail`` is the causal lag of a downstream wave
+under that convention).  A free mode then evolves as ``e^{+i*omega*t} =
+e^{i*omega_r*t} e^{-omega_i*t}``, so a passive lossy resonator decays for
+``Im(omega) > 0``: the **growth rate is ``-Im(omega)``** and a mode is unstable iff
+``Im(omega) < 0``.  The lossy-duct test pins this (``Im(omega) > 0`` must decay).
+
+See also
+--------
+contour : Beyn contour-integral eigensolver and the argument-principle certificate.
+nyquist : real-frequency open-loop (Nyquist) stability for the convected/tabulated regime.
+trajectory : continuation of these eigenmodes as a setup parameter is varied.
+nefes.perturbation.fields.power : the acoustic-power/energy diagnostics on a resolved mode.
 """
 
 import warnings
@@ -49,35 +52,44 @@ from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometr
 from ...solver.report import states_table
 from ...assembly.recover import ES_C
 
-# Below this Mach number a duct's entropy wave is treated as decoupled (stationary)
-# in the stability assembly: its transit time tau_0 = L/u diverges as u -> 0, so for a
-# complex omega the entropy phase e^{-i omega tau_0} would overflow.  The entropy wave
-# does not convect at near-zero mean flow (theory.md s12.6) and never lies in the
-# acoustic band, so dropping its phase is exact for the acoustic spectrum.
+# Below this Mach number a duct's entropy wave is treated as decoupled (stationary) in the
+# stability assembly: its transit time tau_0 = L/u diverges as u -> 0, so for a complex omega
+# the entropy phase e^{-i omega tau_0} would overflow.  The entropy wave does not convect at
+# near-zero mean flow and never lies in the acoustic band, so dropping its phase is exact for
+# the acoustic spectrum.
 _ENTROPY_DECOUPLE_MACH = 1e-3
 
-
-class EigenmodeWarning(UserWarning):
-    """Diagnostic from the eigenmode search (no frequency dependence, saturated probes, ...)."""
-
-
-# exp() overflows float64 at an argument ~709; cap the duct-phase exponent below it
-# so a complex omega never produces inf in A(omega).  |e^{-i*omega*tau}| = e^{Im(omega)*tau}.
+# exp() overflows float64 at an argument ~709; cap the duct-phase exponent below it so a
+# complex omega never produces inf in A(omega).  |e^{-i*omega*tau}| = e^{Im(omega)*tau}.
 _EXP_LIMIT = 650.0
 
-# Target eigenvalue count per Beyn sub-contour.  A single contour enclosing many
-# (especially symmetrically placed) modes makes the contour moments rank-deficient and
-# misses modes; tiling the frequency band into sub-contours of a few modes each is the
-# standard robust practice and resolves them all.
+# Target eigenvalue count per Beyn sub-contour.  A single contour enclosing many (especially
+# symmetrically placed) modes makes the contour moments rank-deficient and misses modes; tiling
+# the frequency band into sub-contours of a few modes each is the standard robust practice.
 _MODES_PER_SUBCONTOUR = 2
 
 # Adaptive certification: if Beyn finds fewer modes than the argument-principle count
 # (:func:`contour.winding_count`) says are inside the region, the band is re-tiled into
-# this many times more sub-contours and the probe widened, then re-searched -- up to
-# _MAX_REFINE_ROUNDS times.  This is what makes the driver self-correcting: the user
-# never has to hand-tune n_probe / sub-contour counts to recover a missed mode.
+# _REFINE_GROWTH times more sub-contours and the probe widened, then re-searched -- up to
+# _MAX_REFINE_ROUNDS times.  This is what makes the driver self-correcting: the user never has
+# to hand-tune n_probe / sub-contour counts to recover a missed mode.
 _REFINE_GROWTH = 2
 _MAX_REFINE_ROUNDS = 3
+
+# Relative step of the central difference that forms the eigen-Newton derivative A'(omega) x
+# (h = _NEWTON_FD_REL * (|omega| + 1)).  Shared with the continuation corrector in trajectory.py.
+_NEWTON_FD_REL = 1e-6
+
+# Relative amount by which a factorization node is nudged off an exact eigenvalue (where A(z)
+# is singular) before refactoring; far below the contour scale, so the moments are unaffected.
+_FACTOR_NUDGE_REL = 1e-7
+
+# Cap on the number of mode rows shown in the plain-text repr (the HTML repr lists all of them).
+_REPR_MAX_ROWS = 20
+
+
+class EigenmodeWarning(UserWarning):
+    """Diagnostic from the eigenmode search (no frequency dependence, saturated probes, ...)."""
 
 
 def build_operator(prob, x_bar, *, eps=None, eps_fb=1e-6, u_floor=1e-8, isentropic=False):
@@ -236,7 +248,7 @@ class _Factorizer:
     def _factor(self, z):
         last = None
         for k in range(5):
-            zz = z if k == 0 else z + (1e-7 * (k + 1)) * abs(z) * (1.0 + 1.0j)
+            zz = z if k == 0 else z + (_FACTOR_NUDGE_REL * (k + 1)) * abs(z) * (1.0 + 1.0j)
             try:
                 return spla.splu(self._A_of(zz).tocsc())
             except RuntimeError as exc:  # "Factor is exactly singular"
@@ -266,12 +278,17 @@ def _residual(A_of, omega, x):
 def _refine(A_of, omega, x, *, tol, maxit=8):
     """Polish ``(omega, x)`` by Newton on the bordered system ``[A(omega) x; x^H x - 1] = 0``.
 
-    Newton's method for the nonlinear eigenproblem (residual-inverse-iteration form):
-    each step solves ``A(omega) y = A'(omega) x`` and updates ``d_omega = -1/(x^H
-    y)``, ``x <- -d_omega y`` (renormalized).  The derivative action ``A'(omega) x``
-    is taken by a central difference in ``omega`` -- which keeps the polish
-    *source-agnostic* (it re-evaluates the same assembled operator, so a future
-    flame/storage term is differentiated automatically, never re-derived here).
+    Beyn returns each eigenpair only to quadrature accuracy; this refines it to a true
+    root of ``A(omega) v = 0``.  It is Newton's method for the nonlinear eigenproblem in
+    residual-inverse-iteration form: linearizing ``A(omega) x = 0`` about the current
+    ``(omega, x)`` gives ``A(omega) dx + (d_omega) A'(omega) x = 0``, so each step solves
+    ``A(omega) y = A'(omega) x`` for the direction ``y``, then sets ``d_omega = -1/(x^H y)``
+    and ``x <- -d_omega y`` (renormalized) -- a step that converges quadratically once the
+    iterate is near the eigenvalue.  The derivative action ``A'(omega) x`` is a central
+    difference in ``omega`` (:data:`_NEWTON_FD_REL`), which keeps the polish source-agnostic:
+    it re-evaluates the same assembled operator, so a future flame/storage term is
+    differentiated automatically and never re-derived here.  Iterating stops as soon as the
+    scaled residual :func:`_residual` drops below ``tol``, and any diverging step is rejected.
     """
     x = x / np.linalg.norm(x)
     w = complex(omega)
@@ -284,7 +301,7 @@ def _refine(A_of, omega, x, *, tol, maxit=8):
             lu = spla.splu(A.tocsc())
         except RuntimeError:
             break  # singular factorization (w sits on the eigenvalue): residual already tiny
-        h = 1e-6 * (abs(w) + 1.0)
+        h = _NEWTON_FD_REL * (abs(w) + 1.0)
         Ap_x = (A_of(w + h) @ x - A_of(w - h) @ x) / (2.0 * h)  # A'(omega) x
         y = lu.solve(Ap_x)
         denom = np.vdot(x, y)  # x^H y
@@ -419,6 +436,16 @@ def eigenmodes(
 
     Notes
     -----
+    Convected scalar waves.  With ``isentropic=False`` (the default) the convected
+    entropy wave ``h`` is carried in ``A(omega)`` like the two acoustic waves, so
+    entropy/convective modes appear in the spectrum -- except on a near-stagnant duct,
+    where its transit time diverges and its phase ``e^{-i*omega*tau_0}`` would overflow at
+    complex ``omega``; there it is decoupled (below ``_ENTROPY_DECOUPLE_MACH``, exact for
+    the acoustic band, see :func:`build_operator`).  ``isentropic=True`` pins ``h = 0`` on
+    every edge, dropping the convected/entropy modes entirely and leaving the acoustic
+    spectrum.  A dense convected spectrum (long ducts, low Mach) is where the contour
+    method struggles and :func:`nyquist.open_loop_response` is the robust tool instead.
+
     ``omega``-dependent table/impedance BCs are evaluated at the *complex* contour
     frequency; a tabulated reflection (interpolated on a real grid) is not
     analytically continuable and is unsupported for stability -- use a constant or
@@ -429,6 +456,13 @@ def eigenmodes(
     while the de-duplicated mode list holds it once; such (non-generic) exact
     degeneracies therefore read as uncertified.  A large ``round_error`` or a mode on
     the region boundary likewise leaves the count ambiguous and is warned about.
+
+    See also
+    --------
+    contour.beyn : the contour-integral eigensolver this driver tiles and validates.
+    contour.winding_count : the argument-principle completeness certificate.
+    nyquist.open_loop_response : robust real-frequency stability count for the convected regime.
+    eigenvalue_trajectory : track this spectrum as a setup parameter is varied.
     """
     A_of, blocks, est, L = build_operator(prob, x_bar, eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=isentropic)
     terminals = find_terminals(prob, x_bar)
@@ -565,10 +599,6 @@ def eigenmodes(
         geometry=build_geometry(prob),
         storage=storage_stamps_from_est(prob, est),
     )
-
-
-# Cap on the number of mode rows shown in the plain-text repr (the HTML repr lists all of them).
-_REPR_MAX_ROWS = 20
 
 
 @dataclass
@@ -891,7 +921,7 @@ class EigenmodeResult:
         """Reconstruct mode ``i``'s spatial field along every root->leaf path.
 
         The continuous perturbation field *inside* every duct, recovered analytically
-        from the mode's face wave-amplitudes (theory.md s12.3); see
+        from the mode's face wave-amplitudes; see
         :func:`nefes.perturbation.fields.modeshape.reconstruct_field`.
 
         Parameters
@@ -1092,6 +1122,11 @@ class EigenmodeResult:
         nefes.perturbation.fields.power.BoundaryPower
             Per-terminal signed power shares; ``.net`` is the energy growth ``dE/dt``
             and ``.sign_consistent`` cross-checks it against the growth rate.
+
+        See also
+        --------
+        nefes.perturbation.fields.power : the Myers energy-flux convention these shares use.
+        energy_balance : the interior + boundary ledger and the growth rate it implies.
         """
         from ..fields.power import boundary_power as _bp
 
@@ -1112,6 +1147,11 @@ class EigenmodeResult:
         Returns
         -------
         nefes.perturbation.fields.power.ModalEnergyBalance
+
+        See also
+        --------
+        boundary_power : the per-terminal breakdown of the boundary-flux term in this ledger.
+        nefes.perturbation.fields.power : the Myers energy-density/flux convention it integrates.
         """
         from ..fields.power import modal_energy_balance as _meb
 

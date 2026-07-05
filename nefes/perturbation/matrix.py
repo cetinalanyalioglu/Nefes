@@ -22,13 +22,27 @@ Conventions
 -----------
 * A **transfer matrix** relates the two stations' variables along their own arrow,
   ``v_down = T @ v_up`` (``matrices``), in the flavor named by :attr:`FreqMatrix.basis`
-  (``characteristics.BASIS_LABELS``; the default ``"char"`` is the Riemann/entropy
-  amplitudes ``w = (f, g, h)``).
+  (``characteristics.BASIS_LABELS``; the default is ``"char"``, defined below).
 * A **scattering matrix** maps the *incoming* waves to the *outgoing* ones, ordered by
   ``matrices.scattering_labels``; its basis must be diagonal in the waves (``"char"`` or
   ``"riemann"``).
 * Flavor and transfer<->scattering conversions need the mean state at each face; supply
   them as :class:`PortState` in ``ports`` (identification attaches them automatically).
+
+Wave bases
+----------
+Two flavors are diagonal in the characteristic waves -- each component *is* one wave -- which
+is exactly what a scattering matrix (an incoming-wave -> outgoing-wave map) needs:
+
+* ``"char"`` -- the characteristic amplitudes ``w = (f, g, h)``: ``f`` the downstream acoustic
+  Riemann wave, ``g`` the upstream acoustic Riemann wave, and ``h`` the convected entropy wave,
+  related to the primitives by ``p' = rho c (f + g)``, ``u' = f - g`` and ``rho' = h + p'/c^2``.
+* ``"riemann"`` -- the De Domenico normalization ``(P+, P-, sigma) = (f/c, g/c, -h/rho)``, a
+  per-wave rescaling of ``"char"`` (so it shares the same wave-diagonal structure).
+
+The remaining flavors (``"primitive"``, ``"network"``, ``"pu_entropy"``, ``"pu_rho"``) mix the
+waves and so are valid for a *transfer* matrix only; see ``characteristics.BASIS_LABELS`` for
+the full catalogue.
 """
 
 from __future__ import annotations
@@ -271,9 +285,11 @@ class TransferMatrix(FreqMatrix):
 
     Notes
     -----
-    ``N`` is the characteristic count -- ``2`` for an acoustics-only matrix (``(f, g)``),
-    ``3`` with the entropy wave.  The 2-D case uses the classic 2x2 acoustic conventions
-    (``matrices.tm_fg_to_sm2`` etc.); the 3-D case the general characteristic algebra.
+    ``N`` is the characteristic count and fixes whether the convected **scalar (entropy) wave**
+    is carried: ``N = 2`` is acoustics-only, ``(f, g)``, with no scalar wave; ``N = 3`` adds the
+    entropy amplitude ``h`` as the third characteristic, so a scalar wave is present exactly when
+    ``N = 3``.  The 2-D case uses the classic 2x2 acoustic conventions (``matrices.tm_fg_to_sm2``
+    etc.); the 3-D case the general characteristic algebra.
     """
 
     kind = "transfer"

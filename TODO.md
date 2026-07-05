@@ -14,6 +14,7 @@
 ## To brainstorm
 
 - [ ] We reject BC's when there is no absolute pressure reference from any of them. For such cases, would it work if we had an absolute pressure reference at some arbitrary edge state in the domain? If so, we could let the user enforce absolute pressure at exactly one edge.
+- [ ] Balance/scale the perturbation operator `A(omega)` before factorization (two-sided diagonal balancing, or nondimensionalizing omega by a reference `c/L`) so the dominant boundary/regularizer entries no longer swamp the rest. This is the structural fix for the conditioning the stability code currently works around (the omega-update convergence test in the corrector, the max|A|-normalized residual); it would make residual-based tests meaningful again. Note: a similarity transform preserves eigenvalues, so it improves conditioning but does not thin the dense convected spectrum (that stays the Nyquist regime).
 
 ## To discuss
 

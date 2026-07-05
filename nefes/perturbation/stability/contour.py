@@ -1,12 +1,14 @@
 """Beyn's contour-integral solver for the nonlinear eigenproblem ``det A(omega) = 0``.
 
-This is the "control integral" technique of theory.md s12.7 (ii): the stability
+This is the control-integral technique behind the network's linear-stability
 analysis.  It lives **above the @njit line** -- pure NumPy/SciPy linear algebra
 over the already-assembled complex operator -- and needs nothing from the kernel
 beyond ``A(omega)^{-1}`` applied to a random probe block, which the same sparse
 factorization the forced-response driver uses (``scipy ... splu``) supplies.
 
-Why a contour method.  The perturbation operator ``A(omega)`` is an **entire**
+Why a contour method?
+---------------------
+The perturbation operator ``A(omega)`` is an **entire**
 matrix function of ``omega`` (its only ``omega``-dependence is ``i*omega*M``, the
 duct phases ``e^{-i*omega*tau}`` and any source/BC transfer function -- all
 holomorphic with no poles), so its eigenvalues are isolated and a bounded contour
@@ -23,14 +25,20 @@ smooth closed contour for an analytic integrand), an SVD of ``A_0`` reveals the
 eigenvalue count and a small ``k x k`` standard eigenproblem yields the
 eigenvalues and eigenvectors.
 
-Completeness certificate.  Beyn's SVD rank counts the modes its random probe
-*resolved*; it can silently under-count if the probe is too narrow or a contour
-encloses too many (especially symmetric) modes.  :func:`winding_count` supplies the
-independent truth: the argument principle counts the eigenvalues actually *inside* a
-contour from the winding of ``det A`` (via :func:`lu_logdet_phase`, phases only --
-the determinant's magnitude is never formed).  Comparing the two turns the
-conditional guarantee into a checkable one, and lets the driver search until they
-agree.
+Completeness certificate
+------------------------
+Beyn's SVD rank counts the modes its random probe *resolved*; it can silently
+under-count if the probe is too narrow or a contour encloses too many (especially symmetric)
+modes.  :func:`winding_count` supplies the independent truth: the argument principle counts
+the eigenvalues actually *inside* a contour from the winding of ``det A``
+(via :func:`lu_logdet_phase`, phases only -- the determinant's magnitude is never formed).
+Comparing the two turns the conditional guarantee into a checkable one, and lets the driver
+search until they agree.
+
+See also
+--------
+eigenmodes : the driver that tiles a search region into contours and validates the modes.
+nyquist : the real-frequency winding count, for the regime the contour method cannot enter.
 """
 
 from dataclasses import dataclass
@@ -268,10 +276,10 @@ def lu_logdet_phase(lu) -> float:
 def winding_count(det_phase, contour: Contour):
     """Eigenvalue count enclosed by ``contour`` via the argument principle.
 
-    For an **entire** matrix function ``A`` (holomorphic, no poles -- theory.md
-    s12.4) the number of eigenvalues (zeros of ``det A``, with algebraic
-    multiplicity) inside a positively-oriented contour equals the winding number of
-    ``det A(z)`` about the origin,
+    For an **entire** matrix function ``A`` (holomorphic, no poles) the number of
+    eigenvalues (zeros of ``det A``, with algebraic multiplicity) inside a
+    positively-oriented contour equals the winding number of ``det A(z)`` about the
+    origin,
 
         N = 1/(2*pi*i) oint det'(z)/det(z) dz = [total change in arg det A(z)] / (2*pi).
 

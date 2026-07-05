@@ -1,4 +1,4 @@
-"""Open-loop (Nyquist) stability of the perturbation network (theory.md s12.7).
+"""Open-loop (Nyquist) stability of the perturbation network.
 
 The companion to :func:`eigenmodes`.  Where the eigensolver hunts the complex
 frequencies that make ``A(omega)`` singular by a *contour integral in the complex
@@ -26,7 +26,7 @@ Nyquist resolves cleanly.
 
 The method is the classic feedback picture of a driven combustor.  Split the
 operator into its **passive** part and the **dynamic source** ``S(omega)`` an
-active element contributes (a flame's unsteady heat release, an injector's
+active element contributes (e.g. a flame's unsteady heat release, an injector's
 fluctuating fuel feed):
 
     A(omega) = A_0(omega) + S(omega),    S(omega) = sum_k F_k(omega) a_k b_k^T,
@@ -60,6 +60,22 @@ that holds; the winding then returns ``N_unstable(A) - N_unstable(A_0) =
 N_unstable(A)``.  The sign/growth convention is :mod:`nefes.perturbation.eigenmodes`'
 (time dependence ``e^{+i omega t}``, growth ``= -Im(omega)``, unstable modes in the
 lower-half plane).
+
+Beyond the count.  The primary output is the robust integer :attr:`NyquistResponse.n_unstable`.
+The individual **unstable-mode frequencies and their growth rates** are also recoverable from
+the same real-axis sweep, without any complex-plane evaluation: :meth:`NyquistResponse.crossings`
+reports the onset (least-stable) frequencies where the locus skims the critical point, and
+:meth:`NyquistResponse.mode_estimates` fits a rational (AAA) interpolant to ``D(omega)`` and
+reads off its complex zeros -- one ``(frequency, growth rate)`` per mode -- so a measured /
+tabulated FTF or a dense convected spectrum still yields the off-axis mode locations that the
+contour eigensolver would otherwise provide.
+
+See also
+--------
+eigenmodes : the contour eigensolver this driver complements (and whose sign convention it shares).
+eigenvalue_trajectory : mode-tracking parameter sweep; the count-based analog here is
+    :func:`nyquist_stability_map`.
+contour.winding_count : the same argument principle, applied on a complex contour instead.
 """
 
 import dataclasses
@@ -77,11 +93,17 @@ class NyquistWarning(UserWarning):
     """Diagnostic from the Nyquist sweep (unclosed locus, coarse grid, odd winding, ...)."""
 
 
-# Refine a frequency interval whose endpoints' return-ratio determinant rotate by
-# more than this about the origin: the locus is under-resolved there and the winding
-# count could miss an encirclement.  Below pi the count is unambiguous.
+# Refine a frequency interval whose endpoints' return-ratio determinant rotate by more than this
+# about the origin: the locus is under-resolved there and the winding count could miss an
+# encirclement.  Below pi the count is unambiguous.
 _MAX_PHASE_STEP = 0.4 * np.pi
+# Cap on the total number of sweep frequencies the adaptive refinement may grow to.
 _MAX_REFINE_POINTS = 4000
+# Maximum bisection passes the refinement makes over the whole grid.
+_REFINE_MAX_ITERS = 20
+# Relative amount by which a factorization frequency is nudged off an exact passive resonance
+# (where A_0 is singular) before refactoring; on the real axis, so a real offset suffices.
+_NUDGE_REL = 1e-8
 
 
 @dataclass
@@ -129,7 +151,7 @@ def _factor_nudged(A_of, omega):
     """``splu`` of ``A_0(omega)``, nudging ``omega`` off an exact passive resonance."""
     last = None
     for k in range(5):
-        zz = omega if k == 0 else omega + (1e-8 * (k + 1)) * (abs(omega) + 1.0)
+        zz = omega if k == 0 else omega + (_NUDGE_REL * (k + 1)) * (abs(omega) + 1.0)
         try:
             return spla.splu(A_of(zz).tocsc())
         except RuntimeError as exc:  # "Factor is exactly singular"
@@ -251,7 +273,7 @@ def _refine_locus(fgrid, Ls, Ds, evaluate):
     fgrid = list(fgrid)
     Ls = list(Ls)
     Ds = list(Ds)
-    for _ in range(20):
+    for _ in range(_REFINE_MAX_ITERS):
         if len(fgrid) >= _MAX_REFINE_POINTS:
             break
         insert = []
@@ -466,13 +488,17 @@ class NyquistResponse:
     def crossings(self, tol=0.25):
         """Real frequencies where the locus skims the critical point (``|D| < tol``).
 
+        Here ``D(omega) = det(I - L) = det A / det A_0`` is the **stability determinant** (see
+        the class docstring): its magnitude ``|D|`` measures how close the return-ratio locus
+        passes to the critical point, and ``|D| -> 0`` marks a mode reaching the real axis.
+
         These are the **least-stable / onset** frequencies -- where a real-axis sample comes
         closest to the critical point.  A mode at onset (growth -> 0) sits on the real axis and
         pins ``|D| -> 0`` here, so its onset frequency is read off directly; a *strongly*
         unstable (or strongly damped) mode lies well off the real axis and need not produce a
         ``|D|`` dip, so these are not, in general, the unstable-mode frequencies (use
-        :func:`eigenmodes` for the off-axis mode locations).  The encirclement
-        :attr:`n_unstable` is the robust quantity.
+        :meth:`mode_estimates` or :func:`eigenmodes` for the off-axis mode locations).  The
+        encirclement :attr:`n_unstable` is the robust quantity.
 
         Parameters
         ----------
@@ -483,6 +509,11 @@ class NyquistResponse:
         -------
         list of dict
             ``{"freq_hz", "abs_D", "L"}`` at each local minimum of ``|D|`` below ``tol``.
+
+        See also
+        --------
+        mode_estimates : the off-axis complex mode frequencies (frequency and growth) from the sweep.
+        n_unstable : the robust encirclement count these onset frequencies accompany.
         """
         absD = np.abs(self.D)
         out = []

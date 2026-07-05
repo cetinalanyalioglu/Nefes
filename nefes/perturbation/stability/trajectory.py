@@ -26,6 +26,22 @@ the perturbation operator (FTF gain/delay, boundary impedance) cost a near-trivi
 
 See :func:`eigenvalue_trajectory` for the entry point and :class:`TrajectoryResult` for the
 output (with plotly views).
+
+Branches are born and die.  Continuation seeds a fixed set of branches once, at ``params[0]``,
+and follows each; it does not manufacture new ones mid-sweep.  A tracked mode can still leave
+the picture -- if it races out of the trackable region or coalesces with a neighbour the
+corrector loses it and the branch is retired early (:attr:`TrajectoryBranch.alive`).  A mode
+that only *enters* the region of interest as the parameter moves is therefore not picked up
+unless it was in the seed window: widen the seed ``freq_band``/``growth_band``, or re-seed at a
+later parameter value, to catch it.  Genuine creation/annihilation of eigenvalues does happen
+in the true spectrum (a conjugate pair can collide on the real axis and split, an exceptional
+point can merge two branches), and those show up as flagged near-collisions
+(:attr:`TrajectoryBranch.events`), not as silently vanishing curves.
+
+See also
+--------
+eigenmodes : seeds the spectrum this driver continues.
+nyquist_stability_map : the robust count-based sweep for the convected/tabulated regime.
 """
 
 import warnings
@@ -35,7 +51,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from .eigenmodes import build_operator, eigenmodes, EigenmodeResult
+from .eigenmodes import build_operator, eigenmodes, EigenmodeResult, _NEWTON_FD_REL
 
 
 class TrajectoryWarning(UserWarning):
@@ -59,6 +75,9 @@ _JUMP_FLOOR = 2.0 * np.pi * 5.0
 # Two live branches closer than this (relative to |omega|) are flagged as a near-collision
 # (mode veering / a possible exceptional point), where the branch identity is ambiguous.
 _COLLISION_RTOL = 8.0e-3
+
+# The eigen-Newton finite-difference step is shared with :func:`eigenmodes._refine`
+# (imported as _NEWTON_FD_REL) so the corrector and the seed polish stay in lockstep.
 
 
 def _corrector(A_of, w0, v0, *, rtol=_CONVERGE_RTOL, maxit=_CORRECTOR_MAXIT):
@@ -93,7 +112,7 @@ def _corrector(A_of, w0, v0, *, rtol=_CONVERGE_RTOL, maxit=_CORRECTOR_MAXIT):
         except RuntimeError:
             converged, rel = True, 0.0  # operator singular at w: w is an eigenvalue
             break
-        h = 1e-6 * (abs(w) + 1.0)
+        h = _NEWTON_FD_REL * (abs(w) + 1.0)
         Ap_x = (A_of(w + h) @ x - A_of(w - h) @ x) / (2.0 * h)  # A'(omega) x
         y = lu.solve(Ap_x)
         denom = np.vdot(x, y)  # x^H y

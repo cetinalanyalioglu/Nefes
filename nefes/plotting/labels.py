@@ -22,55 +22,8 @@ survives into the figure.
 
 import re
 
-# Process-wide default: MathJax on, matching the historical behaviour.  Flip with
-# use_latex(False) for environments where MathJax does not render.
+# Default state: MathJax on; flip with use_latex(False) for environments where MathJax does not render.
 _USE_LATEX = True
-
-
-def use_latex(enabled=True):
-    """Enable or disable MathJax (``$...$``) labels on Nefes figures process-wide.
-
-    Parameters
-    ----------
-    enabled : bool, optional
-        ``True`` (default) keeps the MathJax labels; ``False`` switches every Nefes
-        figure to the Unicode plain-text fallback produced by :func:`detex`.
-
-    Returns
-    -------
-    bool
-        The new state, so a caller can log or assert on it.
-    """
-    global _USE_LATEX
-    _USE_LATEX = bool(enabled)
-    return _USE_LATEX
-
-
-def latex_enabled():
-    """Whether Nefes figures currently emit MathJax labels (see :func:`use_latex`)."""
-    return _USE_LATEX
-
-
-def mathify(fragment):
-    """Render a bare LaTeX *fragment* as a figure label honoring the global toggle.
-
-    ``fragment`` is a LaTeX body without the surrounding ``$`` (e.g. ``f_{0}`` or
-    ``p'/\\rho c``).  Returns ``$fragment$`` when LaTeX is enabled, else the Unicode
-    fallback from :func:`detex`.
-    """
-    return f"${fragment}$" if _USE_LATEX else detex(fragment)
-
-
-def tex(label):
-    """Pass through a complete label (possibly ``$``-delimited), honoring the toggle.
-
-    Use for fixed axis titles such as ``r"$f\\;(\\mathrm{Hz})$"``: returns the label
-    unchanged when LaTeX is enabled, else its :func:`detex` Unicode form.
-    """
-    if label is None:
-        return None
-    return label if _USE_LATEX else detex(label)
-
 
 # LaTeX special characters to escape when arbitrary text is dropped into a ``\text{}``
 # group, so a label cannot break the surrounding MathJax string.
@@ -86,29 +39,6 @@ _TEX_ESCAPE = {
     "~": r"\textasciitilde{}",
     "^": r"\textasciicircum{}",
 }
-
-
-def tex_text(s):
-    """Escape arbitrary text for safe insertion inside a LaTeX ``\\text{}`` group.
-
-    Replaces the LaTeX-special characters (``\\ & % $ # _ { } ~ ^``) with their escaped
-    forms, so an arbitrary element label cannot break the MathJax string it is subscripted
-    into.
-
-    Parameters
-    ----------
-    s : object
-        The label; coerced with ``str``.
-
-    Returns
-    -------
-    str
-        The escaped text.
-    """
-    return "".join(_TEX_ESCAPE.get(ch, ch) for ch in str(s))
-
-
-# -- LaTeX -> Unicode fallback ---------------------------------------------------
 
 # Named control sequences (Greek and a handful of operators/relations) mapped to a
 # single Unicode glyph.  Anything unlisted keeps its name verbatim (the backslash is
@@ -183,8 +113,77 @@ _NAMED = {
 _SUB = {c: u for c, u in zip("0123456789+-=()aeoxhklmnpstijruv", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜᵢⱼᵣᵤᵥ")}
 _SUP = {c: u for c, u in zip("0123456789+-=()ni", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ")}
 
+# Font/wrapper commands whose brace group is kept verbatim, and spacing commands mapped to plain spaces.
 _WRAP = re.compile(r"\\(?:text|mathrm|mathbf|mathit|mathsf|operatorname|boldsymbol)\{([^{}]*)\}")
 _SPACING = (("\\;", " "), ("\\,", " "), ("\\:", " "), ("\\>", " "), ("\\quad", "  "), ("\\qquad", "   "), ("\\!", ""))
+
+
+def use_latex(enabled=True):
+    """Enable or disable MathJax (``$...$``) labels on Nefes figures process-wide.
+
+    Parameters
+    ----------
+    enabled : bool, optional
+        ``True`` (default) keeps the MathJax labels; ``False`` switches every Nefes
+        figure to the Unicode plain-text fallback produced by :func:`detex`.
+
+    Returns
+    -------
+    bool
+        The new state, so a caller can log or assert on it.
+    """
+    global _USE_LATEX
+    _USE_LATEX = bool(enabled)
+    return _USE_LATEX
+
+
+def latex_enabled():
+    """Whether Nefes figures currently emit MathJax labels (see :func:`use_latex`)."""
+    return _USE_LATEX
+
+
+def mathify(fragment):
+    """Render a bare LaTeX *fragment* as a figure label honoring the global toggle.
+
+    ``fragment`` is a LaTeX body without the surrounding ``$`` (e.g. ``f_{0}`` or
+    ``p'/\\rho c``).  Returns ``$fragment$`` when LaTeX is enabled, else the Unicode
+    fallback from :func:`detex`.
+    """
+    return f"${fragment}$" if _USE_LATEX else detex(fragment)
+
+
+def tex(label):
+    """Pass through a complete label (possibly ``$``-delimited), honoring the toggle.
+
+    Use for fixed axis titles such as ``r"$f\\;(\\mathrm{Hz})$"``: returns the label
+    unchanged when LaTeX is enabled, else its :func:`detex` Unicode form.
+    """
+    if label is None:
+        return None
+    return label if _USE_LATEX else detex(label)
+
+
+def tex_text(s):
+    """Escape arbitrary text for safe insertion inside a LaTeX ``\\text{}`` group.
+
+    Replaces the LaTeX-special characters (``\\ & % $ # _ { } ~ ^``) with their escaped
+    forms, so an arbitrary element label cannot break the MathJax string it is subscripted
+    into.
+
+    Parameters
+    ----------
+    s : object
+        The label; coerced with ``str``.
+
+    Returns
+    -------
+    str
+        The escaped text.
+    """
+    return "".join(_TEX_ESCAPE.get(ch, ch) for ch in str(s))
+
+
+# -- LaTeX -> Unicode fallback ---------------------------------------------------
 
 
 def _script(inner, table):

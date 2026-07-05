@@ -1,6 +1,6 @@
 """Notebook plotting of complex transfer / scattering matrices vs frequency.
 
-Each entry of an ``N x N`` perturbation matrix is complex, so the honest view is
+Each entry of an ``N x N`` perturbation matrix is complex, so the proper view is
 **magnitude and phase** versus frequency.  Two layouts cover the size range:
 
 * ``"flat"`` -- entries laid in a single strip, magnitude on the top row and

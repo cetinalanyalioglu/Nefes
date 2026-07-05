@@ -1,9 +1,8 @@
 """A modern, restrained Plotly theme for Nefes figures.
 
-Design goals: a clean light canvas, hairline grid, no chart-junk, and a coherent
-qualitative palette tuned for engineering line/scatter plots.  Registering the
-template is a pure side effect of importing this module; nothing here depends on
-the rest of Nefes, so it is safe to import in any notebook or script.
+Importing this module registers the ``"nefes"`` template with Plotly, so
+``template="nefes"`` works right away; the process-wide default is left untouched
+until :func:`use_nefes_theme` is called.
 """
 
 import plotly.graph_objects as go
@@ -11,8 +10,7 @@ import plotly.io as pio
 
 NEFES_TEMPLATE_NAME = "nefes"
 
-# Qualitative palette: a saturated-but-soft set that reads well on white and stays
-# distinguishable in greyscale print order.
+# Palette
 COLORWAY = [
     "#2563eb",  # blue
     "#f97316",  # orange
@@ -31,7 +29,7 @@ _AXIS = "#cbd2d9"  # axis lines / ticks
 _PAPER = "#ffffff"
 _PLOT = "#ffffff"
 
-# Default body font for all Plotly text in the Nefes template.
+# Default body font for all Plotly text
 FONT_FAMILY = "Arial"
 
 # Figure title: centered, bold, slightly below the former 18 pt default.
@@ -41,9 +39,7 @@ _TICK_FONT_SIZE = 13
 _AXIS_TITLE_STANDOFF = 6
 
 
-# Uniform line weight shared by every axis line, mirrored border and tick, so all
-# four sides of every subplot read at the same thickness.  A slightly heavier weight
-# gives each panel a crisper frame than the hairline grid inside it.
+# Uniform line weight shared by every axis line, mirrored border and tick.
 _LINE_W = 1.6
 
 

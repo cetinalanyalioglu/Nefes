@@ -80,16 +80,24 @@ class _Reporter:
             print(format_residuals(prob, x2d, kappa=kappa, top=top))
 
 
-def states_table(prob, x2d):
-    """Recover the full edge-state table (NS_EST, E) for diagnostics/output."""
-    from ..assembly.recover import recover_all, NS_EST
+def states_table(prob, x2d, caloric=True):
+    """Recover the full edge-state table (NS_EST, E) for diagnostics/output.
+
+    By default the caloric-derivative columns (``ES_DHDRHO``/``ES_DHDP``) are filled too, per
+    edge, from that edge's own thermo model (:func:`~nefes.assembly.recover.enrich_caloric`) --
+    the partials the perturbation network needs -- so the table is fully populated for every
+    consumer.  Pass ``caloric=False`` to skip them (mean-flow reporting, which does not use
+    them and need not pay the reacting complex step).
+    """
+    from ..assembly.recover import recover_all, enrich_caloric, NS_EST
 
     est = np.zeros((NS_EST, prob.n_edges))
     nj_cache = np.zeros((prob.n_edges, 0))  # diagnostics: no warm start (single pass, robust uniform)
     marker_row = int(getattr(prob, "marker_row", -1))
-    recover_all(
-        prob.edge_model, prob.tf, prob.ti, np.ascontiguousarray(x2d), prob.area, prob.n_elem, marker_row, est, nj_cache
-    )
+    xc = np.ascontiguousarray(x2d)
+    recover_all(prob.edge_model, prob.tf, prob.ti, xc, prob.area, prob.n_elem, marker_row, est, nj_cache)
+    if caloric:
+        enrich_caloric(prob.edge_model, prob.tf, prob.ti, xc, est, prob.n_elem, marker_row)
     return est
 
 
@@ -115,7 +123,7 @@ def _states_columns(prob, x2d, edges=None, precision=5):
         ("p_t", ES_PT, "Pa"),
         ("area", ES_AREA, "m^2"),
     )
-    est = states_table(prob, x2d)
+    est = states_table(prob, x2d, caloric=False)  # the mean-flow table needs no caloric partials
     if edges is None:
         edges = range(prob.n_edges)
     edges = [int(e) for e in edges]

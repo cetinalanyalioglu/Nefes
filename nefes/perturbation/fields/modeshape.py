@@ -1,22 +1,18 @@
-"""Spatially-resolved perturbation fields inside the ducts (theory.md s12.3).
+"""Spatially-resolved perturbation fields inside the ducts.
 
-A ``DUCT`` is the only length-bearing element, and it is **uniform and lossless**:
-its two faces share one mean state ``(c, u)``, so the perturbation field *inside* it
-is known in closed form -- the very phase relations the duct stamp imposes
-(:func:`nefes.perturbation.operator.stamps.stamp_propagation`), now evaluated at every interior
-station instead of only at the head face::
+A ``DUCT`` is the only length-bearing element, and it is uniform and lossless: its two
+end edges (tail and head) share one mean state ``(c, u)``, so the perturbation field
+inside it is known in closed form -- the same phase relations the duct stamp imposes
+(:func:`nefes.perturbation.operator.stamps.stamp_propagation`), evaluated at every interior
+station instead of only at the head end::
 
-    f(s) = f_tail * exp(-i w s / (u + c))          downstream wave, from the tail
-    g(s) = g_head * exp(-i w (L - s) / (c - u))     upstream wave, from the head
-    h(s) = h_tail * exp(-i w s / u)                 entropy, convected from the tail
+    f(x) = f_tail * exp(-i w x / (u + c))            downstream wave, from the tail
+    g(x) = g_head * exp(-i w (L - x) / (c - u))       upstream wave, from the head
+    h(x) = h_tail * exp(-i w x / u)                  entropy, convected from the tail
 
-with ``s`` the axial distance from the tail face (``s in [0, L]``).  Because the
-wave amplitudes ``(f, g, h)`` at every edge are already produced for any mode
-(:meth:`EigenmodeResult.mode_waves`) or forced field
-(:meth:`PerturbationResponse._waves`), the continuous mode shape is *exact*
-post-processing -- no discretization, no extra solve, no change to the operator.
+with ``x`` the axial distance from the tail end (``x in [0, L]``).
 
-This module turns those face amplitudes into a **developed-length** field along the
+This module turns those endpoint amplitudes into a **developed-length** field along the
 network: the compact (zero-length) elements are points where the field may jump,
 the ducts are the continua between them.  A serial network reduces to a single
 trace; a branched one is decomposed into root->leaf paths (one per terminal), so
@@ -28,7 +24,7 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
-from ..operator.characteristics import basis_block_from_state, BASIS_LABELS
+from ..operator.characteristics import basis_block_from_state, BASIS_LABELS, VARIABLE_SPEC
 from ..operator.verify import duct_nodes
 from ...assembly.recover import ES_C, ES_U
 from ...elements.ids import MASS_FLOW_INLET, PT_INLET
@@ -36,18 +32,6 @@ from ...elements.ids import MASS_FLOW_INLET, PT_INLET
 # Below this |speed| a duct is treated as quiescent: the entropy wave does not
 # convect (tau_0 -> inf), so it carries no interior spatial structure.
 _U_FLOOR = 1e-8
-
-# Map a friendly variable name to (flavor, component, LaTeX label); see
-# characteristics.BASIS_LABELS for the flavor component order.
-VARIABLE_SPEC = {
-    "p": ("network", 1, r"p'"),
-    "u": ("primitive", 1, r"u'"),
-    "rho": ("pu_rho", 2, r"\rho'"),
-    "mdot": ("network", 0, r"\dot{m}'"),
-    "f": ("char", 0, r"f"),
-    "g": ("char", 1, r"g"),
-    "h": ("char", 2, r"h"),
-}
 
 
 def resolve_specs(variable=None, basis=None):
@@ -90,18 +74,18 @@ def resolve_specs(variable=None, basis=None):
     for name in names:
         if name not in VARIABLE_SPEC:
             raise ValueError(f"unknown variable {name!r}; choose from {sorted(VARIABLE_SPEC)}")
-        flavor, component, label = VARIABLE_SPEC[name]
-        specs.append((label, flavor, component))
+        flavor, component = VARIABLE_SPEC[name]
+        specs.append((BASIS_LABELS[flavor][component], flavor, component))
     return specs
 
 
 @dataclass(frozen=True)
 class DuctSegment:
-    """A length-bearing duct: its node id, the two face edges, and its length."""
+    """A length-bearing duct: its node id, the two end edges, and its length."""
 
     node: int  # the DUCT element id
-    e_tail: int  # tail-face edge (port 0, flow enters here)
-    e_head: int  # head-face edge (port 1, flow leaves here)
+    e_tail: int  # tail edge (port 0, flow enters here)
+    e_head: int  # head edge (port 1, flow leaves here)
     length: float  # duct length L [m]
 
 
@@ -152,8 +136,8 @@ def build_geometry(prob) -> NetworkGeometry:
     ducts = []
     for n in duct_nodes(prob):
         base = int(prob.row_ptr[n])
-        #  verify_acoustic pins orient == (-1, +1): port 0 is the tail face (flow in),
-        #  port 1 the head face (flow out) -- the same e0/e1 the duct stamp uses.
+        #  verify_acoustic pins orient == (-1, +1): port 0 is the tail edge (flow in),
+        #  port 1 the head edge (flow out) -- the same e0/e1 the duct stamp uses.
         e_tail = int(prob.col_edge[base])
         e_head = int(prob.col_edge[base + 1])
         length = float(prob.npar_f[int(prob.npar_fptr[n])])
@@ -203,9 +187,9 @@ class PathField:
 def _duct_chars(chars_tail, chars_head, c, u, omega, length, n_x):
     """Interior characteristic amplitudes ``(f, g, h)`` along a duct.
 
-    ``chars_tail``/``chars_head`` are the ``(f, g, h)`` at the two faces; the
+    ``chars_tail``/``chars_head`` are the ``(f, g, h)`` at the two ends; the
     downstream wave ``f`` and entropy ``h`` propagate from the tail, the upstream
-    wave ``g`` from the head (theory.md s12.3).
+    wave ``g`` from the head.
 
     Returns ``(s, chars)`` with ``s`` shape ``(n_x,)`` and ``chars`` ``(n_x, 3)``.
     """
@@ -222,13 +206,14 @@ def _duct_chars(chars_tail, chars_head, c, u, omega, length, n_x):
     return s, np.stack([f, g, h], axis=1)
 
 
-def _project(chars, est_col, K, cal, basis, component):
+def _project(chars, est_col, basis, component):
     """Project characteristic amplitudes onto one component of a variable flavor.
 
     ``chars`` is ``(n, 3)`` (or ``(3,)``); returns the chosen ``component`` of
-    ``B @ (f, g, h)`` with ``B`` the flavor block at the mean state ``est_col``.
+    ``B @ (f, g, h)`` with ``B`` the flavor block at the mean state ``est_col`` (whose
+    caloric columns supply the ``network`` flavor's coupling).
     """
-    B = basis_block_from_state(basis, est_col, K, cal)
+    B = basis_block_from_state(basis, est_col)
     w = np.atleast_2d(chars)
     v = np.einsum("ij,nj->ni", B, w)[:, component]
     return v if np.ndim(chars) > 1 else v[0]
@@ -303,14 +288,12 @@ def reconstruct_field(
     geometry: NetworkGeometry,
     chars_of_edge: Callable[[int], np.ndarray],
     est: np.ndarray,
-    K: float,
     omega: complex,
     *,
     variable: str = "p",
     spec: Optional[Tuple[str, int]] = None,
     root: Optional[int] = None,
     n_x: int = 160,
-    cals=None,
 ) -> List[PathField]:
     """Reconstruct the spatial perturbation field along every root->leaf path.
 
@@ -319,11 +302,9 @@ def reconstruct_field(
     geometry : NetworkGeometry
         Topology and duct lengths (from :func:`build_geometry`).
     chars_of_edge : callable
-        ``edge -> (f, g, h)`` complex amplitudes at that edge's face.
+        ``edge -> (f, g, h)`` complex amplitudes at that edge.
     est : ndarray
-        Frozen mean edge-state table.
-    K : float
-        ``cp / R`` of the mean gas.
+        Frozen mean edge-state table (with caloric columns filled).
     omega : complex
         Angular frequency (rad/s).  Complex for an eigenmode (its small interior
         amplitude growth/decay is then captured exactly), real for a forced field.
@@ -354,20 +335,17 @@ def reconstruct_field(
     else:
         if variable not in VARIABLE_SPEC:
             raise ValueError(f"unknown variable {variable!r}; choose from {sorted(VARIABLE_SPEC)}")
-        basis, component, _label = VARIABLE_SPEC[variable]
-
-    def cal_of(e):
-        return None if cals is None else cals[e]
+        basis, component = VARIABLE_SPEC[variable]
 
     def duct_fn(seg):
         e_t, e_h, L = seg.e_tail, seg.e_head, seg.length
         c = float(est[ES_C, e_t])
         u = float(est[ES_U, e_t])
         s, chars = _duct_chars(chars_of_edge(e_t), chars_of_edge(e_h), c, u, omega, L, n_x)
-        return s, _project(chars, est[:, e_t], K, cal_of(e_t), basis, component)
+        return s, _project(chars, est[:, e_t], basis, component)
 
     def point_fn(rep):
-        return complex(_project(chars_of_edge(rep), est[:, rep], K, cal_of(rep), basis, component))
+        return complex(_project(chars_of_edge(rep), est[:, rep], basis, component))
 
     return walk_paths(geometry, duct_fn, point_fn, root=root, n_x=n_x)
 
@@ -423,7 +401,7 @@ def walk_paths(geometry, duct_fn, point_fn, *, root=None, n_x=160):
                 s, psi = duct_fn(seg)
                 L = seg.length
                 if entry == seg.e_head:
-                    #  traversed against the duct's flow axis: enter at the head face,
+                    #  traversed against the duct's flow axis: enter at the head end,
                     #  so developed length runs head -> tail; flip to stay ascending.
                     seg_x = (x_cursor + (L - s))[::-1]
                     psi = np.asarray(psi)[::-1]

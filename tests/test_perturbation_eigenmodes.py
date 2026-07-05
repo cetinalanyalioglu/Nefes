@@ -293,7 +293,6 @@ def test_eigenmode_result_repr_and_html():
         residuals=np.empty(0),
         L=res.L,
         est=res.est,
-        K=res.K,
         n_solve=res.n_solve,
         n_edges=res.n_edges,
         contour=res.contour,

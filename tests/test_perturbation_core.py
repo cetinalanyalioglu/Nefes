@@ -14,7 +14,6 @@ from nefes.perturbation import (
     dx_to_char,
     build_acoustic_blocks,
     assemble_acoustic,
-    duct_modes,
     scattering_2port,
 )
 from nefes.perturbation.operator.characteristics import char_to_dq, basis_matrix
@@ -24,9 +23,14 @@ CP = GAMMA * R_AIR / (GAMMA - 1.0)
 K = CP / R_AIR
 
 
+def _cal(rho, u, p):
+    """Perfect-gas caloric row (a, u, b) = (-K p/rho^2, u, K/rho)."""
+    return (-K * p / rho**2, u, K / rho)
+
+
 def test_characteristic_maps_are_inverse():
-    T = char_to_dx(1.2, 340.0, 50.0, 1.0e5, 0.10, K)
-    L = dx_to_char(1.2, 340.0, 50.0, 1.0e5, 0.10, K)
+    T = char_to_dx(1.2, 340.0, 50.0, 0.10, _cal(1.2, 50.0, 1.0e5))
+    L = dx_to_char(1.2, 340.0, 50.0, 0.10, _cal(1.2, 50.0, 1.0e5))
     assert np.allclose(T @ L, np.eye(3), atol=1e-10)
 
 
@@ -43,8 +47,8 @@ def test_characteristic_amplitude_relations():
 
 def test_primitive_basis_is_velocity_normalized():
     # primitive flavor is (p'/(rho c), u', rho' c/rho) -- all in velocity units.
-    rho, c, u, p, area = 1.2, 340.0, 50.0, 1.0e5, 0.10
-    B = basis_matrix("primitive", rho, c, u, p, area, K)
+    rho, c, u, area = 1.2, 340.0, 50.0, 0.10
+    B = basis_matrix("primitive", rho, c, u, area)
     R = char_to_dq(rho, c)  # (rho', u', p') from (f, g, h)
     for w in (np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]), np.array([0.3, -0.4, 0.7])):
         drho, du, dp = R @ w
@@ -91,13 +95,6 @@ def test_quiescent_mean_assembles_cleanly():
     assert np.max(np.abs(est[ES_MDOT])) < 1e-2
     blocks = build_acoustic_blocks(prob, res.x)
     assert np.all(np.isfinite(blocks.J_alg.toarray()))
-
-
-@pytest.mark.parametrize("c, L", [(340.0, 1.0), (300.0, 0.5)])
-def test_closed_closed_duct_eigenfrequencies(c, L):
-    modes = duct_modes(c, L, n_modes=3)
-    expected = np.array([n * np.pi * c / L for n in (1, 2, 3)])
-    assert np.allclose(modes, expected, rtol=2e-3)
 
 
 def test_duct_scattering_is_lossless_phase():

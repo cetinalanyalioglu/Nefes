@@ -29,6 +29,7 @@ from nefes.perturbation import (
     perturbation_response,
 )
 from nefes.perturbation.fields.modeshape import VARIABLE_SPEC, build_geometry, resolve_specs, PathField
+from nefes.perturbation.operator.characteristics import BASIS_LABELS
 from nefes.plotting import animate_mode_shape, AnimSeries
 
 CFG = perfect_gas(287.0, 1.4)
@@ -64,9 +65,9 @@ def test_endpoint_consistency_matches_face_waves():
     # project the stored face waves to p' the same way the reconstruction does
     from nefes.perturbation.operator.characteristics import basis_block_from_state
 
-    basis, comp, _ = VARIABLE_SPEC["p"]
-    p_tail = (basis_block_from_state(basis, res.est[:, seg.e_tail], res.K, None) @ res.mode_waves(i, seg.e_tail))[comp]
-    p_head = (basis_block_from_state(basis, res.est[:, seg.e_head], res.K, None) @ res.mode_waves(i, seg.e_head))[comp]
+    basis, comp = VARIABLE_SPEC["p"]
+    p_tail = (basis_block_from_state(basis, res.est[:, seg.e_tail]) @ res.mode_waves(i, seg.e_tail))[comp]
+    p_head = (basis_block_from_state(basis, res.est[:, seg.e_head]) @ res.mode_waves(i, seg.e_head))[comp]
 
     pf = res.field_along_network(i, variable="p", n_x=64)[0]
     assert pf.x[0] == pytest.approx(0.0)
@@ -225,7 +226,7 @@ def _closed_duct_modes(fmax_factor=1.5):
 def test_resolve_specs_variable_and_basis():
     # a friendly variable list resolves one-to-one to (label, flavor, component)
     specs = resolve_specs(["p", "u"])
-    assert [s[0] for s in specs] == [VARIABLE_SPEC["p"][2], VARIABLE_SPEC["u"][2]]
+    assert [s[0] for s in specs] == [BASIS_LABELS[f][c] for f, c in (VARIABLE_SPEC["p"], VARIABLE_SPEC["u"])]
     # a basis expands to its three components, in order
     specs_b = resolve_specs(basis="primitive")
     assert len(specs_b) == 3

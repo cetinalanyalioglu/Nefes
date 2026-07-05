@@ -1,12 +1,11 @@
-"""Perturbation (acoustic) boundary conditions for single-port terminals.
+"""Perturbation (acoustic) boundary conditions for single-port nodes.
 
 A single-port element fixes the *mean* boundary condition (a mass flow, a total
 pressure, a static pressure, or a wall).  The *perturbation* boundary condition is
 extra information the mean BC cannot supply: how the terminal closes the linear
-fluctuation problem.  theory.md s12.4 settles the form -- every terminal BC is a
-**characteristic closure** mapping the waves that *arrive* at the boundary from the
-interior to the waves the boundary must *specify* (those propagating into the
-domain)::
+fluctuation problem.  Every terminal BC takes the form of a **characteristic closure**
+mapping the waves that *arrive* at the boundary from the interior to the waves the
+boundary must *specify* (those propagating into the domain)::
 
     w_specify = A(omega) @ w_arriving + b(omega)
 
@@ -16,7 +15,10 @@ pointing in) -- see :func:`matrices.partition`.  For a subsonic terminal that is
 duct **tail** (an inlet) the flow carries ``f`` and ``h`` in and lets ``g`` out, so
 ``A`` is ``2 x 1``; at a duct **head** (an outlet) only ``g`` enters while ``f`` and
 ``h`` leave, so ``A`` is ``1 x 2``.  ``b`` is the optional forcing -- an incoming wave
-injected at the boundary (see ``driven`` below).
+injected at the boundary (see ``driven`` below).  Transported reacting scalars (composition
+waves) are further convected characteristics beyond ``(f, g, h)``: the reflection closures
+here act on the acoustic and entropy waves only, and a scalar wave is at most *seated* at a
+genuine inflow (via ``driven``), never reflected.
 
 The classic scalar reflection is the **diagonal** case: ``A`` couples the to-specify
 acoustic wave to the arriving acoustic wave by a single coefficient ``R``, and (at an
@@ -53,6 +55,7 @@ keeps the convective-neutral ``R`` and adds a unit incoming acoustic wave.  The
 Off-diagonal coupling is also available on the generic closures: ``entropy_coupling``
 sets the arriving-entropy -> reflected-acoustic term ``R_s`` at an outlet, and
 ``acoustic_to_entropy`` sets the arriving-acoustic -> specified-entropy term at an inlet.
+This can be used to model e.g. response of a specific nozzle to incident entropy waves.
 
 The impedance map uses the **outward-normal** velocity convention, so it is uniform
 at an inlet and an outlet: a rigid wall ``Z -> inf`` gives ``R = +1``, a
@@ -86,11 +89,11 @@ KINDS = (
     "constant_mass_flow",
 )
 
-# Wave families that the closure can inject at a boundary (theory.md s12.4); reacting-scalar
-# waves (named by ``prob.scalar_names``) are not yet carried through the terminal closure.
+# Wave families that the closure can inject at a boundary; reacting-scalar waves
+# (named by ``prob.scalar_names``) are not carried through the terminal closure.
 DRIVABLE_FAMILIES = ("acoustic", "entropy")
 
-# Characteristic indices (theory.md s9.1): f downstream, g upstream, h entropy.
+# Characteristic indices: f downstream, g upstream, h entropy.
 _F, _G, _H = 0, 1, 2
 
 
@@ -128,27 +131,24 @@ def _eval(value, freq):
     return complex(value)
 
 
-def _gamma_minus_one(K=None, rho=None, c=None, p=None):
-    """Effective ``gamma - 1`` for the Marble--Candel coefficients, **backend-consistent**.
+def _gamma_minus_one(rho, c, p):
+    """Effective ``gamma - 1`` for the Marble--Candel coefficients, from the mean state.
 
-    Prefers the mean-state isentropic exponent ``gamma = rho c^2 / p`` (so ``gamma - 1 =
-    rho c^2 / p - 1``) whenever the state ``(rho, c, p)`` is supplied: this is exact for a perfect
-    gas *and* is the effective ``gamma`` consistent with the sound speed the acoustics already use
-    for a reacting / variable-composition gas -- the same convention as
-    :func:`~nefes.perturbation.operator.stamps._cp_from_state`.  Falls back to the perfect-gas ratio
-    ``K = cp/R`` (``gamma - 1 = 1/(K-1)``) only when no state is given (direct/legacy callers); on
-    the reacting backend ``K = tf[0]/tf[1]`` is *not* ``cp/R``, so the state form is the correct one.
+    The local isentropic exponent ``gamma = rho c^2 / p`` is exact for a perfect gas and is
+    the value consistent with the sound speed the acoustics already use for a reacting /
+    variable-composition gas, so ``gamma - 1 = rho c^2 / p - 1`` is read straight from the
+    terminal's own mean state -- no gas-model constant.  Shared by
+    :meth:`PerturbationBC.reflection_coefficient` and
+    :meth:`PerturbationBC.entropy_coupling_coefficient`.
     """
-    if p is not None and rho is not None and c is not None:
-        return float(rho) * float(c) * float(c) / float(p) - 1.0
-    if K is None:
-        raise ValueError("choked_nozzle needs the effective gamma: pass the mean (rho, c, p) or K = cp/R")
-    return 1.0 / (float(K) - 1.0)
+    if p is None:
+        raise ValueError("choked_nozzle needs the mean static pressure p for the effective gamma = rho c^2 / p")
+    return float(rho) * float(c) * float(c) / float(p) - 1.0
 
 
 @dataclass
 class PerturbationBC:
-    """Acoustic/perturbation closure for a single-port terminal (theory.md s12.4).
+    """Acoustic/perturbation closure for a single-port terminal node.
 
     Build one with the named constructors (:meth:`hard_wall`, :meth:`open_end`,
     :meth:`anechoic`, :meth:`reflection`, :meth:`impedance`, :meth:`mean_flow_open_end`);
@@ -221,14 +221,14 @@ class PerturbationBC:
 
     # -- evaluation on the frozen mean state --------------------------------
 
-    def reflection_coefficient(self, freq, rho, c, M, K=None, p=None) -> Optional[complex]:
+    def reflection_coefficient(self, freq, rho, c, M, p=None) -> Optional[complex]:
         """Acoustic reflection coefficient ``R`` at ``freq`` (Hz) and the terminal mean state.
 
-        Returns ``None`` for ``inherit`` (signalling "do not stamp this terminal").
-        ``M`` is the **outward-normal** mean Mach number at the terminal edge.  The effective
-        ``gamma`` for ``choked_nozzle`` is taken from the mean state (``rho c^2 / p``) when ``p``
-        is supplied -- correct for *any* thermo backend -- and otherwise from the perfect-gas
-        ratio ``K = cp/R`` (see :func:`_gamma_minus_one`).
+        Returns ``None`` for ``inherit`` (signalling "do not stamp this terminal").  ``M`` is
+        the **outward-normal** mean Mach number at the terminal edge.  The effective ``gamma``
+        for ``choked_nozzle`` is taken from the mean state (``gamma = rho c^2 / p``), so ``p``
+        (the mean static pressure) must be supplied for that kind -- correct for any thermo
+        backend (see :func:`_gamma_minus_one`).
         """
         k = self.kind
         if k == "inherit":
@@ -250,21 +250,21 @@ class PerturbationBC:
             zc = rho * c
             return (z - zc) / (z + zc)
         if k == "choked_nozzle":  # compact choked outlet: delta_M = 0 (Marble--Candel)
-            gm1 = _gamma_minus_one(K, rho, c, p)
+            gm1 = _gamma_minus_one(rho, c, p)
             return complex((2.0 - gm1 * M) / (2.0 + gm1 * M))
         if k == "constant_mass_flow":  # mdot' = 0: g = (1+M)/(1-M) f + R_s h
             return complex((1.0 + M) / (1.0 - M))
         raise ValueError(f"unhandled perturbation BC kind {k!r}")  # pragma: no cover
 
-    def entropy_coupling_coefficient(self, freq, rho, c, M, K=None, p=None) -> complex:
+    def entropy_coupling_coefficient(self, freq, rho, c, M, p=None) -> complex:
         """Off-diagonal ``R_s``: arriving entropy -> reflected acoustic at an outlet.
 
         Zero unless ``choked_nozzle`` (``R_s = (c/rho) M/(2+(gamma-1)M)``) or an explicit
         ``entropy_coupling`` carrier is set.  ``M`` is the (outward-normal) mean Mach; the
-        effective ``gamma`` is taken from the mean state (``rho c^2 / p``) when ``p`` is supplied.
+        effective ``gamma`` is taken from the mean state (``gamma = rho c^2 / p``).
         """
         if self.kind == "choked_nozzle":
-            gm1 = _gamma_minus_one(K, rho, c, p)
+            gm1 = _gamma_minus_one(rho, c, p)
             return complex((c / rho) * M / (2.0 + gm1 * M))
         if self.kind == "constant_mass_flow":  # mdot' = 0 -> R_s = u / (rho (1 - M)) = c M / (rho (1 - M))
             return complex((c * M) / (rho * (1.0 - M)))
@@ -278,16 +278,36 @@ class PerturbationBC:
             return _eval(self.acoustic_to_entropy, freq)
         return 0.0 + 0.0j
 
-    def closure(self, freq, rho, c, u, M, K, specify, arriving, p=None):
+    def closure(self, freq, rho, c, u, M, specify, arriving, p=None):
         """Matrix closure ``(A, b)`` for one terminal at ``freq`` (Hz) and the mean state.
 
-        ``specify`` / ``arriving`` are the to-specify / arriving characteristic indices
-        from :func:`matrices.partition`.  Returns ``A`` of shape
-        ``(len(specify), len(arriving))`` and forcing ``b`` of length ``len(specify)``
-        such that ``w[specify] = A @ w[arriving] + b``.  The scalar reflection sits on
-        the acoustic-acoustic entry; the off-diagonals carry entropy <-> acoustic coupling.
-        ``p`` (the mean static pressure) lets the ``choked_nozzle`` coefficients take the effective
-        ``gamma = rho c^2 / p`` from the actual state -- consistent with any thermo backend.
+        The closure is the linear law ``w[specify] = A @ w[arriving] + b``: the waves the
+        boundary must specify (those entering the domain) as a reflection ``A`` of the waves
+        arriving from the interior, plus an injected forcing ``b``.  The scalar reflection
+        sits on the acoustic-acoustic entry; the off-diagonals carry entropy <-> acoustic
+        coupling.
+
+        Parameters
+        ----------
+        freq : float
+            Frequency (Hz) at which the coefficients are evaluated.
+        rho, c, u : float
+            Mean density, sound speed, and axial velocity at the terminal edge.
+        M : float
+            Outward-normal mean Mach number at the terminal.
+        specify, arriving : sequence of int
+            To-specify and arriving characteristic indices from :func:`matrices.partition`.
+        p : float, optional
+            Mean static pressure; the ``choked_nozzle`` coefficients take the effective
+            ``gamma = rho c^2 / p`` from it (required for that kind), consistent with any
+            thermo backend.
+
+        Returns
+        -------
+        A : ndarray
+            Reflection matrix, shape ``(len(specify), len(arriving))``.
+        b : ndarray
+            Forcing vector, length ``len(specify)``.
         """
         if self.kind in ("choked_nozzle", "constant_mass_flow") and _H not in arriving:
             raise ValueError(f"{self.kind} is an outlet termination (entropy must be an arriving wave)")
@@ -305,12 +325,12 @@ class PerturbationBC:
 
         ac_spec = _F if _F in spos else _G  # the to-specify acoustic wave
         ac_arr = _G if ac_spec == _F else _F  # the arriving acoustic wave
-        R = self.reflection_coefficient(freq, rho, c, M, K, p)
+        R = self.reflection_coefficient(freq, rho, c, M, p)
         A[spos[ac_spec], apos[ac_arr]] = R
         b[spos[ac_spec]] = self.forcing(freq)
 
         if _H in apos:  # outlet: arriving entropy can reflect into the specified acoustic wave
-            A[spos[ac_spec], apos[_H]] = self.entropy_coupling_coefficient(freq, rho, c, M, K, p)
+            A[spos[ac_spec], apos[_H]] = self.entropy_coupling_coefficient(freq, rho, c, M, p)
         if _H in spos:  # inlet: entropy is to-specify (seated, with an optional acoustic source term)
             b[spos[_H]] = self.entropy_forcing(freq)
             A[spos[_H], apos[ac_arr]] = self.acoustic_to_entropy_coefficient(freq)

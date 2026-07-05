@@ -140,7 +140,8 @@ def _flame_network(dynamic_source=None, mdot=0.02, Qdot=8.0e3):
 def _u_functional(est, e, K):
     """Coefficients of u' = vec . (mdot', p', h_t') at edge e, and the mean u."""
     rho, u, p, area = est[ES_RHO, e], est[ES_U, e], est[ES_P, e], est[ES_AREA, e]
-    vec = np.linalg.inv(dq_to_dx(rho, u, p, area, K))[1, :]
+    cal = (-K * p / rho**2, u, K / rho)  # perfect-gas caloric row (a, u, b)
+    vec = np.linalg.inv(dq_to_dx(rho, u, area, cal))[1, :]
     return vec, float(u)
 
 

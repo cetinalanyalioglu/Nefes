@@ -72,6 +72,42 @@ def tex(label):
     return label if _USE_LATEX else detex(label)
 
 
+# LaTeX special characters to escape when arbitrary text is dropped into a ``\text{}``
+# group, so a label cannot break the surrounding MathJax string.
+_TEX_ESCAPE = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
+
+
+def tex_text(s):
+    """Escape arbitrary text for safe insertion inside a LaTeX ``\\text{}`` group.
+
+    Replaces the LaTeX-special characters (``\\ & % $ # _ { } ~ ^``) with their escaped
+    forms, so an arbitrary element label cannot break the MathJax string it is subscripted
+    into.
+
+    Parameters
+    ----------
+    s : object
+        The label; coerced with ``str``.
+
+    Returns
+    -------
+    str
+        The escaped text.
+    """
+    return "".join(_TEX_ESCAPE.get(ch, ch) for ch in str(s))
+
+
 # -- LaTeX -> Unicode fallback ---------------------------------------------------
 
 # Named control sequences (Greek and a handful of operators/relations) mapped to a

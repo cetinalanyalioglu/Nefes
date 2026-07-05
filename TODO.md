@@ -23,6 +23,7 @@
 
 ## Issues
 
+- [ ] Solving for mean flow on a 10000+ nodes case is remarkably fast, but doing a respons analysis to compute tranfer matrices takes too long. We should check whether we could improve this without going crazy lengths.
 - [ ] Type hinting is pretty much missing from the entire codebase, and we'd prefer good type hinting to be present.
 - [ ] The LaTeX rendering, especially inline rendering in Quarto docs still has a large font size, we need to reduce this a bit.
 - [ ] In notebooks, we seem to have too many imports from our package, looking a bit intimidating. It is too much for the user, and perhaps some functionality could be offered as class methods? We should discuss.

@@ -115,9 +115,7 @@ def test_fuel_stamp_matches_finite_difference():
     prob = _rig(mdot_fuel=mdot_fuel, ds=ds)
     x = _converged(prob)
 
-    cals = edge_caloric(prob, x)
-    K = float(prob.tf[0]) / float(prob.tf[1])
-    stamps, _ = build_source_stamps(prob, x, K, cals=cals)
+    stamps, _ = build_source_stamps(prob, x)
     inj = next(s for s in stamps if s.node == N_INJECTOR)
     assert len(inj.rows) >= 4  # mass, momentum, energy, and at least one composition scalar
 
@@ -252,7 +250,6 @@ def _nozzle_reflection_row(prob, x, *, stamped):
     columns are the composition -> acoustic coefficients ``R_xi`` directly.
     """
     est = states_table(prob, x)
-    K = float(prob.tf[0]) / float(prob.tf[1])
     cals = edge_caloric(prob, x)
     e, ns = 3, int(prob.n_solve)  # nozzle edge / solve width
     r0 = int(prob.node_row_ptr[4])  # nozzle node row (the acoustic to-specify wave)
@@ -265,7 +262,7 @@ def _nozzle_reflection_row(prob, x, *, stamped):
     else:
         row = np.asarray(build_acoustic_blocks(prob, x).J_alg[r0, ns * e : ns * e + ns].todense()).ravel()
     rho, c, u, p, area = (float(est[k, e]) for k in (ES_RHO, ES_C, ES_U, ES_P, ES_AREA))
-    cf, cg, ch = row[:3] @ char_to_dx(rho, c, u, p, area, K, cals[e])
+    cf, cg, ch = row[:3] @ char_to_dx(rho, c, u, area, cals[e])
     return float(est[ES_M, e]), -cf / cg, -ch / cg, -row[3:] / cg
 
 

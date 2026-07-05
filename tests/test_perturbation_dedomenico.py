@@ -130,8 +130,8 @@ def _riemann_scattering(prob, res, a, b):
 
 def _to_riemann(T_char, est, a, b):
     """Convert a characteristic transfer matrix to the (P+, P-, sigma) flavor."""
-    Ba = basis_matrix("riemann", est[ES_RHO, a], est[ES_C, a], est[ES_U, a], est[ES_P, a], 1.0, K)
-    Bb = basis_matrix("riemann", est[ES_RHO, b], est[ES_C, b], est[ES_U, b], est[ES_P, b], 1.0, K)
+    Ba = basis_matrix("riemann", est[ES_RHO, a], est[ES_C, a], est[ES_U, a], 1.0)
+    Bb = basis_matrix("riemann", est[ES_RHO, b], est[ES_C, b], est[ES_U, b], 1.0)
     return Bb @ T_char @ np.linalg.inv(Ba)
 
 
@@ -220,7 +220,7 @@ def test_scattering_riemann_equals_dedomenico_normalisation():
 
     def scale(station, i):
         e = 0 if station == "a" else 2
-        B = basis_matrix("riemann", est[ES_RHO, e], est[ES_C, e], est[ES_U, e], est[ES_P, e], 1.0, K)
+        B = basis_matrix("riemann", est[ES_RHO, e], est[ES_C, e], est[ES_U, e], 1.0)
         return B[i, i]
 
     din = np.array([scale(s, i) for (s, i) in inc])

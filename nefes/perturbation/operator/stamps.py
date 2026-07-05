@@ -1,18 +1,22 @@
 """Analytic acoustic stamps written onto ``A(omega)`` after ``J_alg + i*omega*M``.
 
-Three faces (implementation-plan.md s8.2-8.3):
+The omega-dependent and closure faces:
 
-* ``stamp_propagation`` -- the **duct** phase relations ``P(omega)`` (theory.md
-  s12.3), the only omega-dependent block in v1.  For each duct it replaces three
-  rows (its two node rows + the head edge's transport row) with the
-  characteristic phase relations, built diagonally in the wave amplitudes
-  ``w = (f, g, h)`` and mapped to solution-variable rows through ``L_e``.
-* ``stamp_sources`` -- the dynamic-source ``S(omega)`` face (theory.md s12.4): a
-  flame's unsteady heat release on the downstream energy row, or a mass source's
-  fluctuating injection on its node rows, each driven by a frequency-domain transfer
-  function of a reference-edge fluctuation (:func:`build_source_stamps`).
-* ``stamp_boundaries`` -- terminal reflection coefficients (reserved; the v1
-  scattering driver imposes incoming waves at terminals instead, so a no-op).
+* ``stamp_propagation`` -- the **duct** phase relations ``P(omega)``, the only bulk
+  omega-dependent block.  For each duct it replaces three rows (its two node rows +
+  the head edge's transport row) with the characteristic phase relations, built
+  diagonally in the wave amplitudes ``w = (f, g, h)`` and mapped to solution-variable
+  rows through ``L_e``.
+* ``stamp_sources`` -- the dynamic-source ``S(omega)`` face: a flame's unsteady heat
+  release on the downstream energy row, or a mass source's fluctuating injection on its
+  node rows, each driven by a frequency-domain transfer function of a reference-edge
+  fluctuation (:func:`build_source_stamps`).
+* ``stamp_transfer_matrix`` -- a blackbox 2-port's ``w_down = TM(omega) w_up`` relation,
+  overwriting the element's acoustic rows (:func:`build_tm_stamps`).
+* ``stamp_boundaries`` -- the terminal reflection closures ``R(omega)`` of each explicit
+  :class:`~nefes.perturbation.operator.boundary_bc.PerturbationBC`.
+* ``stamp_isentropic`` -- pin the entropy characteristic to zero on every edge, reducing
+  the operator to the two acoustic waves.
 
 ``build_storage`` assembles the storage ``M`` block -- the ``d/dt integral_V U``
 term dropped at steady state.  It is populated per element through a small
@@ -32,7 +36,7 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 
-from .characteristics import dx_to_char, dq_to_dx
+from .characteristics import dx_to_char, dq_to_dx, caloric_row
 from .matrices import partition
 from .verify import duct_nodes, verify_acoustic
 from .terminals import find_terminals
@@ -75,15 +79,15 @@ class DuctStamp:
     comp_cols1: tuple = ()
 
 
-def build_duct_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
+def build_duct_stamps(prob, x_bar, u_floor=1e-8):
     """Build the per-duct ``P(omega)`` data at the frozen mean state ``x_bar``.
 
-    Runs ``verify_acoustic`` first (pinned orientation, subsonic, length > 0).
-    ``cals`` (optional): per-edge caloric rows (:func:`characteristics.edge_caloric`)
-    used in place of the perfect-gas ``K`` for a reacting/variable-gamma edge.
+    Runs ``verify_acoustic`` first (pinned orientation, subsonic, length > 0).  Each edge's
+    caloric coupling is read from the edge-state table (:func:`characteristics.caloric_row`),
+    so the characteristic maps are consistent with the mean-flow Jacobian for every gas model.
     """
     verify_acoustic(prob, x_bar)
-    est = states_table(prob, x_bar)
+    est = states_table(prob, x_bar, caloric=True)
     ns = int(prob.n_solve)
     stamps = []
     for n in duct_nodes(prob):
@@ -96,18 +100,13 @@ def build_duct_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
         rho = float(est[ES_RHO, e0])
         c = float(est[ES_C, e0])
         u = float(est[ES_U, e0])
-        p = float(est[ES_P, e0])
-        cal0 = None if cals is None else cals[e0]
-        cal1 = None if cals is None else cals[e1]
-        L0 = dx_to_char(rho, c, u, p, float(est[ES_AREA, e0]), K, cal0)
+        L0 = dx_to_char(rho, c, u, float(est[ES_AREA, e0]), caloric_row(est[:, e0]))
         L1 = dx_to_char(
             float(est[ES_RHO, e1]),
             float(est[ES_C, e1]),
             float(est[ES_U, e1]),
-            float(est[ES_P, e1]),
             float(est[ES_AREA, e1]),
-            K,
-            cal1,
+            caloric_row(est[:, e1]),
         )
 
         tau_p = length / (u + c)
@@ -216,7 +215,7 @@ class SourceTerm:
 
 @dataclass
 class SourceStamp:
-    """Precomputed ``S(omega)`` stamp for one dynamic-source element (theory.md s12.4).
+    """Precomputed ``S(omega)`` stamp for one dynamic-source element.
 
     Each frequency adds ``rows[r] += factors[r] * sum_k term_k`` -- the source
     *adds* to the rows ``J_alg`` already populates (it never overwrites them), so the
@@ -232,15 +231,14 @@ class SourceStamp:
     max_delay: float  # longest pure delay [s] across the terms (contour overflow clamp)
 
 
-def _ref_functional(quantity, est_col, x_bar_col, K, scalar_names, cal=None):
+def _ref_functional(quantity, est_col, x_bar_col, scalar_names):
     """Linear functional + mean of a reference quantity at one edge.
 
     Returns ``(idx, vec, mean)``: the solve-variable indices ``idx`` (within the edge
     block) carrying the nonzero coefficients ``vec`` of ``phi' = vec . x_edge``, and the
-    mean value ``phi_bar`` used to normalize the fractional response.  ``cal`` (see
-    :func:`characteristics.dq_to_dx`) supplies the reacting caloric coupling so that a
-    velocity/density reference is extracted from ``(mdot', p', h_t')`` with the gas's
-    *actual* caloric -- the perfect-gas ``K`` mis-extracts it for the reacting backend.
+    mean value ``phi_bar`` used to normalize the fractional response.  A velocity/density
+    reference is extracted from ``(mdot', p', h_t')`` with the edge's own caloric coupling
+    (:func:`characteristics.caloric_row`, from the state table), correct for every gas model.
     """
     rho = float(est_col[ES_RHO])
     u = float(est_col[ES_U])
@@ -253,7 +251,7 @@ def _ref_functional(quantity, est_col, x_bar_col, K, scalar_names, cal=None):
         return np.array([1]), np.array([1.0]), p
     if quantity in ("u", "rho"):
         # primitives (drho, du, dp) = inv(dq_to_dx) . (dmdot, dp, dht)
-        inv = np.linalg.inv(dq_to_dx(rho, u, p, area, K, cal))
+        inv = np.linalg.inv(dq_to_dx(rho, u, area, caloric_row(est_col)))
         row = 1 if quantity == "u" else 0
         mean = u if quantity == "u" else rho
         return np.array([0, 1, 2]), inv[row, :].astype(float), mean
@@ -269,21 +267,21 @@ def _ref_functional(quantity, est_col, x_bar_col, K, scalar_names, cal=None):
     raise ValueError(f"unsupported reference quantity {quantity!r}")
 
 
-def build_source_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
+def build_source_stamps(prob, x_bar, u_floor=1e-8):
     """Precompute the ``S(omega)`` stamps for every dynamic-source element.
 
     Reads ``prob.node_dynamic_source`` (the :class:`~nefes.elements.dynamic_source.DynamicSource`
     descriptors) and resolves, at the frozen mean state, each element's target rows,
     the constant de-normalization factor, and per-term reference functionals.  Returns
     ``(stamps, flame_edges)`` where ``flame_edges`` are the downstream edges whose
-    energy row must stay physical under the isentropic assembly (theory.md s12.4 --
-    the active flame still adds heat even when convected entropy is dropped elsewhere).
+    energy row must stay physical under the isentropic assembly (the active flame still
+    adds heat even when convected entropy is dropped elsewhere).
     """
     srcs = getattr(prob, "node_dynamic_source", ()) or ()
     if not any(s is not None for s in srcs):
         return [], frozenset()
 
-    est = states_table(prob, x_bar)
+    est = states_table(prob, x_bar, caloric=True)
     x_bar = np.ascontiguousarray(x_bar)
     ns = int(prob.n_solve)
     tr0 = int(prob.transport_row0)
@@ -293,8 +291,7 @@ def build_source_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
         terms = []
         for t in desc.terms:
             e = int(t.ref_edge)
-            cal = None if cals is None else cals[e]
-            idx, vec, mean = _ref_functional(t.quantity, est[:, e], x_bar[:, e], K, scalar_names, cal)
+            idx, vec, mean = _ref_functional(t.quantity, est[:, e], x_bar[:, e], scalar_names)
             # guard only against a literal divide-by-zero; a small-but-finite mean (low
             # Mach) gives a large -- and physically correct -- fractional response 1/phi_bar.
             if abs(mean) <= 1e-30:
@@ -454,7 +451,7 @@ def stamp_sources(A, omega, source_stamps):
 
 @dataclass
 class TMStamp:
-    """Precomputed transfer-matrix stamp for one ``TRANSFER_MATRIX`` element (theory.md s12.7).
+    """Precomputed transfer-matrix stamp for one ``TRANSFER_MATRIX`` element.
 
     The element's acoustic rows are **overwritten** (like a duct's phase relations) with
     ``w_down = TM(omega) . w_up`` -- the user 2-port response replacing the linearized
@@ -478,7 +475,7 @@ class TMStamp:
     max_delay: float  # longest pure delay [s] carried by the continuation (contour clamp)
 
 
-def build_tm_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
+def build_tm_stamps(prob, x_bar, u_floor=1e-8):
     """Precompute the transfer-matrix stamps for every ``TRANSFER_MATRIX`` element.
 
     Reads ``prob.node_transfer_matrix`` (the
@@ -489,7 +486,7 @@ def build_tm_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
     tms = getattr(prob, "node_transfer_matrix", ()) or ()
     if not any(t is not None for t in tms):
         return []
-    est = states_table(prob, x_bar)
+    est = states_table(prob, x_bar, caloric=True)
     ns = int(prob.n_solve)
     tr0 = int(prob.transport_row0)
     stamps = []
@@ -519,10 +516,8 @@ def build_tm_stamps(prob, x_bar, K, u_floor=1e-8, cals=None):
                 float(est[ES_RHO, e]),
                 float(est[ES_C, e]),
                 float(est[ES_U, e]),
-                float(est[ES_P, e]),
                 float(est[ES_AREA, e]),
-                K,
-                None if cals is None else cals[e],
+                caloric_row(est[:, e]),
             )
 
         # flow-downstream edge (oriented mdot leaving the node): where the h-relation sits,
@@ -609,7 +604,7 @@ def _terminal_scalar_seats(prob, t, bc, e, specify, freq):
     return seats
 
 
-def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
+def _terminal_closure(prob, est, t, bc, omega):
     """Per to-specify wave at terminal ``t``: ``(row, cols, coeff_block, rhs)``.
 
     Builds the matrix closure ``w[specify] = A(omega) @ w[arriving] + b`` via
@@ -618,8 +613,8 @@ def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
     wave on the boundary node row, the (inflow) entropy wave on the edge's transport row.  The
     length-3 coefficient block over the edge's acoustic columns is ``L_e[specify] - sum_j A[.,j]
     L_e[arriving_j]`` and ``rhs`` its forcing.  Any **driven reacting-scalar** waves are appended
-    as diagonal seats on their transport rows (see :func:`_terminal_scalar_seats`).  ``cal`` (see
-    :func:`characteristics.dq_to_dx`) is the terminal edge's reacting caloric row.
+    as diagonal seats on their transport rows (see :func:`_terminal_scalar_seats`).  The edge's
+    caloric coupling is read from the state table (:func:`characteristics.caloric_row`).
     """
     e = t.edge
     rho, c, u = float(est[ES_RHO, e]), float(est[ES_C, e]), float(est[ES_U, e])
@@ -627,8 +622,8 @@ def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
     m_out = (u / c) if not t.at_tail else (-u / c)  # outward-normal mean Mach
     specify, arriving = partition(u, c, "a" if t.at_tail else "b")
     freq = omega / (2.0 * np.pi)  # BC carriers (tables/callables) are in Hz; operator stays in omega
-    Amat, bvec = bc.closure(freq, rho, c, u, m_out, K, specify, arriving, p=p)
-    L_e = dx_to_char(rho, c, u, p, area, K, cal)
+    Amat, bvec = bc.closure(freq, rho, c, u, m_out, specify, arriving, p=p)
+    L_e = dx_to_char(rho, c, u, area, caloric_row(est[:, e]))
     acou_cols = tuple(int(prob.n_solve) * e + v for v in range(3))
     out = []
     for i, ch in enumerate(specify):
@@ -641,8 +636,8 @@ def _terminal_closure(prob, est, K, t, bc, omega, cal=None):
     return out
 
 
-def stamp_boundaries(A, omega, prob, x_bar, cals=None):
-    """Terminal closure face ``A(omega)`` (theory.md s12.4) onto LIL ``A``.
+def stamp_boundaries(A, omega, prob, x_bar):
+    """Terminal closure face ``A(omega)`` onto LIL ``A``.
 
     Each single-port terminal carrying an explicit ``PerturbationBC`` (anything but
     ``inherit``) has the rows of its to-specify waves overwritten with the matrix
@@ -650,28 +645,26 @@ def stamp_boundaries(A, omega, prob, x_bar, cals=None):
     :func:`boundary_forcing`).  The acoustic to-specify wave lands on the boundary node
     row; at an inflow (tail) terminal the incoming entropy wave is also seated, on that
     edge's transport row -- always a duct *tail* edge, so it never collides with the
-    duct stamp's head-edge entropy phase (theory.md s6.2).  Terminals left at
-    ``inherit`` keep their linearized mean boundary row from ``J_alg``.  ``cals``
-    (optional): per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).
+    duct stamp's head-edge entropy phase.  Terminals left at
+    ``inherit`` keep their linearized mean boundary row from ``J_alg``.  Each terminal edge's
+    caloric coupling is read from the state table (:func:`characteristics.caloric_row`).
     """
     node_bc = prob.node_bc
     if not node_bc:
         return
-    est = states_table(prob, x_bar)
-    K = float(prob.tf[0]) / float(prob.tf[1])
+    est = states_table(prob, x_bar, caloric=True)
     for t in find_terminals(prob):
         bc = node_bc[t.node] if t.node < len(node_bc) else None
         if bc is None or not getattr(bc, "stamps_terminal", False):
             continue
-        cal = None if cals is None else cals[t.edge]
-        for row, cols, coeff, _rhs in _terminal_closure(prob, est, K, t, bc, omega, cal):
+        for row, cols, coeff, _rhs in _terminal_closure(prob, est, t, bc, omega):
             _set_row(A, row, cols, coeff, (), ())
 
 
-def stamp_isentropic(A, prob, est, K, skip_edges=(), cals=None):
+def stamp_isentropic(A, prob, est, skip_edges=()):
     """Pin the entropy characteristic to zero on every edge: ``rho' = p'/c^2`` (isentropic).
 
-    The entropy characteristic is ``h = rho' - p'/c^2`` (theory.md s9.1), so enforcing
+    The entropy characteristic is ``h = rho' - p'/c^2``, so enforcing
     ``h_e = L_e[2, :] @ dx_e = 0`` on each edge ``e`` removes the convected entropy wave
     from ``A(omega)`` entirely -- the standard isentropic acoustic assumption, where density
     perturbations follow pressure alone.  Each edge's transport (entropy) row is overwritten
@@ -679,7 +672,7 @@ def stamp_isentropic(A, prob, est, K, skip_edges=(), cals=None):
     machinery applies unchanged.
 
     ``skip_edges`` are left physical (not pinned): the energy/transport rows an active
-    flame writes its heat-release source onto (theory.md s12.4).  Dropping convected
+    flame writes its heat-release source onto.  Dropping convected
     entropy in the ducts while keeping the flame's energy jump is the standard
     "acoustic network with a compact flame" model -- the flame still adds heat, but the
     entropy spot it sheds is not convected.
@@ -698,36 +691,31 @@ def stamp_isentropic(A, prob, est, K, skip_edges=(), cals=None):
             float(est[ES_RHO, e]),
             float(est[ES_C, e]),
             float(est[ES_U, e]),
-            float(est[ES_P, e]),
             float(est[ES_AREA, e]),
-            K,
-            None if cals is None else cals[e],
+            caloric_row(est[:, e]),
         )
         cols = tuple(ns * e + v for v in range(3))
         # transport row of edge e becomes  h_e = L_e[2, :] . dx_e = 0
         _set_row(A, tr0 + e, cols, L_e[2, :].astype(np.complex128), (), ())
 
 
-def boundary_forcing(prob, x_bar, omega, cals=None):
+def boundary_forcing(prob, x_bar, omega):
     """Right-hand side ``b(omega)`` for the explicitly-closed terminals.
 
     The forcing of each to-specify wave (a driven acoustic wave on the node row, incoming
     entropy on the inflow-side transport row); zero everywhere else.  Mirrors the rows
-    :func:`stamp_boundaries` overwrites, via the same :func:`_terminal_closure`.  ``cals``
-    (optional): per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).
+    :func:`stamp_boundaries` overwrites, via the same :func:`_terminal_closure`.
     """
     b = np.zeros(prob.n_col, dtype=np.complex128)
     node_bc = prob.node_bc
     if not node_bc:
         return b
-    est = states_table(prob, x_bar)
-    K = float(prob.tf[0]) / float(prob.tf[1])
+    est = states_table(prob, x_bar, caloric=True)
     for t in find_terminals(prob):
         bc = node_bc[t.node] if t.node < len(node_bc) else None
         if bc is None or not getattr(bc, "stamps_terminal", False):
             continue
-        cal = None if cals is None else cals[t.edge]
-        for row, _cols, _coeff, rhs in _terminal_closure(prob, est, K, t, bc, omega, cal):
+        for row, _cols, _coeff, rhs in _terminal_closure(prob, est, t, bc, omega):
             b[row] = rhs
     return b
 
@@ -751,7 +739,7 @@ class StorageStamp:
     vals: np.ndarray  # complex[k]  the M-entries (i*omega applied at assembly)
 
 
-def _cavity_storage(prob, est, n, K=None, cals=None):
+def _cavity_storage(prob, est, n):
     """Compliance storage of a finite-volume cavity (:func:`~nefes.elements.catalog.cavity`).
 
     The cavity conserves mass: ``d/dt(rho_c V) = mass inflow``.  With the oriented port
@@ -764,8 +752,8 @@ def _cavity_storage(prob, est, n, K=None, cals=None):
     lumped compliance ``C = V/(rho c^2)`` (the mass row ties ``mdot'`` to ``p'`` as
     ``mdot' = -i*omega*C*rho*p'``... i.e. volume velocity ``= i*omega*C*p'``).
 
-    The energy equation is *not* an independent store in the adiabatic compact limit
-    (theory.md s12.5): the isentropic relation ``drho' = p'/c^2`` it provides is folded
+    The energy equation is *not* an independent store in the adiabatic compact limit:
+    the isentropic relation ``drho' = p'/c^2`` it provides is folded
     straight into the mass storage here, which is why a single pressure-column entry
     suffices and the result is the same in the full 3-wave and isentropic operators.
     ``c`` is the local sound speed (the equilibrium/frozen one for a reacting cavity),
@@ -795,12 +783,11 @@ _INLINE_STORAGE_OFFSET = {
 }
 
 
-def _inline_storage(prob, est, n, K=None, cals=None):
+def _inline_storage(prob, est, n):
     """Storage of an inline 2-port pressure element (area change / loss / resistance).
 
     The element's optional half-lengths ``l_up``/``l_down`` (catalog ``_storage_block``)
-    give it both a **compliance** and an **inertance** (theory in
-    ``scratch/inertance-end-correction-theory.md`` and theory.md s12.5):
+    give it both a **compliance** and an **inertance**:
 
     * **compliance** -- per-port reduced length on the mass row: each side stores
       ``l_i * A_i`` of gas, contributing ``+ l_i * A_i / c_i^2`` onto the mass row at that
@@ -814,8 +801,8 @@ def _inline_storage(prob, est, n, K=None, cals=None):
       the result is the reactive dual of the linear-resistance term ``-R*mdot_through``.
 
     ``end_correction`` adds to the inertance only (the entrained near-field mass the
-    geometric length omits).  All lengths default to zero -> an empty stamp (the element is
-    the lengthless jump it was before).
+    geometric length omits).  All lengths default to zero -> an empty stamp (a lengthless
+    jump with no storage).
     """
     rid = int(prob.node_rid[n])
     off = _INLINE_STORAGE_OFFSET[rid]
@@ -860,15 +847,14 @@ def _inline_storage(prob, est, n, K=None, cals=None):
     )
 
 
-def _manifold_storage(prob, est, n, K=None, cals=None):
+def _manifold_storage(prob, est, n):
     """Chamber compliance of a finite-volume manifold (a
     :func:`~nefes.elements.catalog.junction` or :func:`~nefes.elements.catalog.splitter` plenum).
 
-    The manifold's ``fparams = [volume]`` (catalog ``_manifold_block``) give it one store
-    (theory ``scratch/inertance-end-correction-theory.md`` s5): a non-zero chamber ``volume``
-    is the lumped ``C = V/(rho c^2)``.  All ports share one pressure (the ``p_0 = p_i``
-    coupling rows tie them), so it is a single ``+ V/c^2`` on the mass row at the port-0
-    pressure column -- the cavity rule with through-flow.
+    The manifold's ``fparams = [volume]`` (catalog ``_manifold_block``) give it one store:
+    a non-zero chamber ``volume`` is the lumped ``C = V/(rho c^2)``.  All ports share one
+    pressure (the ``p_0 = p_i`` coupling rows tie them), so it is a single ``+ V/c^2`` on the
+    mass row at the port-0 pressure column -- the cavity rule with through-flow.
 
     A branch's neck inertance is not a manifold parameter: model it as an explicit neck duct
     on the branch (its inertance then rides ``P(omega)``).  ``volume = 0`` (the default) ->
@@ -893,12 +879,9 @@ def _manifold_storage(prob, est, n, K=None, cals=None):
     )
 
 
-# Per-element storage builders, keyed by residual id.  A builder takes
-# ``(prob, est, n, K, cals)`` and returns a :class:`StorageStamp` (or ``None``).  This
-# is the extension point for the ``M`` block: a storage-bearing element registers its
-# ``d/dt integral_V U`` contribution here.  The cavity is the 1-port compliance; the
-# inline pressure elements carry per-port compliance + series inertance; the manifolds
-# carry a chamber compliance (theory: scratch/inertance-end-correction-theory.md).
+# Per-element storage builders, keyed by residual id -- the extension point for the ``M``
+# block.  A builder takes ``(prob, est, n)`` and returns a :class:`StorageStamp` (or
+# ``None``).  Defined here, after the builders it references.
 _STORAGE_BUILDERS = {
     CAVITY: _cavity_storage,
     ISEN_AREA_CHANGE: _inline_storage,
@@ -910,7 +893,7 @@ _STORAGE_BUILDERS = {
 }
 
 
-def build_storage_stamps(prob, x_bar, K, cals=None):
+def build_storage_stamps(prob, x_bar):
     """Per-element storage stamps -- the contributors to the operator's ``M`` block.
 
     Iterates the network and asks each storage-bearing element (one registered in
@@ -923,20 +906,16 @@ def build_storage_stamps(prob, x_bar, K, cals=None):
         The compiled network.
     x_bar : ndarray
         Converged mean-flow solve state, shape ``(n_solve, E)``.
-    K : float
-        The perfect-gas caloric constant ``cp/R`` (fallback when ``cals`` is ``None``).
-    cals : list, optional
-        Per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).
 
     Returns
     -------
     list of StorageStamp
         One per storage element (empty when the network carries none).
     """
-    return storage_stamps_from_est(prob, states_table(prob, x_bar), K, cals)
+    return storage_stamps_from_est(prob, states_table(prob, x_bar, caloric=False))
 
 
-def storage_stamps_from_est(prob, est, K=None, cals=None):
+def storage_stamps_from_est(prob, est):
     """Per-element storage stamps from a precomputed mean edge-state table ``est``.
 
     The frozen-mean half of :func:`build_storage_stamps` (which calls this after building
@@ -950,13 +929,13 @@ def storage_stamps_from_est(prob, est, K=None, cals=None):
         builder = _STORAGE_BUILDERS.get(int(prob.node_rid[n]))
         if builder is None:
             continue
-        st = builder(prob, est, n, K, cals)
+        st = builder(prob, est, n)
         if st is not None and st.rows.size:
             stamps.append(st)
     return stamps
 
 
-def build_storage(prob, x_bar, K=None, cals=None):
+def build_storage(prob, x_bar):
     """Storage block ``M`` (the ``d/dt integral_V U`` term dropped at steady state).
 
     Assembles the per-element storage stamps (:func:`build_storage_stamps`) into the
@@ -970,20 +949,14 @@ def build_storage(prob, x_bar, K=None, cals=None):
         The compiled network.
     x_bar : ndarray
         Converged mean-flow solve state, shape ``(n_solve, E)``.
-    K : float, optional
-        The perfect-gas caloric constant ``cp/R``; derived from ``prob.tf`` when omitted.
-    cals : list, optional
-        Per-edge reacting caloric rows (:func:`characteristics.edge_caloric`).
 
     Returns
     -------
     scipy.sparse.csc_matrix
         The storage block, shape ``(n_eq, n_col)``.
     """
-    if K is None:
-        K = float(prob.tf[0]) / float(prob.tf[1])
     n_eq, n_col = int(prob.n_eq), int(prob.n_col)
-    stamps = build_storage_stamps(prob, x_bar, K, cals)
+    stamps = build_storage_stamps(prob, x_bar)
     if not stamps:
         return sp.csc_matrix((n_eq, n_col), dtype=np.complex128)
     rows = np.concatenate([st.rows for st in stamps])

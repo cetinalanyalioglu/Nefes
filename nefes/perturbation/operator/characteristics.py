@@ -1,5 +1,5 @@
 """Characteristic-variable maps and perturbation-variable *flavors* at a mean
-edge state (theory.md s9.1-9.2, s12.2).
+edge state.
 
 The 1-D Euler system carries **three** perturbation characteristics -- the same
 count as the mean-flow unknowns -- so the perturbation network is genuinely
@@ -31,7 +31,17 @@ and ``BASIS_LABELS`` gives its per-component symbols (for plot labelling):
 
 import numpy as np
 
-from ...assembly.recover import ES_RHO, ES_U, ES_P, ES_C, ES_AREA
+from ...assembly.recover import ES_RHO, ES_U, ES_C, ES_AREA, ES_DHDRHO, ES_DHDP
+
+
+def caloric_row(est_col):
+    """The caloric coupling row ``(a, u, b)`` at one edge, read from the state table.
+
+    ``dh_t = a d_rho + u d_u + b d_p`` with ``a = (dh/drho)_p`` and ``b = (dh/dp)_rho``
+    the edge's own thermo-model partials (columns ``ES_DHDRHO``/``ES_DHDP``, filled by
+    :func:`~nefes.assembly.recover.enrich_caloric`); the middle term is the kinematic ``u``.
+    """
+    return (float(est_col[ES_DHDRHO]), float(est_col[ES_U]), float(est_col[ES_DHDP]))
 
 
 def char_to_dq(rho, c):
@@ -45,23 +55,16 @@ def char_to_dq(rho, c):
     )
 
 
-def dq_to_dx(rho, u, p, area, K, cal=None):
+def dq_to_dx(rho, u, area, cal):
     """(d_mdot, d_p, d_h_t) from (d_rho, d_u, d_p); ``mdot = rho*u*A``.
 
-    The total-enthalpy (third) row is the gas's **caloric coupling**.  When ``cal``
-    is ``None`` the calorically perfect form ``h_t = (cp/R) p/rho + u^2/2`` is used,
-    i.e. the row ``(-K p/rho^2, u, K/rho)`` with ``K = cp/R``.  For a reacting /
-    variable-``gamma`` edge pass ``cal = (a, m, b)`` -- the row ``dh_t = a*d_rho +
-    m*d_u + b*d_p`` taken from a complex step of the converged closure
-    (:func:`edge_caloric`); this is what keeps the perturbation maps consistent with
-    the mean-flow Jacobian (the perfect-gas ``K`` is wrong for the reacting backend,
-    and is invisible to the passive spectrum but load-bearing once a dynamic source
-    references a velocity/density fluctuation -- theory.md s12.2).
+    The total-enthalpy (third) row is the gas's **caloric coupling** ``cal = (a, u, b)``:
+    the row ``dh_t = a*d_rho + u*d_u + b*d_p`` with the edge's own thermo-model partials
+    ``a = (dh/drho)_p`` and ``b = (dh/dp)_rho`` (:func:`caloric_row`, from the edge-state
+    table).  Reading it per edge keeps the perturbation maps consistent with the mean-flow
+    Jacobian for every gas model -- perfect gas and reacting alike.
     """
-    if cal is None:
-        a, m, b = -K * p / rho**2, u, K / rho
-    else:
-        a, m, b = cal
+    a, m, b = cal
     return np.array(
         [
             [u * area, rho * area, 0.0],
@@ -71,106 +74,71 @@ def dq_to_dx(rho, u, p, area, K, cal=None):
     )
 
 
-def char_to_dx(rho, c, u, p, area, K, cal=None):
+def char_to_dx(rho, c, u, area, cal):
     """T_e: (d_mdot, d_p, d_h_t) = T_e @ (f, g, h).  ``cal``: see :func:`dq_to_dx`."""
-    return dq_to_dx(rho, u, p, area, K, cal) @ char_to_dq(rho, c)
+    return dq_to_dx(rho, u, area, cal) @ char_to_dq(rho, c)
 
 
-def dx_to_char(rho, c, u, p, area, K, cal=None):
+def dx_to_char(rho, c, u, area, cal):
     """L_e = T_e^-1: (f, g, h) = L_e @ (d_mdot, d_p, d_h_t).  ``cal``: see :func:`dq_to_dx`."""
-    return np.linalg.inv(char_to_dx(rho, c, u, p, area, K, cal))
+    return np.linalg.inv(char_to_dx(rho, c, u, area, cal))
 
 
-def edge_transforms(est, K, cals=None):
-    """Per-edge (T_e, L_e) lists from the mean edge-state table ``est``.
+def edge_transforms(est):
+    """Per-edge (T_e, L_e) lists from the edge-state table ``est`` (``caloric=True``).
 
-    ``cals`` (optional): per-edge caloric rows from :func:`edge_caloric`; when given,
-    edge ``e`` uses ``cals[e]`` instead of the perfect-gas ``K`` form.
+    The caloric coupling of each edge is read straight from the table
+    (:func:`caloric_row`), so both lists are consistent with the mean-flow Jacobian for
+    every gas model.
     """
     E = est.shape[1]
     Ts, Ls = [], []
     for e in range(E):
-        rho = est[ES_RHO, e]
-        c = est[ES_C, e]
-        u = est[ES_U, e]
-        p = est[ES_P, e]
-        area = est[ES_AREA, e]
-        cal = None if cals is None else cals[e]
-        T = char_to_dx(rho, c, u, p, area, K, cal)
+        T = char_to_dx(est[ES_RHO, e], est[ES_C, e], est[ES_U, e], est[ES_AREA, e], caloric_row(est[:, e]))
         Ts.append(T)
         Ls.append(np.linalg.inv(T))
     return Ts, Ls
 
 
 def edge_caloric(prob, x_bar):
-    """Per-edge caloric row ``(a, m, b)`` of :func:`dq_to_dx` (``dh_t = a*d_rho + m*d_u + b*d_p``).
+    """Per-edge caloric row ``(a, u, b)`` of :func:`dq_to_dx` from the edge-state dataset.
 
-    Every edge keeps the kinetic-energy term (``m = u``): ``h_t = h + u^2/2`` so
-    ``dh_t`` carries ``u du`` regardless of gas model.  A calorically perfect edge
-    uses the constant ``K = cp/R`` for its caloric derivatives; the reacting closures
-    take ``(dh/drho)_p`` and ``(dh/dp)_rho`` from a complex step of the
-    equilibrium/frozen state at the frozen mean -- the *same* closure the converged
-    Jacobian ``J_alg`` was built from (now KE-coupled), so the perturbation
-    characteristic maps stay consistent with the mean-flow operator (theory.md s12.2).
+    Recovers the state with the caloric columns filled and reads each edge's row
+    (:func:`caloric_row`): ``a = (dh/drho)_p`` and ``b = (dh/dp)_rho`` come from that edge's
+    own thermo model (:func:`~nefes.assembly.recover.enrich_caloric`), so the row is
+    consistent with the mean-flow Jacobian for perfect gas and reacting alike.
 
     Parameters
     ----------
     prob : CompiledProblem
-        The compiled network (carries ``edge_model``, ``tf``, ``ti``).
+        The compiled network.
     x_bar : ndarray
         Converged mean-flow solve state, shape ``(n_solve, E)``.
 
     Returns
     -------
     list of tuple
-        ``E`` rows ``(a, m, b)``, one per edge.
+        ``E`` rows ``(a, u, b)``, one per edge.
     """
     from ...solver.report import states_table
-    from ...thermo.api import thermo_state, PERFECT_GAS, EQ_MARKER, EQ_KERNEL, EQ_FROZEN
 
-    est = states_table(prob, x_bar)
-    K = float(prob.tf[0]) / float(prob.tf[1])
-    n_elem = int(prob.n_elem)
-    marker_row = int(getattr(prob, "marker_row", -1))
-    x_bar = np.ascontiguousarray(x_bar)
-    rows = []
-    for e in range(int(prob.n_edges)):
-        mid = int(prob.edge_model[e])
-        rho = float(est[ES_RHO, e])
-        u = float(est[ES_U, e])
-        p = float(est[ES_P, e])
-        if mid == PERFECT_GAS:
-            rows.append((-K * p / rho**2, u, K / rho))
-            continue
-        # A marker-gated edge is bimodal at convergence (marker ~ 0 or 1), so its blend is the
-        # *dominant* closure and its caloric derivatives equal that closure's (the gate depends on
-        # the marker, not on rho/h/p).  Map EQ_MARKER to the dominant pure closure for the step.
-        eff = mid
-        if mid == EQ_MARKER:
-            b_mark = float(x_bar[marker_row, e]) if marker_row >= 0 else 0.0
-            eff = EQ_KERNEL if b_mark >= 0.5 else EQ_FROZEN
-        # reacting: rho = rho(xi, h, p) at the *static* enthalpy h = h_t - u^2/2 (the
-        # KE-coupled mean state); invert (dh/drho)_p, (dh/dp)_rho there by complex step.
-        xi = np.ascontiguousarray(x_bar[3 : 3 + n_elem, e]).astype(np.complex128)
-        h_static = complex(float(x_bar[2, e]) - 0.5 * u * u)
-        d = 1e-30
-        drho_dh = thermo_state(eff, prob.tf, prob.ti, xi, h_static + 1j * d, complex(p))[1].imag / d
-        drho_dp = thermo_state(eff, prob.tf, prob.ti, xi, h_static + 0j, p + 1j * d)[1].imag / d
-        a = 1.0 / drho_dh  # (dh/drho)_p
-        b = -drho_dp / drho_dh  # (dh/dp)_rho
-        rows.append((a, u, b))  # m = u: the KE term, now carried by the reacting closure too
-    return rows
+    est = states_table(prob, x_bar, caloric=True)
+    return [caloric_row(est[:, e]) for e in range(int(prob.n_edges))]
 
 
 # --------------------------------------------------------------------------
 # Perturbation-variable flavors: B with  v_basis = B @ w,  w = (f, g, h).
 # --------------------------------------------------------------------------
 
+# Symbols of the three fixed characteristic amplitudes ``w = (f, g, h)`` -- the canonical
+# names reused by the response/eigenmode readouts and by ``BASIS_LABELS["char"]``.
+CHAR_SYMBOLS = ("f", "g", "h")
+
 # Per-component symbols as LaTeX (MathJax) fragments, for plot labelling.  The
 # plotting layer wraps and subscripts these (so they must group cleanly under a
 # subscript); they are not meant for plain-text display.
 BASIS_LABELS = {
-    "char": ("f", "g", "h"),
+    "char": CHAR_SYMBOLS,
     "primitive": (r"p'/\rho c", r"u'", r"\rho' c/\rho"),
     "network": (r"\dot{m}'", r"p'", r"h_t'"),
     "riemann": (r"P^+", r"P^-", r"\sigma"),
@@ -178,21 +146,36 @@ BASIS_LABELS = {
     "pu_rho": (r"p'/\rho c", r"u'", r"\rho'"),
 }
 
+# Friendly single-variable names -> (basis flavor, component) into ``BASIS_LABELS``, for
+# selecting one quantity across flavors (e.g. ``"p"``, ``"u"``, ``"rho"``).  Its display
+# symbol is ``BASIS_LABELS[flavor][component]``.
+VARIABLE_SPEC = {
+    "p": ("network", 1),
+    "u": ("primitive", 1),
+    "rho": ("pu_rho", 2),
+    "mdot": ("network", 0),
+    "f": ("char", 0),
+    "g": ("char", 1),
+    "h": ("char", 2),
+}
 
-def basis_matrix(basis, rho, c, u, p, area, K, cal=None):
+
+def basis_matrix(basis, rho, c, u, area, cal=None):
     """3x3 block ``B`` mapping characteristic amplitudes ``w=(f,g,h)`` to a flavor.
 
     ``v_basis = B @ w``.  All flavors are non-singular rescalings of ``w`` at any
-    physical state, so any transfer matrix converts between flavors by a
-    similarity built from these blocks (see ``matrices.tm_in_basis``).  ``cal`` (see
-    :func:`dq_to_dx`) supplies the reacting caloric coupling for the ``network`` flavor.
+    physical state, so any transfer matrix converts between flavors by a similarity built
+    from these blocks (see ``matrices.tm_in_basis``).  Only the ``network`` flavor needs the
+    caloric coupling ``cal = (a, u, b)`` (see :func:`dq_to_dx`); the others ignore it.
     """
     if basis == "char":
         return np.eye(3)
     if basis == "primitive":  # velocity-normalized (p'/(rho c), u', rho' c/rho)
         return np.array([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [1.0, 1.0, c / rho]])
     if basis == "network":  # (d_mdot, d_p, d_h_t)
-        return char_to_dx(rho, c, u, p, area, K, cal)
+        if cal is None:
+            raise ValueError("the 'network' flavor needs the caloric row (a, u, b); pass cal or a caloric est column")
+        return char_to_dx(rho, c, u, area, cal)
     if basis == "riemann":  # (P+, P-, sigma) = (f/c, g/c, -h/rho)
         return np.array([[1.0 / c, 0.0, 0.0], [0.0, 1.0 / c, 0.0], [0.0, 0.0, -1.0 / rho]])
     if basis == "pu_entropy":  # (p'/(rho c), u', s'/cp);  s'/cp = -h/rho
@@ -202,15 +185,17 @@ def basis_matrix(basis, rho, c, u, p, area, K, cal=None):
     raise ValueError(f"unknown perturbation-variable flavor {basis!r}; choose from {sorted(BASIS_LABELS)}")
 
 
-def basis_block_from_state(basis, est_col, K, cal=None):
-    """``basis_matrix`` from one column ``est[:, e]`` of the mean edge-state table."""
+def basis_block_from_state(basis, est_col, cal=None):
+    """``basis_matrix`` from one column ``est[:, e]`` of the edge-state table.
+
+    The caloric row defaults to the column's own caloric entries (:func:`caloric_row`), so a
+    ``caloric=True`` state column carries everything the ``network`` flavor needs.
+    """
     return basis_matrix(
         basis,
         float(est_col[ES_RHO]),
         float(est_col[ES_C]),
         float(est_col[ES_U]),
-        float(est_col[ES_P]),
         float(est_col[ES_AREA]),
-        K,
-        cal,
+        caloric_row(est_col) if cal is None else cal,
     )

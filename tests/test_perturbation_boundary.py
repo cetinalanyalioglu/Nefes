@@ -295,34 +295,34 @@ def test_choked_nozzle_outlet_marble_candel():
 
 def test_choked_nozzle_coefficients_and_limits():
     bc = PerturbationBC.choked_nozzle()
-    rho, c, K = 1.2, 340.0, GAMMA / (GAMMA - 1.0)  # K = cp/R
+    rho, c = 1.2, 340.0
     gm1 = GAMMA - 1.0
+    p_pg = rho * c * c / GAMMA  # the pressure consistent with gamma = 1.4
     # M -> 0: hard wall, no entropy noise
-    assert bc.reflection_coefficient(0.0, rho, c, 0.0, K) == pytest.approx(1.0)
-    assert bc.entropy_coupling_coefficient(0.0, rho, c, 0.0, K) == pytest.approx(0.0)
+    assert bc.reflection_coefficient(0.0, rho, c, 0.0, p=p_pg) == pytest.approx(1.0)
+    assert bc.entropy_coupling_coefficient(0.0, rho, c, 0.0, p=p_pg) == pytest.approx(0.0)
     # finite M: the Marble--Candel closed forms
     for M in (0.2, 0.5, 0.8):
-        assert bc.reflection_coefficient(0.0, rho, c, M, K) == pytest.approx((2 - gm1 * M) / (2 + gm1 * M))
-        assert bc.entropy_coupling_coefficient(0.0, rho, c, M, K) == pytest.approx((c / rho) * M / (2 + gm1 * M))
+        assert bc.reflection_coefficient(0.0, rho, c, M, p=p_pg) == pytest.approx((2 - gm1 * M) / (2 + gm1 * M))
+        assert bc.entropy_coupling_coefficient(0.0, rho, c, M, p=p_pg) == pytest.approx((c / rho) * M / (2 + gm1 * M))
     # choked nozzle only terminates an outlet (entropy must be an arriving wave)
     with pytest.raises(ValueError):
-        bc.closure(0.0, rho, c, 0.0, 0.0, K, specify=(0, 2), arriving=(1,))
+        bc.closure(0.0, rho, c, 0.0, 0.0, specify=(0, 2), arriving=(1,), p=p_pg)
 
 
 def test_choked_nozzle_effective_gamma_from_state():
-    # The effective gamma is taken from the state (rho c^2 / p) when p is given -- backend-correct --
-    # and equals the perfect-gas K result exactly when p is the perfect-gas pressure.  A *different* p
-    # (a non-1.4 effective gamma, as a reacting mixture would have) shifts R, proving p is honoured.
+    # The effective gamma is always taken from the state (gamma = rho c^2 / p): the perfect-gas
+    # pressure reproduces the gamma = 1.4 result, and a different p (a non-1.4 effective gamma, as a
+    # reacting mixture would have) shifts R -- proving the coefficient reads the local state, not a
+    # global constant.
     bc = PerturbationBC.choked_nozzle()
     rho, c, M = 1.2, 340.0, 0.4
-    K = GAMMA / (GAMMA - 1.0)
     p_pg = rho * c * c / GAMMA  # the pressure consistent with gamma = 1.4
-    assert bc.reflection_coefficient(0.0, rho, c, M, p=p_pg) == pytest.approx(
-        bc.reflection_coefficient(0.0, rho, c, M, K)
-    )
+    gm1 = GAMMA - 1.0
+    assert bc.reflection_coefficient(0.0, rho, c, M, p=p_pg) == pytest.approx((2 - gm1 * M) / (2 + gm1 * M))
     g_eff = 1.3  # a different effective gamma -> a different (correct-for-that-gas) reflection
     p_eff = rho * c * c / g_eff
-    R_eff = bc.reflection_coefficient(0.0, rho, c, M, K, p=p_eff)  # p overrides K
+    R_eff = bc.reflection_coefficient(0.0, rho, c, M, p=p_eff)
     assert R_eff == pytest.approx((2 - (g_eff - 1) * M) / (2 + (g_eff - 1) * M))
     assert R_eff != pytest.approx((2 - (GAMMA - 1) * M) / (2 + (GAMMA - 1) * M))
 
@@ -473,7 +473,7 @@ def test_cannot_drive_entropy_at_an_outlet():
     # at closure time (specify = (g,), arriving = (f, h)).
     bc = PerturbationBC.anechoic(driven=("entropy",))
     with pytest.raises(ValueError):
-        bc.closure(0.0, 1.2, 340.0, 100.0, 0.3, None, specify=(1,), arriving=(0, 2))
+        bc.closure(0.0, 1.2, 340.0, 100.0, 0.3, specify=(1,), arriving=(0, 2))
 
 
 # --------------------------------------------------------------------------

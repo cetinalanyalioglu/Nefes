@@ -53,6 +53,11 @@ class PortState:
         edge arrow) and static pressure [Pa].
     area : float, optional
         Edge area [m^2] (default 1.0; only the ``network`` flavor uses it).
+    cal : tuple, optional
+        The edge's caloric coupling row ``(a, u, b)`` (:func:`characteristics.caloric_row`),
+        needed only for the ``network`` flavor -- it carries the gas-model-specific
+        ``(dh/drho)_p`` and ``(dh/dp)_rho``.  ``None`` (the default) leaves the network flavor
+        unavailable from this port.
     """
 
     rho: float
@@ -60,10 +65,11 @@ class PortState:
     u: float
     p: float
     area: float = 1.0
+    cal: Optional[tuple] = None
 
-    def basis_block(self, basis, K=None, cal=None):
+    def basis_block(self, basis):
         """The ``v = B @ w`` block for ``basis`` at this state (``characteristics.basis_matrix``)."""
-        return basis_matrix(basis, self.rho, self.c, self.u, self.p, self.area, K, cal)
+        return basis_matrix(basis, self.rho, self.c, self.u, self.area, self.cal)
 
 
 def _as_port(x) -> Optional[PortState]:
@@ -71,7 +77,7 @@ def _as_port(x) -> Optional[PortState]:
         return x
     if isinstance(x, (tuple, list)):
         return PortState(*x)
-    raise TypeError(f"a port state must be a PortState or a (rho, c, u, p[, area]) tuple; got {x!r}")
+    raise TypeError(f"a port state must be a PortState or a (rho, c, u, p[, area[, cal]]) tuple; got {x!r}")
 
 
 class FreqMatrix:
@@ -85,7 +91,7 @@ class FreqMatrix:
 
     kind = "matrix"
 
-    def __init__(self, freqs, data, *, basis="char", ports=None, K=None):
+    def __init__(self, freqs, data, *, basis="char", ports=None):
         f = np.asarray(freqs, dtype=float).ravel()
         d = np.asarray(data, dtype=np.complex128)
         if d.ndim == 2:  # a single constant matrix -> broadcast over the grid
@@ -101,7 +107,6 @@ class FreqMatrix:
         self.freqs = f
         self.data = d
         self.basis = basis
-        self.K = K
         p = ports if ports is not None else (None, None)
         self.ports: Tuple[Optional[PortState], Optional[PortState]] = (_as_port(p[0]), _as_port(p[1]))
         self._fits = None  # (N, N) object array of RationalFit once continued
@@ -125,14 +130,13 @@ class FreqMatrix:
             )
         return self.ports
 
-    def _new(self, data, *, basis=None, ports=None, K=None):
+    def _new(self, data, *, basis=None, ports=None):
         """A sibling of the same concrete class with new data (metadata inherited)."""
         return type(self)(
             self.freqs,
             data,
             basis=self.basis if basis is None else basis,
             ports=self.ports if ports is None else ports,
-            K=self.K if K is None else K,
         )
 
     # -- evaluation -------------------------------------------------------
@@ -182,7 +186,7 @@ class FreqMatrix:
     def resample(self, freqs):
         """A copy re-interpolated onto a new frequency grid [Hz]."""
         fr = np.asarray(freqs, dtype=float).ravel()
-        return type(self)(fr, self(fr), basis=self.basis, ports=self.ports, K=self.K)
+        return type(self)(fr, self(fr), basis=self.basis, ports=self.ports)
 
     def continue_(self, **fit_kwargs):
         """A copy that evaluates at **complex** frequency via a per-entry rational fit.
@@ -262,9 +266,8 @@ class TransferMatrix(FreqMatrix):
         ``characteristics.BASIS_LABELS``.
     ports : (PortState, PortState), optional
         Mean state at the upstream and downstream face; required for flavor and
-        transfer<->scattering conversions.
-    K : float, optional
-        Caloric constant ``cp/R``; only the ``network`` flavor needs it.
+        transfer<->scattering conversions.  Each port carries its own caloric row (``cal``),
+        so the ``network`` flavor is reacting-correct with no gas-model constant.
 
     Notes
     -----
@@ -286,8 +289,8 @@ class TransferMatrix(FreqMatrix):
         if self.n == 2:
             data = _tm2_char_to_basis(T_char, basis)
         else:
-            Ba = pa.basis_block(basis, self.K)
-            Bb = pb.basis_block(basis, self.K)
+            Ba = pa.basis_block(basis)
+            Bb = pb.basis_block(basis)
             data = mat.tm_in_basis(T_char, Ba, Bb)
         return self._new(data, basis=basis)
 
@@ -298,8 +301,8 @@ class TransferMatrix(FreqMatrix):
         pa, pb = self._require_ports("changing flavor")
         if self.n == 2:
             return _tm2_basis_to_char(self.data, self.basis)
-        Ba = pa.basis_block(self.basis, self.K)
-        Bb = pb.basis_block(self.basis, self.K)
+        Ba = pa.basis_block(self.basis)
+        Bb = pb.basis_block(self.basis)
         # v = B w  =>  T_char = Bb^-1 T_self Ba  (inverse similarity of tm_in_basis)
         return mat.tm_in_basis(self.data, np.linalg.inv(Ba), np.linalg.inv(Bb))
 
@@ -311,7 +314,7 @@ class TransferMatrix(FreqMatrix):
             S = mat.tm_fg_to_sm2(T_char)
         else:
             S, _in, _out = mat.tm_to_sm(T_char, pa.u, pa.c, pb.u, pb.c)
-        out = ScatteringMatrix(self.freqs, S, basis="char", ports=self.ports, K=self.K)
+        out = ScatteringMatrix(self.freqs, S, basis="char", ports=self.ports)
         if self._fits is not None:  # keep it analytic across the conversion
             out = out.continue_()
         return out
@@ -336,10 +339,10 @@ class ScatteringMatrix(FreqMatrix):
 
     _DIAGONAL_BASES = ("char", "riemann")
 
-    def __init__(self, freqs, data, *, basis="char", ports=None, K=None):
+    def __init__(self, freqs, data, *, basis="char", ports=None):
         if basis not in self._DIAGONAL_BASES:
             raise ValueError(f"a scattering matrix basis must be one of {self._DIAGONAL_BASES}; got {basis!r}")
-        super().__init__(freqs, data, basis=basis, ports=ports, K=K)
+        super().__init__(freqs, data, basis=basis, ports=ports)
 
     def to_transfer(self):
         """The equivalent :class:`TransferMatrix` in the characteristic basis (needs :attr:`ports`)."""
@@ -349,7 +352,7 @@ class ScatteringMatrix(FreqMatrix):
             T = _sm2_to_tm_fg(S)
         else:
             T = mat.sm_to_tm(S, pa.u, pa.c, pb.u, pb.c)
-        out = TransferMatrix(self.freqs, T, basis="char", ports=self.ports, K=self.K)
+        out = TransferMatrix(self.freqs, T, basis="char", ports=self.ports)
         if self._fits is not None:
             out = out.continue_()
         return out
@@ -367,7 +370,7 @@ class ScatteringMatrix(FreqMatrix):
 
     def _wave_scale(self, station, i, pa, pb):
         port = pa if station == "a" else pb
-        return port.basis_block(self.basis, self.K)[i, i]
+        return port.basis_block(self.basis)[i, i]
 
     def plot(self, freqs=None, **kwargs):
         """Magnitude/phase grid of the entries (see ``plotting.plot_scattering_matrix``)."""

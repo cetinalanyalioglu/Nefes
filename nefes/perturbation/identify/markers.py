@@ -1,9 +1,11 @@
-"""Markers for the quantities an identification recovers (theory.md s12.7).
+"""Markers for the quantities an identification recovers.
 
 Attach one to an element to declare *what is unknown*, set up the network, and hand the
 problem to :mod:`nefes.perturbation.identify`.  The mean flow ignores them; a forward
 perturbation run before identification treats the element as its passive default (an
 isentropic area change for a transfer-matrix element, a silent source for a flame).
+
+Public: :class:`UnknownTransferMatrix`, :func:`unknown_dynamic_source`.
 """
 
 from __future__ import annotations
@@ -20,9 +22,15 @@ class UnknownTransferMatrix:
     Parameters
     ----------
     n : int, optional
-        Matrix dimension to recover: ``2`` (acoustic ``(f, g)``) or ``3`` (with the entropy
-        wave, default).  Determines how many independent measurement channels the de-embed
-        needs.
+        Matrix dimension to recover: ``2`` (acoustic ``(f, g)``) or ``3`` (adding the entropy
+        wave ``h``, the default).  This sets how many independent measurement channels the
+        de-embed needs.
+
+    Notes
+    -----
+    The entropy channel (``n = 3``) is a genuine part of the recovery, not a placeholder.
+    Transported reacting scalars (composition waves) are not among the recoverable channels
+    here: the marker resolves only the acoustic and, at ``n = 3``, the entropy 2-port.
     """
 
     is_unknown = True

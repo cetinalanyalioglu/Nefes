@@ -277,6 +277,6 @@ def test_basis_and_scattering_roundtrips():
     assert np.allclose(resp.scattering_matrix(0, 1), S, atol=1e-9)
     # a flavor change is an invertible similarity: primitive then back == char
     Tp = resp.transfer_matrix(0, 1, basis="primitive")
-    Ba = basis_block_from_state("primitive", est[:, 0], K)
-    Bb = basis_block_from_state("primitive", est[:, 1], K)
+    Ba = basis_block_from_state("primitive", est[:, 0])
+    Bb = basis_block_from_state("primitive", est[:, 1])
     assert np.allclose(mat.tm_in_basis(Tp, np.linalg.inv(Ba), np.linalg.inv(Bb)), T, atol=1e-9)

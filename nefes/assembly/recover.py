@@ -7,13 +7,18 @@ quantity is recomputed inline, never read back from a cache (a stale real value
 would drop the imaginary seed).
 
 The recovered state is packed into a fixed-width "edge-state table" column
-``est[:, e]`` with the slot layout below.
+``est[:, e]`` with the slot layout below.  The state proper (slots ``0..ES_CP``)
+is filled inline by ``recover_edge``; the two caloric-derivative slots
+(``ES_DHDRHO``/``ES_DHDP``) are filled separately by :func:`enrich_caloric` at a
+converged (real) state, because a reacting edge takes them from a complex step of
+its closure -- which cannot ride the already-seeded residual/Jacobian recovery.
 """
 
+import numpy as np
 from numba import njit
 
 from .closure import closure_solve
-from ..thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER
+from ..thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER, EQ_FROZEN
 from ..thermo.equilibrium import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
 from ..thermo._chem import RU
 
@@ -30,7 +35,9 @@ ES_PT = 8
 ES_AREA = 9
 ES_W = 10  # mixture molar mass [kg/mol] (rho * R_u * T / p)
 ES_CP = 11  # mixture specific heat [J/(kg K)], consistent with the local sound speed
-NS_EST = 12
+ES_DHDRHO = 12  # caloric partial (dh/drho)_p [J m^3/kg^2] (filled by enrich_caloric)
+ES_DHDP = 13  # caloric partial (dh/dp)_rho [m^3/kg] (filled by enrich_caloric)
+NS_EST = 14
 
 
 @njit(cache=True)
@@ -105,3 +112,63 @@ def recover_all(edge_model, tf, ti, x, area, n_elem, marker_row, est, nj_cache):
         Z_el = x[3 : 3 + n_elem, e]
         marker = x[marker_row, e] if has_marker else x[2, e] * 0.0
         recover_edge(edge_model[e], tf, ti, x[0, e], x[1, e], x[2, e], area[e], Z_el, marker, est[:, e], nj_cache[e])
+
+
+def enrich_caloric(edge_model, tf, ti, x, est, n_elem, marker_row):
+    """Fill the caloric-derivative columns ``ES_DHDRHO``/``ES_DHDP`` of ``est`` per edge.
+
+    The perturbation network needs each edge's caloric coupling ``dh_t = a d_rho + u d_u +
+    b d_p`` with ``a = (dh/drho)_p`` and ``b = (dh/dp)_rho`` -- the two model-dependent
+    partials of static enthalpy (``m = u`` is kinematic and already ``ES_U``).  Each edge's
+    own thermo model supplies them: a perfect-gas edge from the closed form ``(-K p/rho^2,
+    K/rho)`` with ``K = cp/R``; a reacting edge from a complex step of its converged closure
+    at the static enthalpy ``h = h_t - u^2/2`` (the state ``J_alg`` linearizes about), the
+    equilibrium composition free to shift.
+
+    Runs on a **real** (converged) state: it complex-steps ``thermo_state`` internally, so it
+    cannot be folded into the already-seeded residual/Jacobian recovery.  ``est`` must already
+    carry the recovered state (:func:`recover_all`); this only writes the two caloric slots.
+
+    Parameters
+    ----------
+    edge_model : ndarray
+        Per-edge thermo-model id (as :func:`recover_all`).
+    tf, ti : ndarray
+        Thermo float/int config.
+    x : ndarray
+        Converged solve state, shape ``(n_solve, E)``.
+    est : ndarray
+        Edge-state table ``(NS_EST, E)`` from :func:`recover_all`; modified in place.
+    n_elem : int
+        Number of transported elemental scalars.
+    marker_row : int
+        Band-1 row of the burnt marker (``< 0`` if none); gates the ``EQ_MARKER`` blend.
+    """
+    K = float(tf[0]) / float(tf[1])  # perfect-gas cp/R (that model's own caloric constant)
+    E = est.shape[1]
+    has_marker = marker_row >= 0
+    d = 1e-30
+    for e in range(E):
+        mid = int(edge_model[e])
+        rho = float(est[ES_RHO, e])
+        u = float(est[ES_U, e])
+        p = float(est[ES_P, e])
+        if mid == PERFECT_GAS:
+            est[ES_DHDRHO, e] = -K * p / rho**2
+            est[ES_DHDP, e] = K / rho
+            continue
+        # A marker-gated edge is bimodal at convergence (marker ~ 0 or 1); its caloric
+        # derivatives equal the dominant pure closure's (the gate depends on the marker, not
+        # on rho/h/p).  Map EQ_MARKER to that closure for the step.
+        eff = mid
+        if mid == EQ_MARKER:
+            b_mark = float(x[marker_row, e]) if has_marker else 0.0
+            eff = EQ_KERNEL if b_mark >= 0.5 else EQ_FROZEN
+        # reacting: rho = rho(xi, h, p) at the *static* enthalpy h = h_t - u^2/2; invert
+        # (dh/drho)_p, (dh/dp)_rho there by complex step of the converged closure.
+        xi = np.ascontiguousarray(x[3 : 3 + n_elem, e]).astype(np.complex128)
+        h_static = complex(float(x[2, e]) - 0.5 * u * u)
+        drho_dh = thermo_state(eff, tf, ti, xi, h_static + 1j * d, complex(p))[1].imag / d
+        drho_dp = thermo_state(eff, tf, ti, xi, h_static + 0j, p + 1j * d)[1].imag / d
+        est[ES_DHDRHO, e] = 1.0 / drho_dh
+        est[ES_DHDP, e] = -drho_dp / drho_dh

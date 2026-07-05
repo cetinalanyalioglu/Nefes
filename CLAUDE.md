@@ -17,7 +17,6 @@ This repo is the **real tool**, built fresh.
 - `docs/validation/` — validation map, verification checks, and literature benchmarks.
 
 However, do not assume everything in there is theoretically flawless, always do your sanity checks.
-As project matures, these documents should serve more as a guideline than of a rigid constraint.
 
 ## Development guidelines
 
@@ -61,10 +60,11 @@ As project matures, these documents should serve more as a guideline than of a r
 ## Coding style
 - Use flake8 and black, line length is 120 characters.
 - Numpy style docstring for all user-facing routines and classes.
-- NEVER include in the docstring references in a historical context: e.g. previous state of codebase, an earlier bug, an improvement etc.
+- NEVER include in the docstring the historical context: e.g. previous state of codebase, an earlier bug, an improvement etc.
 - Prefer explanatory comments on dedicated lines instead of appending next to a line of code, for label-like comments inline is okay.
 - Use capital letters for absolute constants and define them before any function/class definitions in a file.
 - Where appropriate (you judge), include brief "Examples" and "See also" in the docstrings.
+- Mention the routines/classes that are ment to be public in the docstring of a submodule.
 
 ## Markdown files
 

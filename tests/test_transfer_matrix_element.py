@@ -98,4 +98,4 @@ def test_rejects_non_2port_and_bad_dimension():
     bad = TransferMatrix(est_freqs, np.tile(np.eye(4), (est_freqs.size, 1, 1)))
     pb, xb = _build(cat.transfer_matrix_element(tm=bad))
     with pytest.raises(ValueError):
-        build_tm_stamps(pb, xb, CP / R_AIR)
+        build_tm_stamps(pb, xb)

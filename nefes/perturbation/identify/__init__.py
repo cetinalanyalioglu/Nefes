@@ -1,6 +1,6 @@
 """Identify an element's dynamic response from a measured network transfer matrix.
 
-Two unknowns, one method (theory.md s12.7): a blackbox 2-port's transfer matrix, or the
+Two unknowns, one method: a blackbox 2-port's transfer matrix, or the
 transfer function(s) of a flame / mass-source feedback.  Mark the unknown on its element,
 supply a transfer matrix measured between two of its edges, and de-embed -- the rest of the
 network being known -- by a per-frequency linear solve over the perturbation operator.

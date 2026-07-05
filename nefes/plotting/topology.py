@@ -14,9 +14,12 @@ import plotly.graph_objects as go
 from plotly.colors import sample_colorscale
 
 from .theme import NEFES_TEMPLATE_NAME
+from ..shell.network import _EDGE_FIELDS
 
 # Per-edge solved field -> (display label, unit, value format) for the overlay
-# colorbar / labels / hover.  Keys match :data:`nefes.shell.network._EDGE_FIELDS`.
+# colorbar / labels / hover.  Keyed to match :data:`nefes.shell.network._EDGE_FIELDS`
+# one-for-one; the guard below fails at import if the two ever drift, so a field added
+# to the network cannot silently lose (or invent) an overlay entry.
 _FIELD_INFO = {
     "mdot": ("mass flow", "kg/s", ".3g"),
     "p": ("static pressure", "Pa", ".4g"),
@@ -31,6 +34,13 @@ _FIELD_INFO = {
     "W": ("molar mass", "kg/mol", ".4g"),
     "cp": ("cp", "J/kgK", ".4g"),
 }
+
+if set(_FIELD_INFO) != set(_EDGE_FIELDS):
+    _missing = sorted(set(_EDGE_FIELDS) - set(_FIELD_INFO))
+    _extra = sorted(set(_FIELD_INFO) - set(_EDGE_FIELDS))
+    raise RuntimeError(
+        f"_FIELD_INFO is out of sync with network._EDGE_FIELDS (missing {_missing}, unexpected {_extra})"
+    )
 
 # Semantic node colours by element role (matched on the residual-type name).  A
 # role keyword -> fill colour; anything unmatched is an interior element.

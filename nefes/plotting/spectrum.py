@@ -6,9 +6,8 @@ Two views over an :class:`nefes.perturbation.EigenmodeResult`:
   split about the ``growth = 0`` stability boundary so unstable modes stand out.
 * :func:`plot_mode_shape` -- one mode's wave amplitudes (magnitude over phase)
   along the network's edges.
-
-Frequencies are on the x-axis in Hz, per the project convention.
 """
+# We do not refer to any spec document (e.g. theory.md) in the comments/docstrings.
 
 import numpy as np
 import plotly.graph_objects as go

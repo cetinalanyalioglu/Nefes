@@ -282,6 +282,7 @@ _LM_INCREASE = 4.0  # damping growth when an LM trial is rejected (shorter, safe
 _LM_DECREASE = 0.5  # damping relaxation after any accepted step (toward Gauss-Newton)
 _LM_MIN = 1e-12  # damping floor
 _LM_MAX = 1e8  # damping ceiling
+# CA: We define constants at the top of the file, if possible. And we ensure they are not duplicated in the codebase.
 
 
 def _solve_stage(prob, x2d, eps, kappa, tol, max_iter, history, res_scale, var_scale, reporter=None):

@@ -14,10 +14,10 @@ State recovery is a map from an edge's carried variables to the full thermodynam
 For a reacting gas that map takes the carried variables $(\dot m,\ p,\ h_t)$ *together with* the edge's transported composition and area, and returns the density, temperature, sound speed, and derived stagnation state.
 The solver reaches thermochemistry *only* through this adapter: neither the element rows nor the choking complementarity references a concrete gas model, so the perfect gas and the reacting mixture are interchangeable instances of one interface.
 
-Concretely the work is split between two entities, and keeping the split clean is what lets each be tested on its own.
-A standalone thermochemistry library owns the species data — NASA-style polynomials — and the chemical-equilibrium solve, and it is entirely network-agnostic: its inputs and outputs are purely thermodynamic (composition, enthalpy, pressure, and derived properties), with no notion of an edge or an element.
-The network side is a thin adapter that forms the thermodynamic point from an edge's carried variables, calls the library, and packs the result into the edge-state table the assembly consumes.
-The library's equilibrium solve uses an element-potential (CEA-style) Gibbs minimization, formulated to be branch-free so that the complex-step derivative propagates through it natively (see [complex-step](../design/complex-step.qmd)).
+Concretely the work is split between two roles, and keeping the split clean is what lets each be tested on its own.
+The thermochemistry proper owns the species data — NASA-style polynomials — and the chemical-equilibrium solve, and it is entirely network-agnostic: its inputs and outputs are purely thermodynamic (composition, enthalpy, pressure, and derived properties), with no notion of an edge or an element.
+The network side is a thin adapter that forms the thermodynamic point from an edge's carried variables, calls that engine, and packs the result into the edge-state table the assembly consumes.
+The equilibrium solve uses an element-potential (CEA-style) Gibbs minimization, formulated to be branch-free so that the complex-step derivative propagates through it natively (see [complex-step](../design/complex-step.qmd)).
 
 ## Absolute enthalpy and the source-free energy balance
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from thermolib import SpeciesLibrary
+from nefes.thermo import SpeciesLibrary
 from nefes.chem.composition import (
     equivalence_ratio_mixture,
     species_mole_fractions,

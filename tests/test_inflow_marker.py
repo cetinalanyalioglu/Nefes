@@ -24,7 +24,7 @@ from nefes.solver.control import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_T
 
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 # stoichiometric H2-air premix (2 H2 + O2 + 3.76 N2, by mole)
 PREMIX = {"H2": 0.296, "O2": 0.148, "N2": 0.556}
 AREA = 0.01
@@ -32,7 +32,7 @@ E_INLET, E_OUT = 0, 1  # inlet -> flame -> outlet
 
 
 def _premix_datum():
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)

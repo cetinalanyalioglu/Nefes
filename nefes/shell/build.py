@@ -118,9 +118,7 @@ def _assign_ports_by_kind(elements: List[ElementSpec], edges) -> list:
     return endpoints
 
 
-def validate_network(
-    elements: List[ElementSpec], conn: Connectivity, area: np.ndarray, require_connected=None
-) -> None:
+def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.ndarray, require_connected=None) -> None:
     """Check structural and area-consistency invariants before compiling.
 
     Also normalizes element display names to be unique (see
@@ -386,7 +384,7 @@ def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec]):
     if thermo.model_id != EQ_KERNEL or thermo.library is None:
         return thermo, None
 
-    from ..thermo.equilibrium import pack_equilibrium
+    from ..thermo.edge_state import pack_equilibrium
 
     comps = []
     comp_nodes = []

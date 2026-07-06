@@ -1,7 +1,7 @@
 """Mixture thermodynamic properties from species polynomials.
 
 Mixture properties are composed from the per-species values. The frozen speed of sound
-lives here; the equilibrium speed of sound lives in :mod:`thermolib.equilibrium`.
+lives here; the equilibrium speed of sound lives in :mod:`nefes.thermo.equilibrate`.
 
 All functions are complex-analytic in ``T``, ``p`` and the composition vector ``Y`` (mass
 fractions): they use only ``+ - * /``, integer powers, ``log`` and ``sqrt`` with a
@@ -54,7 +54,7 @@ class MixtureState:
 def mixture_properties(lib, Y, T, p):
     """Compute mixture properties for mass fractions ``Y`` at ``(T, p)``.
 
-    ``lib`` is a :class:`~thermolib.species.SpeciesLibrary` (or a ``Mechanism``,
+    ``lib`` is a :class:`~nefes.thermo.species.SpeciesLibrary` (or a ``Mechanism``,
     which proxies the same thermo interface).  ``Y`` need not be normalized; it is
     renormalized internally so the result is well defined for slightly off-sum
     inputs (e.g. mid-solve compositions).

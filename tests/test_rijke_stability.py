@@ -15,7 +15,7 @@ whose ``det = 0`` gives the complex modal frequencies.  At low mean Mach (where 
 analytic model is exact) Nefes reproduces the analytic frequencies and growth rates,
 including the sign of the heat-release coupling -- the instability itself.
 
-Run in the ``nefes`` env (numba); the reacting case also needs the thermolib data.
+Run in the ``nefes`` env (numba); the reacting case also needs the bundled data.
 """
 
 import os
@@ -39,7 +39,7 @@ R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
 AREA = 0.01
 L1, L2 = 0.6, 0.4  # cold (upstream) and hot (downstream) duct lengths [m]
-MECH_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 
 
 # --------------------------------------------------------------------------
@@ -172,7 +172,7 @@ def test_n_tau_lag_sets_stability_band():
 
 
 def _h2_air():
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH_PATH)
     gas = Thermo(lib)

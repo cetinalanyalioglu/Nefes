@@ -10,7 +10,6 @@ import pytest
 
 from nefes.elements import ids
 
-
 ALL_KINDS = {ids.PORT_TARGET, ids.PORT_SOURCE, ids.PORT_ANY}
 
 # Every residual id an element can carry (the ones with a human-readable type name).

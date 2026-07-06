@@ -21,12 +21,12 @@ from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.chem.composition import equivalence_ratio_mixture
 from nefes.assembly import assemble
 
-thermolib = pytest.importorskip("thermolib")
+thermo = pytest.importorskip("nefes.thermo")
 
 
 @pytest.fixture(scope="module")
 def reacting_solution():
-    lib = thermolib.SpeciesLibrary.from_cea(species=["H2", "O2", "N2", "H2O", "OH", "H", "O", "HO2", "NO"])
+    lib = thermo.SpeciesLibrary.from_cea(species=["H2", "O2", "N2", "H2O", "OH", "H", "O", "HO2", "NO"])
     mix = equivalence_ratio_mixture(lib, {"H2": 1.0}, {"O2": 0.21, "N2": 0.79}, 1.0)
     net = Network(equilibrium(lib), p_ref=101325.0, T_ref=300.0, mdot_ref=1.0, h_ref=1.0e6)
     net.add(cat.mass_flow_inlet(1.0, 300.0, composition=mix, basis="mole"))

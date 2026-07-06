@@ -4,13 +4,13 @@ A **species library** is the thermochemical *material database*: a set of chemic
 species, each with an element composition, a molar mass and a NASA polynomial for its
 standard-state ``cp/h/s/g`` as a function of temperature. It carries **no reactions**;
 chemical equilibrium needs only the per-species thermodynamics (the element-potential
-formulation). Reactions live in a :class:`thermolib.mechanism.Mechanism`, which
+formulation). Reactions live in a :class:`nefes.thermo.mechanism.Mechanism`, which
 *associates* a species library with a reaction set (the term "mechanism" is reserved for
 that combination).
 
 Libraries load from Cantera's YAML format through a single :meth:`SpeciesLibrary.from_cantera`
 that adapts to its input: a file path (or parsed ``dict``) is read directly with no Cantera
-dependency, supporting the subset of the format thermolib needs, while a live
+dependency, supporting the subset of the format this library needs, while a live
 ``cantera.Solution`` is extracted through Cantera itself. Per-species ``cp,h,s,g(T)`` are
 evaluated complex-analytically in ``T``.
 
@@ -33,6 +33,7 @@ import yaml
 
 from .constants import P_REF
 from .elements import atomic_weight
+from .kernel import species_thermo9
 
 __all__ = ["ThermoPoly", "NASA7", "NASA9", "Species", "SpeciesLibrary"]
 
@@ -248,13 +249,21 @@ class SpeciesLibrary:
             self._Tint = None
         self._arangeS = np.arange(S)
 
-    def _rows(self, T):
-        """Select the active coefficient row for every species at scalar ``T``."""
-        if self._Tint is None:
-            k = np.zeros(len(self.species), dtype=int)
-        else:
-            k = np.sum(self._Tint <= np.real(T), axis=1)
-        return self._coeffs[self._arangeS, k]  # (n_species, 9)
+    def _thermo9(self, T):
+        """Per-species ``(cp/R, h/RT, g/RT)`` at scalar ``T`` via the compiled evaluator.
+
+        Routes through the single kernel evaluator (:func:`nefes.thermo.kernel.species_thermo9`)
+        so the library-level thermodynamics are identical to the equilibrium engine's.  The
+        buffer dtype follows ``T``, so a complex-step ``T`` propagates.
+        """
+        coeffs, Tint = self.nasa9_arrays()
+        Ns = self.n_species
+        dt = np.complex128 if (np.iscomplexobj(T) or isinstance(T, complex)) else np.float64
+        cpR = np.empty(Ns, dtype=dt)
+        hRT = np.empty(Ns, dtype=dt)
+        gRT = np.empty(Ns, dtype=dt)
+        species_thermo9(coeffs, Tint, dt(T), cpR, hRT, gRT)
+        return cpR, hRT, gRT
 
     def nasa9_arrays(self):
         """Dense NASA-9 arrays for a compiled consumer: ``(coeffs, Tint)``.
@@ -285,17 +294,17 @@ class SpeciesLibrary:
 
     # -- vectorized species thermo (complex-safe) ------------------------
     def cp_R(self, T):
-        return _eval_nasa9(self._rows(T), T)[0]
+        return self._thermo9(T)[0]
 
     def h_RT(self, T):
-        return _eval_nasa9(self._rows(T), T)[1]
+        return self._thermo9(T)[1]
 
     def s_R(self, T):
-        return _eval_nasa9(self._rows(T), T)[2]
+        _, hRT, gRT = self._thermo9(T)
+        return hRT - gRT
 
     def g_RT(self, T):
-        cp, h, s = _eval_nasa9(self._rows(T), T)
-        return h - s
+        return self._thermo9(T)[2]
 
     # -- subsetting ------------------------------------------------------
     def subset(self, names):
@@ -312,7 +321,7 @@ class SpeciesLibrary:
         ``source`` may be a Cantera-YAML file path (``str``/``os.PathLike``), an
         already-parsed ``dict`` of such a document, or a live ``cantera.Solution``.  Paths
         and dicts are read directly with no Cantera dependency and honour the subset of the
-        format thermolib needs (NASA7/NASA9 thermo, no transport); a ``cantera.Solution`` is
+        format this library needs (NASA7/NASA9 thermo, no transport); a ``cantera.Solution`` is
         extracted through Cantera itself, so passing one requires Cantera to be installed.
 
         The direct-parse routes never touch the runtime/equilibrium code path.
@@ -404,7 +413,7 @@ def _species_from_dict(sp):
             raise ValueError(f"Species {sp['name']!r}: NASA9 needs len(data) == " f"len(temperature-ranges) - 1.")
         thermo = NASA9(ranges, data)
     else:
-        raise ValueError(f"Species {sp['name']!r}: thermolib reads NASA7/NASA9 thermo " f"only, got {model!r}.")
+        raise ValueError(f"Species {sp['name']!r}: only NASA7/NASA9 thermo is read, " f"got {model!r}.")
 
     return Species(name=sp["name"], composition=dict(sp["composition"]), thermo=thermo, note=sp.get("note", ""))
 

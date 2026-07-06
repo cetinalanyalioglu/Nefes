@@ -3,8 +3,8 @@
 import numpy as np
 import pytest
 
-from thermolib import Thermo
-from thermolib.constants import R_UNIVERSAL
+from nefes.thermo import Thermo
+from nefes.thermo.constants import R_UNIVERSAL
 
 
 @pytest.fixture

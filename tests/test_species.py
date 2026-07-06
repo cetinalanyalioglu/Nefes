@@ -7,7 +7,7 @@ These tests are Cantera-free. They cover the species-library naming (separation 
 import numpy as np
 import pytest
 
-from thermolib import (
+from nefes.thermo import (
     NASA7,
     NASA9,
     SpeciesLibrary,

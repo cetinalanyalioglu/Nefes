@@ -28,7 +28,7 @@ The test names are the actual functions in the suite, so an entry can be run dir
 
 | Claim | Reference | Check |
 |---|---|---|
-| The equilibrium kernel matches an independent equilibrium solver | Cantera oracle (`thermolib` env) | `test_kernel_matches_thermolib`, `test_frozen_from_xi_matches_thermolib` |
+| The equilibrium engine matches an independent equilibrium solver | Cantera oracle (needs a Cantera + numba env) | `test_cantera_validation`; public/solver packings agree via `test_public_and_solver_paths_agree`, `test_frozen_from_xi_matches_properties` |
 | The kinetic-energy-coupled reacting state is exact | equilibrium oracle at the KE-coupled enthalpy | `test_ke_burnt_static_matches_oracle` |
 | A transported passive scalar mixes as the mass-weighted donor | convex-combination mixing | `test_passive_tracer_mixes_mass_weighted` |
 | A passive scalar does not perturb the mean flow | scalar-registry squareness | `test_passive_tracer_does_not_perturb_mean_flow` |

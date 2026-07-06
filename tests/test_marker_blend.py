@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from nefes.assembly.smooth import marker_gate
-from nefes.thermo.equilibrium import (
+from nefes.thermo.edge_state import (
     pack_equilibrium,
     eq_frozen_state,
     eq_kernel_state,
@@ -23,12 +23,12 @@ from nefes.thermo.equilibrium import (
 )
 from nefes.chem.composition import species_mass_fractions, enthalpy_mass
 
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 
 
 def _bundle():
     """A two-stream (air, H2) equilibrium bundle plus a stoich-ish mixed-edge point."""
-    from thermolib import SpeciesLibrary
+    from nefes.thermo import SpeciesLibrary
 
     lib = SpeciesLibrary.from_cantera(MECH)
     Y_air = species_mass_fractions(lib, {"O2": 0.21, "N2": 0.79}, "mole")

@@ -1,6 +1,6 @@
 """Reaction sets and the :class:`Mechanism` (species library + reactions).
 
-The thermochemical *material database* is a :class:`~thermolib.species.SpeciesLibrary`, a
+The thermochemical *material database* is a :class:`~nefes.thermo.species.SpeciesLibrary`, a
 set of species with their NASA polynomials, and all that chemical equilibrium needs. A
 **mechanism** is the *combination* of such a library with a set of **reactions** whose
 participants refer to species in that library. Reactions are needed only for the

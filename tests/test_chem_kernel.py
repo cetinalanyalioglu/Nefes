@@ -1,11 +1,12 @@
-"""Part-A/Part-B agreement: the compiled Nefes chemistry kernel vs ``thermolib``.
+"""Public-API and solver paths agree on the single compiled equilibrium engine.
 
-``thermolib`` (Part A) is the standalone, Cantera-validated authority but is
-pure-numpy.  :mod:`nefes.thermo._chem` (Part B) re-implements the same
-element-potential equilibrium in numba so it runs inside the ``@njit`` residual
-path.  The two MUST agree -- this test pins that, on both NASA-7 (Cantera YAML)
-and NASA-9 (NASA Glenn / CEA ``thermo.inp``) data, and re-checks the complex-step
-== finite-difference contract on the compiled kernel.
+The thermochemistry has one engine (:mod:`nefes.thermo.kernel`), reached two ways: the
+public ``equilibrate_HP`` / ``Thermo`` API packs a library through
+:mod:`nefes.thermo.equilibrate`, while the network packs the same library-plus-streams into
+the flat ``(tf, ti)`` bundle through :mod:`nefes.thermo.edge_state`.  These tests pin that
+the two packings feed the engine identically -- on both NASA-7 (Cantera YAML) and NASA-9
+(NASA Glenn / CEA ``thermo.inp``) data -- exercise the element/species masking (condensed
+feed, absent element), and re-check the complex-step == finite-difference contract.
 """
 
 import os
@@ -14,9 +15,9 @@ import numpy as np
 import pytest
 
 from nefes.thermo.configure import equilibrium
-from nefes.thermo.equilibrium import eq_kernel_state_from_Z
+from nefes.thermo.edge_state import eq_kernel_state_from_Z
 
-DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data")
+DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data")
 H2O2 = os.path.join(DATA, "h2o2.yaml")
 THERMO_INP = os.path.join(DATA, "thermo.inp")
 _NASA9_SPECIES = ["H2", "O2", "H2O", "OH", "H", "O", "N2", "NO", "HO2", "H2O2"]
@@ -32,13 +33,13 @@ def _h2_air(lib, gas, phi):
 
 
 def _nasa7_lib():
-    from thermolib import SpeciesLibrary
+    from nefes.thermo import SpeciesLibrary
 
     return SpeciesLibrary.from_cantera(H2O2)
 
 
 def _nasa9_lib():
-    from thermolib import ThermoInp
+    from nefes.thermo import ThermoInp
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -48,8 +49,8 @@ def _nasa9_lib():
 @pytest.mark.parametrize("which", ["nasa7", "nasa9"])
 @pytest.mark.parametrize("phi", [0.6, 1.0, 1.3])
 @pytest.mark.parametrize("p", [101325.0, 5.0e5])
-def test_kernel_matches_thermolib(which, phi, p):
-    from thermolib import Thermo
+def test_public_and_solver_paths_agree(which, phi, p):
+    from nefes.thermo import Thermo
 
     lib = _nasa7_lib() if which == "nasa7" else _nasa9_lib()
     gas = Thermo(lib)
@@ -68,7 +69,7 @@ def test_kernel_matches_thermolib(which, phi, p):
 
 
 def test_kernel_complex_step_matches_fd():
-    from thermolib import Thermo
+    from nefes.thermo import Thermo
 
     lib = _nasa7_lib()
     gas = Thermo(lib)
@@ -115,9 +116,9 @@ def test_kernel_complex_step_matches_fd():
 
 def test_kernel_masks_condensed_feed_from_products():
     """A condensed feed species (liquid Jet-A) sets the elements + enthalpy but is excluded
-    from the burnt products in the compiled kernel -- matching thermolib's masked solve, not
+    from the burnt products in the compiled kernel -- matching the masked equilibrium solve, not
     the spurious low temperature you get if the liquid is (wrongly) allowed as a product."""
-    from thermolib import ThermoInp, equilibrate_HP
+    from nefes.thermo import ThermoInp, equilibrate_HP
     from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
 
     if not os.path.isfile(THERMO_INP):
@@ -138,7 +139,7 @@ def test_kernel_masks_condensed_feed_from_products():
 
     ref = equilibrate_HP(lib, {lib.elements[i]: float(Z[i]) for i in range(len(Z))}, h, p, T_guess=2300.0)
     assert ref.converged
-    assert float(np.real(ref.X[lib.species_index["Jet-A(L)"]])) == 0.0  # masked in thermolib too
+    assert float(np.real(ref.X[lib.species_index["Jet-A(L)"]])) == 0.0  # masked from the products
     T, rho, c, W = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h, p)
     assert T == pytest.approx(ref.T, rel=1e-6)
     assert float(np.real(T)) > 2200.0  # not the ~1984 K spurious-product result
@@ -148,9 +149,9 @@ def test_kernel_drops_absent_element():
     """A carbonless burnt edge in a carbon-bearing library (the parallel-branch case):
     its elemental abundance ``Z`` has a zero carbon entry, so carbon's balance row is
     null -> singular.  The compiled kernel drops carbon and every carbon-bearing
-    species (keep_el / keep_sp), exactly as thermolib's masked solve does -- so the
+    species (keep_el / keep_sp), exactly as the masked equilibrium solve requires -- so the
     burnt state matches and the complex-step Jacobian stays finite."""
-    from thermolib import equilibrate_HP, ThermoInp
+    from nefes.thermo import equilibrate_HP, ThermoInp
     from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
 
     if not os.path.isfile(THERMO_INP):
@@ -172,7 +173,7 @@ def test_kernel_drops_absent_element():
     cfg = equilibrium(lib)
     ref = equilibrate_HP(lib, {elems[i]: float(Z[i]) for i in range(len(Z))}, h, p, T_guess=2200.0)
     assert ref.converged
-    for sp in ["CO2", "CO", "CH4"]:  # carbon products absent in thermolib's compacted solve
+    for sp in ["CO2", "CO", "CH4"]:  # carbon products absent from the compacted solve
         assert float(np.real(ref.X[lib.species_index[sp]])) == pytest.approx(0.0, abs=1e-12)
 
     T, rho, c, W = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h, p)
@@ -195,7 +196,7 @@ def test_kernel_drops_absent_element():
 # Frozen (unburnt) closure: forward-blend reconstruction from feed-stream xi
 # ---------------------------------------------------------------------------
 def _mixed_feed_lib():
-    from thermolib import ThermoInp
+    from nefes.thermo import ThermoInp
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -214,13 +215,13 @@ def _blend(lib, streams, xi):
     return Y
 
 
-def test_frozen_from_xi_matches_thermolib():
+def test_frozen_from_xi_matches_properties():
     """The frozen closure recovers a *varying* unburnt mixture (air + 2 fuels) by the
-    forward blend of feed-stream mixture fractions -- matching a thermolib frozen
-    evaluation of the same mixture, with no element inversion."""
+    forward blend of feed-stream mixture fractions -- matching a direct frozen
+    property evaluation of the same mixture, with no element inversion."""
     from nefes.chem.composition import enthalpy_mass
-    from nefes.thermo.equilibrium import eq_frozen_state
-    from thermolib import Thermo
+    from nefes.thermo.edge_state import eq_frozen_state
+    from nefes.thermo import Thermo
 
     lib, heavy = _mixed_feed_lib()
     gas = Thermo(lib)
@@ -242,7 +243,7 @@ def test_frozen_from_xi_complex_step():
     """Complex-step == FD for the frozen edge through both xi (forward blend) and h
     (temperature inversion)."""
     from nefes.chem.composition import enthalpy_mass
-    from nefes.thermo.equilibrium import eq_frozen_state
+    from nefes.thermo.edge_state import eq_frozen_state
 
     lib, heavy = _mixed_feed_lib()
     streams = {"air": {"O2": 0.21, "N2": 0.79}, "oct": {heavy: 1.0}, "h2": {"H2": 1.0}}
@@ -275,8 +276,8 @@ def test_comixed_fuels_are_resolvable():
     C,H,O,N elemental level) is recovered exactly: each fuel is its own feed
     stream, so the forward blend is unambiguous."""
     from nefes.chem.composition import enthalpy_mass
-    from nefes.thermo.equilibrium import eq_frozen_state
-    from thermolib import Thermo
+    from nefes.thermo.edge_state import eq_frozen_state
+    from nefes.thermo import Thermo
 
     lib, heavy = _mixed_feed_lib()
     gas = Thermo(lib)

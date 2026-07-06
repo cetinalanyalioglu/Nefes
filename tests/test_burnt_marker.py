@@ -26,7 +26,7 @@ from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_T, ES_RHO, ES_MDOT, ES_P
 from nefes.perturbation.response.response import perturbation_response
 
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}
 AREA = 0.01
 # node 0 inlet(air) | 1 duct | 2 H2 source | 3 duct | 4 flame | 5 duct | 6 outlet
@@ -35,7 +35,7 @@ E_AIR, E_APPROACH, E_FLAME_OUT = 0, 3, 4
 
 
 def _air_datum():
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)

@@ -3,9 +3,9 @@
 Network-agnostic: inputs and outputs are purely thermodynamic (composition, ``T``/``h``,
 ``p``, derived properties).
 
-A ``Thermo`` is built from a :class:`~thermolib.species.SpeciesLibrary`, which is all
+A ``Thermo`` is built from a :class:`~nefes.thermo.species.SpeciesLibrary`, which is all
 equilibrium and mixture properties need. Passing a
-:class:`~thermolib.mechanism.Mechanism` (a library *plus* reactions) is also accepted; the
+:class:`~nefes.thermo.mechanism.Mechanism` (a library *plus* reactions) is also accepted; the
 reactions then enable the shared-Gibbs ``K_c`` route and the finite-rate design hook.
 
 Public: :class:`Thermo`.

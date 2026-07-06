@@ -23,8 +23,8 @@ The map's exactness and invertibility are verified as the premise of that theore
 
 ## The thermochemistry closure
 
-The reacting closure is verified against an independent chemical-kinetics package used as an oracle, run in the separate environment that carries it (see [reproducibility](../design/reproducibility.md)).
-The equilibrium kernel's temperature, density, and composition are checked against the oracle's equilibrium solve at matched conditions, and the frozen state reconstructed from transported mixture fractions is checked against the oracle's frozen mixture (tests: `test_kernel_matches_thermolib`, `test_frozen_from_xi_matches_thermolib`).
+The reacting closure is verified against an independent chemical-kinetics package (Cantera) used as an oracle, run in an environment that carries both Cantera and numba (see [reproducibility](../design/reproducibility.md)).
+The compiled equilibrium engine's temperature, density, and composition are checked against the oracle's equilibrium solve at matched conditions (test: `test_cantera_validation`), and the public equilibrium API and the network solver are checked to reach that single engine identically — the burnt state and the frozen state reconstructed from transported mixture fractions agree between the two packing paths (tests: `test_public_and_solver_paths_agree`, `test_frozen_from_xi_matches_properties`).
 The kinetic-energy-coupled recovery — the outer root that returns the exact static state rather than the low-Mach approximation — is verified against the oracle evaluated at the KE-coupled static enthalpy, so that the coupling as well as the equilibrium is confirmed (test: `test_ke_burnt_static_matches_oracle`).
 
 ## Forward and inverse consistency

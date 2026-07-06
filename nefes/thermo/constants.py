@@ -1,6 +1,6 @@
 """Physical constants and standard-state conventions.
 
-The values match Cantera's conventions so that ``thermolib`` reproduces a
+The values match Cantera's conventions so that the thermochemistry reproduces a
 Cantera ideal-gas oracle bit-for-bit on the species thermodynamics (see
 ``tests/test_cantera_validation.py``).
 """

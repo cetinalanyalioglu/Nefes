@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from thermolib import Mechanism
+from nefes.thermo import Mechanism
 
 
 def test_cantera_load_structure(cantera_mech):

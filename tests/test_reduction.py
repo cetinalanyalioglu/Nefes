@@ -3,13 +3,13 @@
 These cover the automatic-slate machinery: the CEA phase flag on species, the candidate
 product selection from an element pool, the equilibrium kernel masking condensed species
 out of the products (so a liquid fuel is a feed, never a product), and the
-:class:`~thermolib.reduction.SpeciesReducer` strategy + registry.
+:class:`~nefes.thermo.reduction.SpeciesReducer` strategy + registry.
 """
 
 import numpy as np
 import pytest
 
-from thermolib import (
+from nefes.thermo import (
     EquilibriumSamplingReducer,
     NullReducer,
     SampleState,

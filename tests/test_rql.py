@@ -24,7 +24,7 @@ from nefes.solver.control import solve
 from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_T, ES_MDOT
 
-thermolib = pytest.importorskip("thermolib")
+thermo = pytest.importorskip("nefes.thermo")
 
 AIR = {"O2": 0.21, "N2": 0.79}
 AREA = 0.01
@@ -36,9 +36,7 @@ HARD_MODELS = [EQ_FROZEN, EQ_FROZEN, EQ_KERNEL, EQ_KERNEL, EQ_KERNEL, EQ_KERNEL]
 
 
 def _lib():
-    return thermolib.SpeciesLibrary.from_cea(
-        species=["CH4", "O2", "N2", "CO2", "H2O", "CO", "H2", "OH", "O", "H", "NO"]
-    )
+    return thermo.SpeciesLibrary.from_cea(species=["CH4", "O2", "N2", "CO2", "H2O", "CO", "H2", "OH", "O", "H", "NO"])
 
 
 def _elements(lib):

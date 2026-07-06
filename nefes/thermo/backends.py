@@ -16,7 +16,7 @@ Public: :class:`KernelBackend`, :class:`TableBackend`, :func:`make_backend`.
 
 from __future__ import annotations
 
-from . import equilibrium as _eq
+from . import equilibrate as _eq
 from .properties import mixture_properties
 
 __all__ = ["KernelBackend", "TableBackend", "make_backend", "DIFF_MODES"]

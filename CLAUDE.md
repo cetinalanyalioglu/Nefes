@@ -7,7 +7,7 @@ behavior around it) without resolving the full 3-D field.
 ## Repository layout
 
 - The repository directory is `Nefes`; the distribution/package name is `nefes`.
-- Installable packages: `nefes` (the solver) and `thermolib` (standalone NASA-Glenn/CEA thermochemistry, ships with vendored `.inp`/`.yaml` data).
+- The solver lives in `nefes`. Thermochemistry (NASA-Glenn/CEA species data, the compiled element-potential equilibrium kernel, and mixture properties) lives in `nefes.thermo`, together with the solver's gas-model boundary; there is a single compiled engine (numba is a hard dependency). The vendored `.inp`/`.yaml` data ship in `nefes/thermo/data`.
 - `docs/` is the source of truth; `tests/` holds the suite; `examples/` holds runnable samples.
 
 ## Commands

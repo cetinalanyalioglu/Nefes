@@ -42,7 +42,7 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
 
 ## `combustion/`
 
-- **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The standalone `thermolib`
+- **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The `nefes.thermo`
   HP-equilibrium solver (adiabatic flame temperature vs equivalence ratio), the perfect-gas
   **heat-release flame** (`Qdot` total-enthalpy jump with the Rayleigh static-pressure drop),
   and the reacting **equilibrium flame** (`EQ_FROZEN` → `EQ_KERNEL`). Self-contained `matplotlib`.

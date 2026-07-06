@@ -5,7 +5,7 @@ solver.  These tests cover the additions that bring it in step with the catalog:
 ``thermoModel`` selector (perfect gas vs equilibrium), the string-encoded compositions,
 the per-edge frozen/equilibrium closure (auto-from-flames + explicit override), the
 inlet ``inherit`` acoustic default, and the new HeatReleaseFlame / MassSource /
-EquilibriumFlame elements.  The reacting cases need the bundled thermolib mechanism.
+EquilibriumFlame elements.  The reacting cases need the bundled mechanism data.
 """
 
 import os
@@ -19,7 +19,7 @@ from nefes.solver.report import states_table
 from nefes.assembly.recover import ES_T, ES_RHO, ES_MDOT, ES_HT, ES_U
 from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 # Stoichiometric H2/air as a single premixed feed (mole basis).
 H2_AIR = "H2:1.0, O2:0.5, N2:1.88"
 
@@ -240,8 +240,8 @@ def test_reacting_no_flame_is_equilibrium_everywhere(tmp_path):
 
 
 def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
-    from thermolib import SpeciesLibrary, Thermo
-    from nefes.chem.composition import resolve_composition, enthalpy_mass
+    from nefes.thermo import SpeciesLibrary, Thermo
+    from nefes.chem.composition import resolve_composition
 
     net = load_case(_series_reacting(tmp_path, name="ref.yaml"))
     sol = net.solve()

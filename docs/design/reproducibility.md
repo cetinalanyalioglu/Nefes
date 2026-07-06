@@ -13,10 +13,10 @@ The one hazard to determinism is operational rather than algorithmic — the com
 
 ## Pinned environments
 
-The framework and its thermochemistry library have different, and partly conflicting, dependencies, so they are tested in two separate pinned environments rather than one.
-The network solver runs in an environment built around the just-in-time compiler that its kernels depend on, and its full test suite exercises the mean-flow and acoustic machinery there.
-The thermochemistry library's *oracle* tests — the ones that check its equilibrium solve against an independent chemical-kinetics package — run in a second environment that carries that package, kept separate because the oracle dependency is heavy and is needed only to validate the library, never to run it.
-Keeping the two environments distinct is deliberate: it enforces the architectural boundary that the library depends on no network concept and the solver depends on no oracle package, and it means a routine solve needs only the light environment while the heavy one is reserved for validation.
+The solver and its thermochemistry share one compiled engine and are exercised in a single pinned environment built around the just-in-time compiler that the kernels depend on; the full test suite — mean-flow, acoustics, and the thermochemistry — runs there.
+A second, heavier environment adds an independent chemical-kinetics package (Cantera) used only as an *oracle*: the tests that check the equilibrium solve against it run there.
+That environment carries both the compiler and the oracle, because the equilibrium engine is compiled and the oracle package is what it is validated against.
+Keeping the oracle in a separate environment is deliberate: the dependency is heavy and is needed only to validate the engine, never to run it, so a routine solve needs only the base environment while the heavier one is reserved for validation.
 
 ## Provenance on input and output
 

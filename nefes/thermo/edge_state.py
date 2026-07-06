@@ -1,13 +1,13 @@
-"""Equilibrium / frozen thermo backend: the ``nefes`` side of ``thermolib``.
+"""Equilibrium / frozen edge-state producers: the network side of the thermochemistry.
 
-A :class:`thermolib.SpeciesLibrary` (the species *data* -- NASA polynomials and
+A :class:`nefes.thermo.SpeciesLibrary` (the species *data* -- NASA polynomials and
 the element matrix, all chemical equilibrium needs) is packed into the immutable
 ``(tf, ti)`` array bundle together with the network's **feed streams**.  A feed
 stream is one distinct injected composition (an oxidizer, a diluent, a fuel,
 ...); the network transports one conserved band-1 scalar per stream -- the
 **mixture fraction** ``xi_k`` -- and the closures reconstruct everything else by a
 forward blend of ``xi`` (see :mod:`nefes.composition`).  The compiled kernels in
-:mod:`nefes.thermo._chem` unpack the flat arrays and run the element-potential
+:mod:`nefes.thermo.kernel` unpack the flat arrays and run the element-potential
 equilibrium solve, so all chemistry stays behind the single thermo boundary and
 inside the network's ``@njit`` residual path.
 
@@ -28,7 +28,7 @@ bracketed root of ``G`` on the real part and splice the imaginary part by the
 implicit-function theorem -- the same shape as the perfect-gas density root, no
 caps or floors.
 
-``tf`` layout (all float64, ``mol`` units to match thermolib)::
+``tf`` layout (all float64, ``mol`` units throughout)::
 
     [ p_ref, T_init, T_init_frozen,
       coeffs(Ns*MI*9), Tint(Ns*(MI-1)), A(Ne*Ns), element_weights(Ne),
@@ -44,7 +44,7 @@ from numba.extending import overload
 
 from ..chem.composition import stream_pack_arrays
 from ..assembly.smooth import marker_gate
-from ._chem import RU, equil_state_cs, equilibrate_hp_cs, equilibrium_sound_speed, frozen_state_from_moles_cs
+from .kernel import RU, equil_state_cs, equilibrate_hp_cs, equilibrium_sound_speed, frozen_state_from_moles_cs
 
 _OFF_BLOCKS = 3  # p_ref, T_init, T_init_frozen precede the flat data blocks
 
@@ -60,7 +60,7 @@ AUTO_REDUCE_THRESHOLD = 40
 
 
 def pack_equilibrium(lib, stream_Y, T_init=3000.0, T_init_frozen=300.0):
-    """Pack a ``thermolib.SpeciesLibrary`` + its feed streams into ``(tf, ti)``.
+    """Pack a ``nefes.thermo.SpeciesLibrary`` + its feed streams into ``(tf, ti)``.
 
     ``stream_Y`` is ``(K, n_species)`` mass fractions, one row per distinct feed
     stream (:func:`nefes.composition.build_streams`).  ``K = 0`` packs a stream-less
@@ -148,7 +148,7 @@ def eq_kernel_state_from_Z(tf, ti, Z_el, h, p):
     """HP-equilibrium state ``(T, rho, c_eq, W)`` for an explicit elemental ``Z_el``.
 
     The stream-free entry point: ``Z_el`` is the gram-fraction elemental vector
-    directly (used by the kernel-vs-thermolib tests).  The network calls
+    directly (used by the kernel consistency tests).  The network calls
     :func:`eq_kernel_state`, which maps the transported mixture fractions to ``Z``.
     """
     Ne = ti[0]

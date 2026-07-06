@@ -1,4 +1,4 @@
-"""Validation oracle: compare thermolib to Cantera when available.
+"""Validation oracle: compare the equilibrium engine to Cantera when available.
 
 Every test here is skipped (not failed) if Cantera is absent, via the ``cantera``
 fixture's ``importorskip``.
@@ -7,7 +7,7 @@ fixture's ``importorskip``.
 import numpy as np
 import pytest
 
-from thermolib import Mechanism, Thermo
+from nefes.thermo import Mechanism, Thermo
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ realizability, HP<->TP round-trips, differentiation).
 import numpy as np
 import pytest
 
-from thermolib import Thermo
+from nefes.thermo import Thermo
 
 
 @pytest.fixture

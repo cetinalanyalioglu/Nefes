@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
-from thermolib.constants import R_UNIVERSAL
+from nefes.thermo.constants import R_UNIVERSAL
 
 from ..thermo.configure import ThermoConfig, perfect_gas
 from ..thermo.api import PERFECT_GAS, EQ_KERNEL

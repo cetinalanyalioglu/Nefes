@@ -23,7 +23,7 @@ R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
 A = 0.1
 
-DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data")
+DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data")
 THERMO_INP = os.path.join(DATA, "thermo.inp")
 
 
@@ -83,7 +83,7 @@ def test_perfect_gas_mass_source_injection_momentum():
 # Reacting: fuel injected into air, then burnt by a downstream flame
 # --------------------------------------------------------------------------
 def _ch4_air_lib():
-    from thermolib import ThermoInp
+    from nefes.thermo import ThermoInp
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -101,7 +101,7 @@ def _fuel_injection_network(mdot_air=1.0, mdot_fuel=0.05, Tin=300.0, p=1.0e5):
     J/kg (CH4's negative formation enthalpy).
     """
     from nefes.chem.composition import enthalpy_mass, resolve_composition
-    from thermolib import Thermo
+    from nefes.thermo import Thermo
 
     lib = _ch4_air_lib()
     gas = Thermo(lib)

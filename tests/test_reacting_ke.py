@@ -6,7 +6,7 @@ around the equilibrium/frozen solve, mirroring the perfect gas's density root.
 This pins:
 
 * the energy balance ``h = h_t - u^2/2`` is satisfied exactly at the recovered state;
-* the burnt static ``(T, rho)`` equals a standalone ``thermolib`` HP-equilibrium at
+* the burnt static ``(T, rho)`` equals a standalone HP-equilibrium at
   that *static* enthalpy (== Cantera transitively);
 * the complex-step Jacobian == finite difference through ``(mdot, p, h_t, xi)`` across
   forward / reverse / quiescent / near-choke flow -- including the warm-cache path
@@ -19,15 +19,15 @@ import numpy as np
 import pytest
 
 from nefes.thermo.configure import equilibrium
-from nefes.thermo.equilibrium import eq_kernel_state_ke_warm, eq_frozen_state_ke, eq_marker_state_ke_warm
+from nefes.thermo.edge_state import eq_kernel_state_ke_warm, eq_frozen_state_ke, eq_marker_state_ke_warm
 
-DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data")
+DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data")
 H2O2 = os.path.join(DATA, "h2o2.yaml")
 
 
 def _premix_cfg():
     """Stoichiometric H2/air as one feed stream; return (cfg, gas, Z, h_t300, Np)."""
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(H2O2)
     gas = Thermo(lib)

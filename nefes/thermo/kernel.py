@@ -1,15 +1,15 @@
-"""Compiled (``@njit``) chemistry kernel: the Nefes-side of the thermolib boundary.
+"""Compiled (``@njit``) chemistry kernel: the element-potential equilibrium engine.
 
-``thermolib`` is the standalone, pure-numpy authority: it ingests NASA-7 (Cantera
-YAML) and NASA-9 (NASA Glenn / CEA ``thermo.inp``) data into one **canonical
-9-term** representation, solves chemical equilibrium, and is validated against
-Cantera.  It is deliberately *not* numba-compiled, so it cannot be called from
-inside the network's ``@njit`` residual/Jacobian loop.
-
-This module re-implements the same element-potential equilibrium math in numba,
-consuming the flat NASA-9 arrays ``thermolib.SpeciesLibrary.nasa9_arrays()``
-packs (see :mod:`nefes.thermo.equilibrium`).  It is validated *against* thermolib
-(hence transitively against Cantera) -- the two paths must agree.
+This is the single equilibrium and thermodynamics engine of the thermochemistry.  It
+consumes the canonical **9-term** NASA arrays that ``SpeciesLibrary.nasa9_arrays()`` packs
+(NASA-7 Cantera YAML and NASA-9 NASA Glenn / CEA ``thermo.inp`` data reduced to the same
+representation), solves chemical equilibrium (HP and TP), and evaluates species/mixture
+thermodynamics and the equilibrium speed of sound.  Being numba-compiled, it runs both
+inside the network's ``@njit`` residual/Jacobian loop (via :mod:`nefes.thermo.edge_state`)
+and behind the public ``Thermo`` / ``equilibrate_HP`` / ``mixture_properties`` API (via
+:mod:`nefes.thermo.equilibrate` and :mod:`nefes.thermo.species`), so the thermochemistry has
+one implementation throughout.  Correctness is pinned against Cantera
+(``test_cantera_validation``).
 
 Canonical 9-term NASA form (per temperature interval, coefficients
 ``[a1..a7, b1, b2]``):
@@ -21,23 +21,24 @@ Canonical 9-term NASA form (per temperature interval, coefficients
            + a7 T^4/4 + b2
 
 A NASA-7 polynomial is the special case ``a1 = a2 = 0``, so the same evaluator
-serves both data sources.  Units follow thermolib exactly (``mol``): the
-universal gas constant is per mole, moles ``n_j`` are [mol/kg], element weights
-and molar masses [kg/mol].
+serves both data sources.  Units are ``mol`` throughout: the universal gas constant
+is per mole, moles ``n_j`` are [mol/kg], element weights and molar masses [kg/mol].
 
-Differentiation contract (mirrors ``thermolib`` and
-``nefes.thermo.perfect_gas``): the Newton equilibrium loop branches (damping,
-convergence, interval choice), so it runs in **real** arithmetic; complex-step
-seeds on ``(b0, h, p)`` are attached afterward by the implicit-function theorem
-through the converged reduced matrix.  Interval selection branches only on
-``T.real`` so the chosen polynomial stays complex-analytic.
+Differentiation contract (shared with :mod:`nefes.thermo.perfect_gas`): the Newton
+equilibrium loop branches (damping, convergence, interval choice), so it runs in
+**real** arithmetic; complex-step seeds on ``(b0, h, p)`` are attached afterward by
+the implicit-function theorem through the converged reduced matrix.  Interval
+selection branches only on ``T.real`` so the chosen polynomial stays complex-analytic,
+which also makes the species-thermodynamics and frozen-property path (used by
+:func:`mixture_properties` and ``SpeciesLibrary.cp_R`` and friends) fully
+complex-transparent.
 """
 
 import numpy as np
 from numba import njit, types
 from numba.extending import overload
 
-from thermolib.constants import R_UNIVERSAL as RU  # universal gas constant [J/(mol*K)]
+from nefes.thermo.constants import R_UNIVERSAL as RU  # universal gas constant [J/(mol*K)]
 
 # Equilibrium-solver controls.
 MAX_ITER = 300
@@ -199,7 +200,7 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
     M = np.zeros((dim, dim))
     rhs = np.zeros(dim)
 
-    # Element / species compaction (CEA / thermolib keep_el-keep_sp, located on the
+    # Element / species compaction (CEA keep_el-keep_sp, located on the
     # real abundance): an element with zero gram-atoms (e.g. carbon on a carbonless
     # branch of a carbon-bearing library) carries no products, so its balance row is
     # null -> singular.  Drop such elements and every species containing one; the
@@ -501,6 +502,160 @@ def equil_state_cs(coeffs, Tint, Af, b0, h, p, p_ref, T_init, nj_init):
 
 
 # ---------------------------------------------------------------------------
+# Fixed-temperature (TP) equilibrium
+# ---------------------------------------------------------------------------
+@njit(cache=True)
+def equilibrate_tp(coeffs, Tint, Af, b0, T, p, p_ref, nj):
+    """Solve gas-phase TP equilibrium at fixed ``T`` in place; return ``(ntot, flag, nit)``.
+
+    The fixed-temperature companion of :func:`equilibrate_hp`: the reduced CEA system drops
+    the energy row and the ``d ln T`` unknown, leaving the element-potential + total-mole
+    block at the prescribed ``T``.  ``nj`` is in/out (warm start -> converged moles
+    [mol/kg]).  Real arithmetic (the public TP path is not complex-stepped).
+    """
+    Ne = Af.shape[0]
+    Ns = Af.shape[1]
+    dim = Ne + 1
+
+    cpR = np.empty(Ns)
+    hRT = np.empty(Ns)
+    gRT = np.empty(Ns)
+    fj = np.empty(Ns)
+    dln_nj = np.empty(Ns)
+
+    M = np.zeros((dim, dim))
+    rhs = np.zeros(dim)
+
+    # element / species compaction on the real abundance (mirrors equilibrate_hp)
+    bscale = 0.0
+    for i in range(Ne):
+        if b0[i] > bscale:
+            bscale = b0[i]
+    active_el = np.empty(Ne, dtype=np.bool_)
+    for i in range(Ne):
+        active_el[i] = b0[i] > 1.0e-13 * bscale
+    active_sp = np.empty(Ns, dtype=np.bool_)
+    n_active_sp = 0
+    for j in range(Ns):
+        ok = True
+        for i in range(Ne):
+            if not active_el[i] and Af[i, j] != 0.0:
+                ok = False
+                break
+        active_sp[j] = ok
+        if ok:
+            n_active_sp += 1
+    for j in range(Ns):
+        if not active_sp[j]:
+            nj[j] = 0.0
+
+    ntot = 0.0
+    for j in range(Ns):
+        ntot += nj[j]
+
+    sb0 = 0.0
+    for i in range(Ne):
+        sb0 += b0[i]
+    uniform = sb0 / (2.0 * n_active_sp)
+
+    flag = 0
+    nit = 0
+    n_reset = 0
+    for it in range(MAX_ITER):
+        nit = it + 1
+        species_thermo9(coeffs, Tint, T, cpR, hRT, gRT)
+        lnp = np.log(p / p_ref)
+        for j in range(Ns):
+            if active_sp[j]:
+                fj[j] = gRT[j] + np.log(nj[j] / ntot) + lnp
+            else:
+                fj[j] = 0.0
+
+        for a in range(dim):
+            rhs[a] = 0.0
+            for b in range(dim):
+                M[a, b] = 0.0
+
+        sum_n = 0.0
+        sum_nf = 0.0
+        for j in range(Ns):
+            sum_n += nj[j]
+            sum_nf += nj[j] * fj[j]
+
+        # element-balance rows (no enthalpy column, no energy row)
+        for i in range(Ne):
+            bi = 0.0
+            rj = 0.0
+            for k in range(Ne):
+                s = 0.0
+                for j in range(Ns):
+                    s += Af[i, j] * Af[k, j] * nj[j]
+                M[i, k] = s
+            for j in range(Ns):
+                aij_nj = Af[i, j] * nj[j]
+                bi += aij_nj
+                rj += aij_nj * fj[j]
+            M[i, Ne] = bi
+            rhs[i] = b0[i] - bi + rj
+
+        # total-mole row
+        for k in range(Ne):
+            bk = 0.0
+            for j in range(Ns):
+                bk += Af[k, j] * nj[j]
+            M[Ne, k] = bk
+        M[Ne, Ne] = sum_n - ntot
+        rhs[Ne] = ntot - sum_n + sum_nf
+
+        for i in range(Ne):
+            if not active_el[i]:
+                for k in range(dim):
+                    M[i, k] = 0.0
+                    M[k, i] = 0.0
+                M[i, i] = 1.0
+                rhs[i] = 0.0
+
+        singular = False
+        try:
+            x = np.linalg.solve(M, rhs)
+        except Exception:
+            singular = True
+        if singular:
+            if n_reset >= 2:
+                break
+            n_reset += 1
+            for j in range(Ns):
+                nj[j] = uniform if active_sp[j] else 0.0
+            ntot = n_active_sp * uniform
+            continue
+        dln_n = x[Ne]
+
+        conv_species = 0.0
+        for j in range(Ns):
+            acc = dln_n - fj[j]
+            for i in range(Ne):
+                acc += Af[i, j] * x[i]
+            dln_nj[j] = acc
+            w = (nj[j] / ntot) * abs(acc)
+            if w > conv_species:
+                conv_species = w
+
+        if conv_species < TOL and abs(dln_n) < TOL:
+            flag = 1
+            break
+
+        lam = _cea_lambda(nj, ntot, dln_nj, dln_n, 0.0)
+        for j in range(Ns):
+            nj[j] = nj[j] * np.exp(lam * dln_nj[j])
+        ntot = ntot * np.exp(lam * dln_n)
+
+    ntot = 0.0
+    for j in range(Ns):
+        ntot += nj[j]
+    return ntot, flag, nit
+
+
+# ---------------------------------------------------------------------------
 # Sound speeds
 # ---------------------------------------------------------------------------
 @njit(cache=True)
@@ -658,7 +813,7 @@ def frozen_state_from_moles_cs(feed_coeffs, feed_Tint, n_feed, h, p, T_init):
 
     ``n_feed`` [mol/kg] is the feed-species mole vector of the unburnt mixture --
     the forward blend ``xi @ Nfeed`` of the network's feed streams, formed by the
-    caller (:func:`nefes.thermo.equilibrium.eq_frozen_state`).  No element inversion
+    caller (:func:`nefes.thermo.edge_state.eq_frozen_state`).  No element inversion
     is involved, so any mixture of co-injected fuels is representable.  Dtype-
     generic in ``(n_feed, h, p)``: complex-step seeds on the composition (carried
     in ``n_feed``) and enthalpy propagate via the temperature's implicit-function

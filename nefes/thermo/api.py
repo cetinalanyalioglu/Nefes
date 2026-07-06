@@ -17,14 +17,14 @@ derivatives) are formed downstream from the recovered state in
 
 from numba import njit
 
-from .equilibrium import eq_frozen_state, eq_kernel_state, eq_total_pressure
+from .edge_state import eq_frozen_state, eq_kernel_state, eq_total_pressure
 from .perfect_gas import pg_update, pg_state, pg_total_pressure
 
 # --- model ids -------------------------------------------------------------
 PERFECT_GAS = 0  # The standard perfect gas model
-EQ_KERNEL = 1  # thermolib element-potential HP equilibrium (burnt side)
+EQ_KERNEL = 1  # element-potential HP equilibrium (burnt side)
 EQ_TABLE = 2  # reserved: precomputed equilibrium table
-EQ_FROZEN = 3  # thermolib frozen real-gas of the reactant composition (unburnt side)
+EQ_FROZEN = 3  # frozen real-gas of the reactant composition (unburnt side)
 EQ_MARKER = 4  # burnt-marker-gated blend of EQ_FROZEN (b=0) and EQ_KERNEL (b=1)
 
 # --- evaluation modes (how much of `out` to fill) --------------------------

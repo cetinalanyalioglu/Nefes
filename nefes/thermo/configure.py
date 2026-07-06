@@ -11,7 +11,7 @@ from typing import List
 
 import numpy as np
 
-from thermolib.constants import R_UNIVERSAL
+from nefes.thermo.constants import R_UNIVERSAL
 
 from .api import EQ_KERNEL, PERFECT_GAS
 
@@ -34,7 +34,7 @@ class ThermoConfig:
     species_names : list of str
         Species carried by the library (empty for a perfect gas).
     library : object
-        The thermolib ``SpeciesLibrary``, kept parse-time only (never packed or
+        The ``SpeciesLibrary``, kept parse-time only (never packed or
         compiled) so element/source builders can resolve species-named compositions
         to feed streams and the ``Tt -> h_t`` datum.
     t_init, t_init_frozen : float
@@ -47,7 +47,7 @@ class ThermoConfig:
     ti: np.ndarray  # int64[::1] packed sizes/indices
     element_names: List[str] = field(default_factory=list)  # transported-scalar labels
     species_names: List[str] = field(default_factory=list)  # library species names
-    library: object = None  # thermolib SpeciesLibrary (parse-time only)
+    library: object = None  # SpeciesLibrary (parse-time only)
     t_init: float = 3000.0  # equilibrium temperature guess [K]
     t_init_frozen: float = 300.0  # frozen temperature guess [K]
 
@@ -119,7 +119,7 @@ def perfect_gas_passive_scalars(n_scalars: int, R: float = 287.0, gamma: float =
 
 
 def equilibrium(library, streams=None, basis: str = "mole", T_init: float = 3000.0, T_init_frozen: float = 300.0):
-    """Reacting-gas config from a ``thermolib.SpeciesLibrary``.
+    """Reacting-gas config from a ``nefes.thermo.SpeciesLibrary``.
 
     The transported composition is the network's **feed-stream mixture fractions**
     ``xi`` -- one conserved band-1 scalar per distinct injected composition (an
@@ -132,8 +132,8 @@ def equilibrium(library, streams=None, basis: str = "mole", T_init: float = 3000
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
-        The species data (NASA-7/9 polynomials, element matrix).  ``thermolib`` is
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
+        The species data (NASA-7/9 polynomials, element matrix).  The library is
         the standalone authority; this packs its canonical 9-term arrays for the
         compiled kernel.
     streams : dict of {str: spec}, optional
@@ -149,7 +149,7 @@ def equilibrium(library, streams=None, basis: str = "mole", T_init: float = 3000
     T_init, T_init_frozen : float
         Initial temperature guesses for the equilibrium and frozen solves [K].
     """
-    from .equilibrium import pack_equilibrium
+    from .edge_state import pack_equilibrium
 
     if streams is None:
         stream_Y = np.zeros((0, library.n_species))

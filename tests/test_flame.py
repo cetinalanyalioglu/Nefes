@@ -26,7 +26,7 @@ R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
 A = 0.05
 
-MECH_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 
 
 def _flame_network(mdot, Tt, Qdot, p_out=1.0e5):
@@ -83,7 +83,7 @@ def test_zero_heat_release_is_a_passthrough():
 
 def _h2_air_reactant():
     """Stoichiometric H2/air reactant: (Thermo, species mass fractions, elemental Z)."""
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH_PATH)
     gas = Thermo(lib)

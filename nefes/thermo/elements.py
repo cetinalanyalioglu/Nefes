@@ -57,6 +57,6 @@ def atomic_weight(symbol):
         return ATOMIC_WEIGHTS[norm]
     except KeyError as exc:  # pragma: no cover - defensive
         raise KeyError(
-            f"Unknown element {symbol!r}; add it to thermolib.elements.ATOMIC_WEIGHTS "
+            f"Unknown element {symbol!r}; add it to nefes.thermo.elements.ATOMIC_WEIGHTS "
             f"or specify 'atomic-weight' in the mechanism YAML."
         ) from exc

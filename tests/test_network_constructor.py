@@ -20,7 +20,7 @@ from nefes.solver import solve
 
 CFG = perfect_gas(287.0, 1.4)
 CP = 1.4 * 287.0 / 0.4
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 
 
 def _nodes_edges():
@@ -71,7 +71,7 @@ def test_ports_auto_assigned_in_attachment_order():
 
 
 def test_edge_models_passthrough():
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)
@@ -110,7 +110,7 @@ def test_marker_gating_matches_explicit_edge_models():
     # The automatic burnt-marker closure (edge_models left unset) reproduces the mean flow of the
     # hand-specified frozen/equilibrium split -- so the explicit knob is an escape hatch, not a
     # requirement, for a reacting network with an equilibrium flame.
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     gas = Thermo(SpeciesLibrary.from_cantera(MECH))
 
@@ -137,7 +137,7 @@ def test_marker_gating_handles_fresh_dilution_downstream():
     # edge to a frozen reactant: the sticky (noisy-OR) marker keeps it burnt, so the auto path
     # re-equilibrates the diluted zone and reproduces the pinned all-equilibrium closure with
     # no edge_models (the staged-combustion / exhaust-gas-recirculation case).
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     gas = Thermo(SpeciesLibrary.from_cantera(MECH))
 

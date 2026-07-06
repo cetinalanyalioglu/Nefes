@@ -18,7 +18,7 @@ The tests anchor it:
    coupling destabilizes a mode -- and only because the convected composition wave is
    retained (``isentropic`` freezes it -> stable).
 
-Run in the ``nefes`` env (numba); needs the thermolib H2/air data.
+Run in the ``nefes`` env (numba); needs the bundled H2/air data.
 """
 
 import os
@@ -49,7 +49,7 @@ from nefes.thermo.configure import equilibrium
 from nefes.assembly.recover import ES_T, ES_U, ES_RHO, ES_C, ES_P, ES_AREA, ES_M
 
 AREA = 0.02
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}
 # node 0 inlet(air) | 1 duct | 2 fuel injector | 3 duct (convective lag) | 4 flame | 5 duct | 6 outlet
 # edge 0 air | 1 | 2 injector-out | 3 flame-approach | 4 flame-out | 5
@@ -58,7 +58,7 @@ N_INJECTOR = 2
 
 
 def _air_enthalpy_datum():
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)

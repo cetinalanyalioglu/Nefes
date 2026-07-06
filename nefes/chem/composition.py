@@ -53,7 +53,7 @@ def species_mass_fractions(library, spec, basis="mole"):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
         Provides ``species_index`` and ``molar_masses``.
     spec : dict or array_like
         Either ``{species_name: fraction}`` (unnormalized is fine), or a full
@@ -105,7 +105,7 @@ def elemental_Z(library, Y):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
         Provides ``molar_masses``, ``element_matrix`` and ``element_weights``.
     Y : array_like, shape (n_species,)
         Species mass fractions (need not be normalized).
@@ -133,7 +133,7 @@ def enthalpy_mass(library, Y, T):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
         Provides ``molar_masses`` and the dimensionless enthalpy ``h_RT(T)``.
     Y : array_like, shape (n_species,)
         Species mass fractions (need not be normalized).
@@ -145,10 +145,10 @@ def enthalpy_mass(library, Y, T):
     float
         Absolute (formation-inclusive) specific enthalpy [J/kg].
     """
-    # ``library`` is a thermolib object, so thermolib is importable here; the lazy
+    # ``library`` is a nefes.thermo object, so nefes.thermo is importable here; the lazy
     # import keeps the universal gas constant a single source of truth without making
-    # thermolib a load-time dependency of this parse-time module.
-    from thermolib.constants import R_UNIVERSAL
+    # nefes.thermo a load-time dependency of this parse-time module.
+    from nefes.thermo.constants import R_UNIVERSAL
 
     Y = np.asarray(Y, dtype=float)
     Yn = Y / Y.sum()
@@ -162,7 +162,7 @@ def resolve_composition(library, spec, basis="mole"):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
         The species data.
     spec : dict or array_like
         A named species mixture ``{species: fraction}`` (unnormalized is fine) or a full
@@ -190,7 +190,7 @@ def species_mole_fractions(library, spec, basis="mole"):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
     spec : dict or array_like
         ``{species_name: fraction}`` (unnormalized is fine) or a full
         ``(n_species,)`` array already in ``basis``.
@@ -237,7 +237,7 @@ def equivalence_ratio_mixture(library, fuel, oxidizer, phi, *, fuel_basis="mole"
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
         Supplies the species formulae (``element_matrix``) and molar masses.
     fuel, oxidizer : dict or array_like
         Compositions as ``{species_name: fraction}`` (e.g. ``{"CH4": 1.0}``,
@@ -305,7 +305,7 @@ def build_streams(library, comps):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
     comps : list of (spec, basis)
         One ``(composition_spec, basis)`` per stream-introducing element (inlet,
         mass source, composition-bearing outlet), in node order.
@@ -347,7 +347,7 @@ def stream_pack_arrays(library, stream_Y):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
     stream_Y : ndarray, shape (K, n_species)
         Mass fractions of each feed stream (from :func:`build_streams`).
 
@@ -383,7 +383,7 @@ def network_elements(library, specs):
 
     Parameters
     ----------
-    library : thermolib.SpeciesLibrary or thermolib.Mechanism
+    library : nefes.thermo.SpeciesLibrary or nefes.thermo.Mechanism
         The authority on the element set (``element_matrix``, ``elements``).
     specs : iterable of dict or array_like
         Named mixtures (inlet / source compositions); a ``dict`` is read on a mole

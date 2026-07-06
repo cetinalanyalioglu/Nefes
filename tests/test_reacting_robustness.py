@@ -25,12 +25,12 @@ from nefes.thermo.configure import equilibrium
 
 A = 0.1
 AIR = {"O2": 0.21, "N2": 0.79}
-DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data")
+DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data")
 THERMO_INP = os.path.join(DATA, "thermo.inp")
 
 
 def _lib():
-    from thermolib import ThermoInp
+    from nefes.thermo import ThermoInp
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -55,7 +55,7 @@ def _hp_reference(gas, lib, feeds, p):
 def test_operating_envelope_converges_from_seed(mdot_fuel, Tin, p):
     """air -> CH4 source -> flame -> outlet, swept lean..rich, cold..hot, low..high p.
     Each point solves from the auto-seed and lands on the standalone HP flame T."""
-    from thermolib import Thermo
+    from nefes.thermo import Thermo
 
     lib, _heavy = _lib()
     gas = Thermo(lib)
@@ -95,7 +95,7 @@ def test_two_carbon_fuels_co_injected():
     basis could not resolve (rank-deficient over C,H,O,N).  With one mixture
     fraction per feed the network builds, solves from the seed, and the burnt T
     matches the HP equilibrium of the combined mixture."""
-    from thermolib import Thermo
+    from nefes.thermo import Thermo
 
     lib, heavy = _lib()
     gas = Thermo(lib)
@@ -137,7 +137,7 @@ def test_branched_mixing_converges_from_seed():
     """Two air streams at different temperatures merge at a junction, then a fuel
     source + flame.  Exercises the seed's mass-weighted propagation *through a
     junction* (not just a series chain)."""
-    from thermolib import Thermo
+    from nefes.thermo import Thermo
 
     lib, _heavy = _lib()
     gas = Thermo(lib)
@@ -178,7 +178,7 @@ def test_carbonless_burn_in_carbon_library():
     abundance has a zero carbon entry (the parallel-branch case), so the equilibrium
     kernel must drop carbon and its species to stay non-singular.  The network solves
     from the auto-seed and the burnt static T matches a standalone HP equilibrium."""
-    from thermolib import Thermo
+    from nefes.thermo import Thermo
 
     lib, _heavy = _lib()  # library carries CH4 / CO2 / CO -> carbon is an element
     gas = Thermo(lib)
@@ -202,7 +202,7 @@ def test_carbonless_burn_in_carbon_library():
     res = solve(prob)
     assert res.converged
     est = states_table(prob, res.x)
-    # burnt static T == HP equilibrium at the static enthalpy (carbon dropped, as in thermolib)
+    # burnt static T == HP equilibrium at the static enthalpy (carbon dropped in the masked solve)
     u = est[ES_U, 2]
     h_static = est[ES_HT, 2] - 0.5 * u * u
     Z = gas.elemental_mass_fractions((mdot_air * Yair + mdot_h2 * Yh2) / (mdot_air + mdot_h2))

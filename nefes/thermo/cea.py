@@ -3,10 +3,10 @@
 ``thermo.inp`` is the canonical NASA-9 thermodynamic database used by CEA (McBride &
 Gordon). It holds ~2000 species in a fixed-column FORTRAN format. This module gives an
 easy interface over it: parse once, search by name, and select the handful of species you
-actually need into a :class:`~thermolib.species.SpeciesLibrary` that the
+actually need into a :class:`~nefes.thermo.species.SpeciesLibrary` that the
 equilibrium/property code consumes directly.
 
-    from thermolib import ThermoInp, Thermo
+    from nefes.thermo import ThermoInp, Thermo
     db   = ThermoInp("data/thermo.inp")
     db.search("H2O")                       # -> ['H2O', 'H2O2', 'H2O(cr)', ...]
     lib  = db.library(["H2", "O2", "H2O", "OH", "H", "O", "N2"])
@@ -38,7 +38,7 @@ from .species import NASA9, Species, SpeciesLibrary
 
 __all__ = ["ThermoInp", "read_thermo_inp", "default_thermo_inp"]
 
-# The NASA Glenn / CEA database is vendored next to this module (``thermolib/data``)
+# The NASA Glenn / CEA database is vendored next to this module (``nefes/thermo/data``)
 # and shipped as package data, so it is available without the user naming a path.
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 _DEFAULT_THERMO_INP = os.path.join(_DATA_DIR, "thermo.inp")
@@ -63,7 +63,7 @@ def default_thermo_inp() -> str:
     if not os.path.isfile(_DEFAULT_THERMO_INP):
         raise FileNotFoundError(
             f"the packaged thermo.inp is missing at {_DEFAULT_THERMO_INP!r}; "
-            "reinstall thermolib or pass an explicit path"
+            "reinstall nefes or pass an explicit path"
         )
     return _DEFAULT_THERMO_INP
 
@@ -240,7 +240,7 @@ class ThermoInp:
 
         Returns every species whose elemental composition is a subset of ``elements``, the
         candidate equilibrium products that can form from the fed-in atoms. This is the
-        un-reduced slate; a :class:`~thermolib.reduction.SpeciesReducer` trims it down.
+        un-reduced slate; a :class:`~nefes.thermo.reduction.SpeciesReducer` trims it down.
 
         Parameters
         ----------

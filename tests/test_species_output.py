@@ -16,7 +16,7 @@ from nefes.elements import catalog as cat
 from nefes.shell.network import Network
 from nefes.thermo.configure import equilibrium, perfect_gas
 
-MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thermolib", "data", "h2o2.yaml")
+MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}
 R_AIR, GAMMA = 287.0, 1.4
 RU = 8.314462618
@@ -24,7 +24,7 @@ RU = 8.314462618
 
 def _reacting_rig():
     """air -> duct -> H2 injector -> duct -> equilibrium flame -> duct -> outlet."""
-    from thermolib import SpeciesLibrary, Thermo
+    from nefes.thermo import SpeciesLibrary, Thermo
 
     lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)

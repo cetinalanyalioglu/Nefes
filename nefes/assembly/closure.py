@@ -8,7 +8,7 @@ For a perfect gas this is a single density root -- the kinetic-energy term is al
 folded into ``F(rho)``, so there is one root-find, not a nested fixed point -- and the
 returned ``(rho, h)`` carries the IFT-spliced complex-step seed.  The reacting models
 recover their static state directly through the equilibrium/frozen kernels
-(``eq_*_state_ke_*`` in :mod:`nefes.thermo.equilibrium`) and do not pass through this
+(``eq_*_state_ke_*`` in :mod:`nefes.thermo.edge_state`) and do not pass through this
 adapter.
 """
 

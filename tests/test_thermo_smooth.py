@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from thermolib import smooth
+from nefes.thermo import smooth
 
 
 def test_smooth_abs_recovers_abs():

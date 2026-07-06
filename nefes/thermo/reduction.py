@@ -25,7 +25,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from .equilibrium import equilibrate_TP
+from .equilibrate import equilibrate_TP
 
 __all__ = [
     "SampleState",
@@ -87,7 +87,7 @@ class SpeciesReducer(ABC):
 
         Parameters
         ----------
-        library : thermolib.SpeciesLibrary
+        library : nefes.thermo.SpeciesLibrary
             The candidate product slate to trim.
         samples : sequence of SampleState
             Representative states the reduction should remain valid across.

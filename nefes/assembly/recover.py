@@ -19,8 +19,8 @@ from numba import njit
 
 from .closure import closure_solve
 from ..thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER, EQ_FROZEN
-from ..thermo.equilibrium import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
-from ..thermo._chem import RU
+from ..thermo.edge_state import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
+from ..thermo.kernel import RU
 
 # edge-state table (est) slot layout
 ES_MDOT = 0

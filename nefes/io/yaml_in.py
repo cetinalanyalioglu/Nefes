@@ -14,7 +14,7 @@ from ..elements import catalog as cat
 from ..elements.ids import FLAME_EQUILIBRIUM, MASS_FLOW_INLET, MASS_SOURCE, PT_INLET, P_OUTLET
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL
 from ..thermo.configure import equilibrium, perfect_gas
-from ..thermo.equilibrium import AUTO_REDUCE_THRESHOLD
+from ..thermo.edge_state import AUTO_REDUCE_THRESHOLD
 from .provenance import UIProvenance
 
 _PORT_RE = re.compile(r"port-(\d+)$")
@@ -213,7 +213,7 @@ def _feed_sample_states(feed_lib, specs, g):
     """
     import numpy as np
 
-    from thermolib import SampleState
+    from nefes.thermo import SampleState
 
     from ..chem.composition import elemental_Z, species_mass_fractions
 
@@ -260,7 +260,7 @@ def _auto_library(db, specs, g):
     the enthalpy datum can be evaluated; the equilibrium kernel masks condensed species out
     of the products.
     """
-    from thermolib import get_reducer
+    from nefes.thermo import get_reducer
 
     declared = _declared_species(specs)
     if not declared:
@@ -303,7 +303,7 @@ def _build_library(g, specs, case_dir: str):
     native mechanism YAML (Cantera-subset) loads its species directly; an explicit
     ``thermo.inp`` path behaves like the packaged default.
     """
-    from thermolib import SpeciesLibrary, ThermoInp
+    from nefes.thermo import SpeciesLibrary, ThermoInp
 
     species = _parse_species(g.get("species"))
     auto = _is_auto(species)

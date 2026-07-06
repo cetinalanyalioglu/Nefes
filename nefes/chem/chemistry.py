@@ -61,7 +61,7 @@ def stream_mass_fractions(elements, library):
     ----------
     elements : list of ElementSpec
         The network elements (in node order).
-    library : thermolib.SpeciesLibrary
+    library : nefes.thermo.SpeciesLibrary
         The species data.
 
     Returns
@@ -104,7 +104,7 @@ def edge_species(prob, x, e, library, *, basis="mole", moles=None, stream_Y=None
         Converged state, shape ``(n_solve, n_edges)``.
     e : int
         Edge id.
-    library : thermolib.SpeciesLibrary or None
+    library : nefes.thermo.SpeciesLibrary or None
         Species data; ``None`` (perfect gas) yields an empty result.
     basis : {"mole", "mass"}, optional
         Whether the fractions are mole or mass fractions (default ``"mole"``).
@@ -165,7 +165,7 @@ def stream_mass_fractions_for(prob, x, library):  # pragma: no cover - convenien
         The compiled network (does not carry the element specs this needs).
     x : ndarray
         Converged state.
-    library : thermolib.SpeciesLibrary
+    library : nefes.thermo.SpeciesLibrary
         The species data.
 
     Raises

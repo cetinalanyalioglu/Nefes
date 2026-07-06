@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from thermolib import Mechanism, SpeciesLibrary, ThermoInp
+from nefes.thermo import Mechanism, SpeciesLibrary, ThermoInp
 
-DATA = os.path.join(os.path.dirname(__file__), os.pardir, "data")
+DATA = os.path.join(os.path.dirname(__file__), os.pardir, "nefes", "thermo", "data")
 H2O2 = os.path.join(DATA, "h2o2.yaml")
 THERMO_INP = os.path.join(DATA, "thermo.inp")
 

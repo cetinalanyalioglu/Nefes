@@ -7,7 +7,7 @@ A final cross-check against Cantera is skipped when Cantera or ``thermo.inp`` is
 import numpy as np
 import pytest
 
-from thermolib import SpeciesLibrary, Thermo, ThermoInp, default_thermo_inp, read_thermo_inp
+from nefes.thermo import SpeciesLibrary, Thermo, ThermoInp, default_thermo_inp, read_thermo_inp
 
 
 def test_packaged_thermo_inp_is_the_default():

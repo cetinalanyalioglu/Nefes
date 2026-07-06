@@ -7,24 +7,25 @@ participants refer to species in that library. Reactions are needed only for the
 finite-rate path and for the shared-Gibbs ``K_c`` route; equilibrium and mixture
 properties never need them.
 
-Reaction stoichiometry and modified-Arrhenius data are carried; the native format is a
-Cantera-YAML subset that round-trips, and an offline Cantera importer is provided.
-``Mechanism`` proxies the library's thermo interface so it can be passed anywhere a
-:class:`SpeciesLibrary` is expected.
+Reaction stoichiometry and modified-Arrhenius data are carried; mechanisms load from
+Cantera's YAML format through :meth:`Mechanism.from_cantera`, which reads a file path
+directly (a round-tripping subset of the format) or extracts from a live
+``cantera.Solution``. ``Mechanism`` proxies the library's thermo interface so it can be
+passed anywhere a :class:`SpeciesLibrary` is expected.
 
 Public: :class:`Reaction`, :class:`Mechanism`.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import yaml
 
 from .species import (
     SpeciesLibrary,
-    _cantera_solution,
-    _parse_native_doc,
+    _parse_cantera_doc,
 )
 
 __all__ = ["Reaction", "Mechanism"]
@@ -115,32 +116,36 @@ class Mechanism:
 
     # -- loaders ---------------------------------------------------------
     @classmethod
-    def from_native(cls, path):
-        """Load a native mechanism (species library + reactions)."""
-        with open(path, "r") as fh:
-            doc = yaml.safe_load(fh)
-        return cls.from_dict(doc)
+    def from_cantera(cls, source):
+        """Build a mechanism (species library + reactions) from Cantera data.
+
+        ``source`` may be a Cantera-YAML file path (``str``/``os.PathLike``), an
+        already-parsed ``dict``, or a live ``cantera.Solution``. Paths and dicts are read
+        directly with no Cantera dependency; a ``cantera.Solution`` is extracted through
+        Cantera, so passing one requires Cantera to be installed.
+        """
+        if isinstance(source, (str, os.PathLike)):
+            with open(source, "r") as fh:
+                source = yaml.safe_load(fh)
+        if isinstance(source, dict):
+            return cls.from_dict(source)
+        # A live cantera.Solution: extract library and reactions through Cantera.
+        library = SpeciesLibrary.from_cantera(source)
+        reactions = [_reaction_from_cantera(rxn) for rxn in source.reactions()]
+        return cls(library=library, reactions=reactions)
 
     @classmethod
     def from_dict(cls, doc):
-        """Build a mechanism from an already-parsed native-YAML document."""
-        elements, species, raw_reactions = _parse_native_doc(doc)
+        """Build a mechanism from an already-parsed Cantera-YAML document."""
+        elements, species, raw_reactions = _parse_cantera_doc(doc)
         library = SpeciesLibrary(elements=elements, species=species)
         reactions = [_reaction_from_dict(r) for r in raw_reactions]
         return cls(library=library, reactions=reactions)
 
-    @classmethod
-    def from_cantera(cls, source, phase_name=None):
-        """Offline importer from a full Cantera mechanism."""
-        gas = _cantera_solution(source)
-        library = SpeciesLibrary.from_cantera(gas)
-        reactions = [_reaction_from_cantera(rxn) for rxn in gas.reactions()]
-        return cls(library=library, reactions=reactions)
-
     # -- writer ----------------------------------------------------------
-    def to_native_dict(self):
-        """Serialize to a native-YAML-compatible dict (round-trips with :meth:`from_dict`)."""
-        doc = self.library.to_native_dict()
+    def to_cantera_dict(self):
+        """Serialize to a Cantera-YAML-compatible dict (round-trips with :meth:`from_dict`)."""
+        doc = self.library.to_cantera_dict()
         if self.reactions:
             doc["reactions"] = [
                 {
@@ -151,9 +156,9 @@ class Mechanism:
             ]
         return doc
 
-    def write_native(self, path):
+    def write_cantera_yaml(self, path):
         with open(path, "w") as fh:
-            yaml.safe_dump(self.to_native_dict(), fh, sort_keys=False)
+            yaml.safe_dump(self.to_cantera_dict(), fh, sort_keys=False)
 
 
 def _reaction_from_cantera(rxn):

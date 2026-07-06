@@ -73,7 +73,7 @@ def test_ports_auto_assigned_in_attachment_order():
 def test_edge_models_passthrough():
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH)
+    lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)
     idx = lib.species_index
     Y = np.zeros(lib.n_species)
@@ -112,7 +112,7 @@ def test_marker_gating_matches_explicit_edge_models():
     # requirement, for a reacting network with an equilibrium flame.
     from thermolib import SpeciesLibrary, Thermo
 
-    gas = Thermo(SpeciesLibrary.from_native(MECH))
+    gas = Thermo(SpeciesLibrary.from_cantera(MECH))
 
     def build(models):
         nodes = [
@@ -139,7 +139,7 @@ def test_marker_gating_handles_fresh_dilution_downstream():
     # no edge_models (the staged-combustion / exhaust-gas-recirculation case).
     from thermolib import SpeciesLibrary, Thermo
 
-    gas = Thermo(SpeciesLibrary.from_native(MECH))
+    gas = Thermo(SpeciesLibrary.from_cantera(MECH))
 
     def build(models):
         nodes = [

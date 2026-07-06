@@ -26,7 +26,7 @@ def _reacting_rig():
     """air -> duct -> H2 injector -> duct -> equilibrium flame -> duct -> outlet."""
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH)
+    lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)
     idx = lib.species_index
     Y = np.zeros(lib.n_species)

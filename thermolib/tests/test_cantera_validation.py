@@ -13,9 +13,9 @@ from thermolib import Mechanism, Thermo
 @pytest.fixture
 def setup(cantera):
     ct = cantera
-    mech = Mechanism.from_cantera("h2o2.yaml")
-    gas = Thermo(mech)
     ctg = ct.Solution("h2o2.yaml")
+    mech = Mechanism.from_cantera(ctg)
+    gas = Thermo(mech)
     return ct, mech, gas, ctg
 
 
@@ -86,9 +86,9 @@ def test_equilibrium_sound_speed(setup):
 def test_methane_air_flame_via_gri30(setup):
     # Carbon chemistry: import GRI-Mech 3.0 offline and validate HP flame.
     ct, _, _, _ = setup
-    mech = Mechanism.from_cantera("gri30.yaml")
-    gas = Thermo(mech)
     ctg = ct.Solution("gri30.yaml")
+    mech = Mechanism.from_cantera(ctg)
+    gas = Thermo(mech)
     p = 101325.0
     ctg.TPX = 300.0, p, {"CH4": 1, "O2": 2, "N2": 7.52}
     h0 = ctg.enthalpy_mass
@@ -122,9 +122,9 @@ def test_kc_matches_cantera(setup):
         assert np.isclose(np.log(ours), np.log(kc_ct[i]), atol=1e-6)
 
 
-def test_net_rates_is_design_hook(native_mech):
-    gas = Thermo(native_mech)
-    Y = np.zeros(native_mech.n_species)
-    Y[native_mech.species_index["H2O"]] = 1.0
+def test_net_rates_is_design_hook(cantera_mech):
+    gas = Thermo(cantera_mech)
+    Y = np.zeros(cantera_mech.n_species)
+    Y[cantera_mech.species_index["H2O"]] = 1.0
     with pytest.raises(NotImplementedError):
         gas.net_rates(Y, 1500.0, 101325.0)

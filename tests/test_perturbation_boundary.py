@@ -629,7 +629,7 @@ def test_loader_parses_boundary_conditions_and_runs(tmp_path):
 
 def test_loader_default_inherit_keeps_old_cases():
     # boundary nodes with no acoustic fields default to inherit (None)
-    net = load_case(os.path.join(_EXAMPLES, "converging_nozzle.yaml"))
+    net = load_case(os.path.join(_EXAMPLES, "getting-started", "converging_nozzle.yaml"))
     assert all(el.perturbation_bc is None for el in net._elements)
 
 

@@ -312,7 +312,7 @@ def _build_library(g, specs, case_dir: str):
     if mech_path:
         path = _resolve_path(mech_path, case_dir)
         if path.lower().endswith((".yaml", ".yml")):
-            lib = SpeciesLibrary.from_native(path)
+            lib = SpeciesLibrary.from_cantera(path)
             return lib if auto else lib.subset(species)
         return _auto_library(ThermoInp(path), specs, g) if auto else ThermoInp(path).library(species)
 

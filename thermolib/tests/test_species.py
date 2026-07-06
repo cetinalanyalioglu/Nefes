@@ -15,42 +15,42 @@ from thermolib import (
 )
 
 
-def test_library_has_no_reactions_concept(native_lib):
+def test_library_has_no_reactions_concept(cantera_lib):
     # A species library is just thermo data: it has species + elements, and is all
     # equilibrium needs; there is no 'reactions' on it.
-    assert native_lib.n_species == 10
-    assert set(native_lib.elements) == {"O", "H", "Ar", "N"}
-    assert not hasattr(native_lib, "reactions")
+    assert cantera_lib.n_species == 10
+    assert set(cantera_lib.elements) == {"O", "H", "Ar", "N"}
+    assert not hasattr(cantera_lib, "reactions")
 
 
-def test_mechanism_is_library_plus_reactions(native_mech, native_lib):
+def test_mechanism_is_library_plus_reactions(cantera_mech, cantera_lib):
     # A mechanism *associates* a library with reactions.
-    assert isinstance(native_mech.library, SpeciesLibrary)
-    assert len(native_mech.reactions) > 0
+    assert isinstance(cantera_mech.library, SpeciesLibrary)
+    assert len(cantera_mech.reactions) > 0
     # It proxies the library's thermo/sizing surface.
-    assert native_mech.n_species == native_lib.n_species
+    assert cantera_mech.n_species == cantera_lib.n_species
     T = 1234.0
-    assert np.allclose(native_mech.cp_R(T), native_lib.cp_R(T))
-    assert np.allclose(native_mech.element_matrix, native_lib.element_matrix)
+    assert np.allclose(cantera_mech.cp_R(T), cantera_lib.cp_R(T))
+    assert np.allclose(cantera_mech.element_matrix, cantera_lib.element_matrix)
 
 
-def test_vectorized_matches_per_species(native_lib):
+def test_vectorized_matches_per_species(cantera_lib):
     # The library evaluates all species in one vector op; it must agree with the
     # per-species polynomials exactly.
     for T in (300.0, 1000.0, 1234.0, 3000.0):
         for fn in ("cp_R", "h_RT", "s_R", "g_RT"):
-            lib_val = getattr(native_lib, fn)(T)
-            per = np.array([getattr(s.thermo, fn)(T) for s in native_lib.species])
+            lib_val = getattr(cantera_lib, fn)(T)
+            per = np.array([getattr(s.thermo, fn)(T) for s in cantera_lib.species])
             assert np.allclose(lib_val, per), (fn, T)
 
 
-def test_vectorized_complex_step_in_T(native_lib):
+def test_vectorized_complex_step_in_T(cantera_lib):
     # dh/dT (dimensionless) = (cp - h)/T per species, by complex step through
     # the vectorized evaluator.
     T = 1500.0
     eps = 1e-200
-    dhRT = native_lib.h_RT(T + 1j * eps).imag / eps
-    analytic = (native_lib.cp_R(T) - native_lib.h_RT(T)) / T
+    dhRT = cantera_lib.h_RT(T + 1j * eps).imag / eps
+    analytic = (cantera_lib.cp_R(T) - cantera_lib.h_RT(T)) / T
     assert np.allclose(dhRT, analytic, rtol=1e-10)
 
 
@@ -82,29 +82,29 @@ def test_interval_selection_on_real_part_only():
     assert np.isclose(dcp, lo[1], rtol=1e-9)  # d(cp/R)/dT = a4 here
 
 
-def test_default_p_ref_is_one_atm(native_lib):
-    assert native_lib.P_ref == pytest.approx(101325.0)
+def test_default_p_ref_is_one_atm(cantera_lib):
+    assert cantera_lib.P_ref == pytest.approx(101325.0)
 
 
-def test_subset_preserves_thermo(native_lib):
-    sub = native_lib.subset(["H2", "O2", "H2O", "N2"])
+def test_subset_preserves_thermo(cantera_lib):
+    sub = cantera_lib.subset(["H2", "O2", "H2O", "N2"])
     assert [s.name for s in sub.species] == ["H2", "O2", "H2O", "N2"]
     T = 1100.0
-    j_full = native_lib.species_index["H2O"]
+    j_full = cantera_lib.species_index["H2O"]
     j_sub = sub.species_index["H2O"]
-    assert np.isclose(sub.cp_R(T)[j_sub], native_lib.cp_R(T)[j_full])
+    assert np.isclose(sub.cp_R(T)[j_sub], cantera_lib.cp_R(T)[j_full])
 
 
-def test_thermo_accepts_library_or_mechanism(native_lib, native_mech):
+def test_thermo_accepts_library_or_mechanism(cantera_lib, cantera_mech):
     # Equilibrium/properties need only a library; kinetics needs reactions.
-    g_lib = Thermo(native_lib)
-    g_mech = Thermo(native_mech)
-    Y = np.zeros(native_lib.n_species)
-    Y[native_lib.species_index["H2O"]] = 1.0
+    g_lib = Thermo(cantera_lib)
+    g_mech = Thermo(cantera_mech)
+    Y = np.zeros(cantera_lib.n_species)
+    Y[cantera_lib.species_index["H2O"]] = 1.0
     p_lib = g_lib.properties(Y, 1500.0, 101325.0)
     p_mech = g_mech.properties(Y, 1500.0, 101325.0)
     assert np.isclose(p_lib.h, p_mech.h)
     # K_c needs reactions: works from a mechanism, errors from a bare library.
-    assert len(g_mech.equilibrium_constants_Kc(1500.0)) == len(native_mech.reactions)
+    assert len(g_mech.equilibrium_constants_Kc(1500.0)) == len(cantera_mech.reactions)
     with pytest.raises(ValueError):
         g_lib.equilibrium_constants_Kc(1500.0)

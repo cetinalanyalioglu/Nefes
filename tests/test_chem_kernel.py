@@ -34,7 +34,7 @@ def _h2_air(lib, gas, phi):
 def _nasa7_lib():
     from thermolib import SpeciesLibrary
 
-    return SpeciesLibrary.from_native(H2O2)
+    return SpeciesLibrary.from_cantera(H2O2)
 
 
 def _nasa9_lib():

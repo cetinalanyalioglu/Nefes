@@ -60,7 +60,7 @@ N_INJECTOR = 2
 def _air_enthalpy_datum():
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH)
+    lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)
     idx = lib.species_index
     Y = np.zeros(lib.n_species)

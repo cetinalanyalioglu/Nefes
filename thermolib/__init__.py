@@ -11,8 +11,8 @@ species library with a set of :class:`Reaction` objects (kinetics).
 Public API::
 
     from thermolib import SpeciesLibrary, Thermo
-    lib   = SpeciesLibrary.from_native("h2o2.yaml")  # or ThermoInp("thermo.inp").library([...])
-    gas   = Thermo(lib, backend="kernel")            # native equilibrium kernel
+    lib   = SpeciesLibrary.from_cantera("h2o2.yaml")  # or ThermoInp("thermo.inp").library([...])
+    gas   = Thermo(lib, backend="kernel")             # built-in equilibrium kernel
     props = gas.properties(Y, T, p)                  # cp, h, s, rho, a_frozen, ...
     eq    = gas.equilibrate_HP(Z_elem, h, p)         # -> T, rho, Y, a_equilibrium
 """

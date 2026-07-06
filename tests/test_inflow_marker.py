@@ -34,7 +34,7 @@ E_INLET, E_OUT = 0, 1  # inlet -> flame -> outlet
 def _premix_datum():
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH)
+    lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)
     idx = lib.species_index
     Y = np.zeros(lib.n_species)

@@ -26,8 +26,8 @@ class Thermo:
 
     Example::
 
-        lib  = SpeciesLibrary.from_native("h2o2.yaml")   # or ThermoInp(...).library(...)
-        gas  = Thermo(lib, backend="kernel")             # native equilibrium kernel
+        lib  = SpeciesLibrary.from_cantera("h2o2.yaml")  # or ThermoInp(...).library(...)
+        gas  = Thermo(lib, backend="kernel")             # built-in equilibrium kernel
         props = gas.properties(Y, T, p)
         eq    = gas.equilibrate_HP(Z_elem, h, p)
     """
@@ -83,7 +83,7 @@ class Thermo:
             raise ValueError(
                 "this Thermo was built from a SpeciesLibrary with no reactions; "
                 "reaction data (a Mechanism) is required for kinetic quantities. "
-                "Build with Thermo(Mechanism.from_native(...)) or .from_cantera(...)."
+                "Build with Thermo(Mechanism.from_cantera(...))."
             )
         return self.reactions
 

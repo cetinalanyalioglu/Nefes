@@ -37,7 +37,7 @@ E_AIR, E_APPROACH, E_FLAME_OUT = 0, 3, 4
 def _air_datum():
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH)
+    lib = SpeciesLibrary.from_cantera(MECH)
     gas = Thermo(lib)
     idx = lib.species_index
     Y = np.zeros(lib.n_species)

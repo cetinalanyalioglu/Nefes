@@ -10,15 +10,15 @@ THERMO_INP = os.path.join(DATA, "thermo.inp")
 
 
 @pytest.fixture(scope="session")
-def native_mech():
-    """The native (Cantera-YAML-subset) H2/O2/N2/Ar mechanism (library+reactions)."""
-    return Mechanism.from_native(H2O2)
+def cantera_mech():
+    """The H2/O2/N2/Ar mechanism (library+reactions) parsed from the packaged Cantera YAML."""
+    return Mechanism.from_cantera(H2O2)
 
 
 @pytest.fixture(scope="session")
-def native_lib():
+def cantera_lib():
     """The same data as a bare SpeciesLibrary (no reactions)."""
-    return SpeciesLibrary.from_native(H2O2)
+    return SpeciesLibrary.from_cantera(H2O2)
 
 
 @pytest.fixture(scope="session")

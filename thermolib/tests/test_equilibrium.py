@@ -1,4 +1,4 @@
-"""Chemical equilibrium via the native element-potential kernel.
+"""Chemical equilibrium via the built-in element-potential kernel.
 
 These tests are Cantera-free: they check internal consistency (conservation,
 realizability, HP<->TP round-trips, differentiation).
@@ -11,27 +11,27 @@ from thermolib import Thermo
 
 
 @pytest.fixture
-def gas(native_mech):
-    return Thermo(native_mech)
+def gas(cantera_mech):
+    return Thermo(cantera_mech)
 
 
 @pytest.fixture
-def Z_stoich(gas, native_mech):
+def Z_stoich(gas, cantera_mech):
     # Elemental composition of a stoichiometric H2/O2 + N2 dilution mixture.
-    Y = np.zeros(native_mech.n_species)
-    idx = native_mech.species_index
+    Y = np.zeros(cantera_mech.n_species)
+    idx = cantera_mech.species_index
     # 2 H2 + O2 -> 2 H2O, plus N2 diluent (mole-based -> set via X then convert)
-    X = np.zeros(native_mech.n_species)
+    X = np.zeros(cantera_mech.n_species)
     X[idx["H2"]] = 2.0
     X[idx["O2"]] = 1.0
     X[idx["N2"]] = 3.76
     X /= X.sum()
-    W = native_mech.molar_masses
+    W = cantera_mech.molar_masses
     Y = X * W / np.sum(X * W)
     return gas.elemental_mass_fractions(Y)
 
 
-def test_tp_equilibrium_realizable_and_conserved(gas, native_mech, Z_stoich):
+def test_tp_equilibrium_realizable_and_conserved(gas, cantera_mech, Z_stoich):
     res = gas.equilibrate_TP(Z_stoich, T=2400.0, p=101325.0)
     assert res.converged
     assert np.isclose(np.sum(res.Y), 1.0)
@@ -41,7 +41,7 @@ def test_tp_equilibrium_realizable_and_conserved(gas, native_mech, Z_stoich):
     assert np.allclose(Z_out, Z_stoich, atol=1e-10)
 
 
-def test_hp_equilibrium_conserves_enthalpy(gas, native_mech, Z_stoich):
+def test_hp_equilibrium_conserves_enthalpy(gas, cantera_mech, Z_stoich):
     # Pick a target enthalpy from a known (T, composition); equilibrate at HP
     # and confirm the resulting mixture enthalpy equals the target.
     p = 101325.0
@@ -80,16 +80,16 @@ def test_hp_complex_step_sensitivities(gas, Z_stoich):
     assert np.isclose(dTdp_cs, dTdp_fd, rtol=1e-5)
 
 
-def test_pressure_is_ordinary_input(gas, native_mech, Z_stoich):
+def test_pressure_is_ordinary_input(gas, cantera_mech, Z_stoich):
     # Pressure is an ordinary input; higher p suppresses dissociation,
     # raising the adiabatic flame temperature for a fixed reactant enthalpy.
     p = 101325.0
-    idx = native_mech.species_index
-    X = np.zeros(native_mech.n_species)
+    idx = cantera_mech.species_index
+    X = np.zeros(cantera_mech.n_species)
     X[idx["H2"]] = 2.0
     X[idx["O2"]] = 1.0
     X[idx["N2"]] = 3.76
-    W = native_mech.molar_masses
+    W = cantera_mech.molar_masses
     Y_react = X * W / np.sum(X * W)
     # Frozen reactant enthalpy at 300 K (the energy that the flame conserves).
     h0 = gas.properties(Y_react, 300.0, p).h
@@ -98,9 +98,9 @@ def test_pressure_is_ordinary_input(gas, native_mech, Z_stoich):
     assert T_hi > T_lo
 
 
-def test_backend_selection(native_mech):
-    assert Thermo(native_mech, backend="kernel").backend.name == "kernel"
+def test_backend_selection(cantera_mech):
+    assert Thermo(cantera_mech, backend="kernel").backend.name == "kernel"
     with pytest.raises(NotImplementedError):
-        Thermo(native_mech, backend="table")
+        Thermo(cantera_mech, backend="table")
     with pytest.raises(ValueError):
-        Thermo(native_mech, backend="nonsense")
+        Thermo(cantera_mech, backend="nonsense")

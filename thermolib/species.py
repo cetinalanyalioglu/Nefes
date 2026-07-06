@@ -8,9 +8,11 @@ formulation). Reactions live in a :class:`thermolib.mechanism.Mechanism`, which
 *associates* a species library with a reaction set (the term "mechanism" is reserved for
 that combination).
 
-The native file format is a subset of Cantera's YAML; an optional offline importer builds
-a library from a full Cantera phase. Per-species ``cp,h,s,g(T)`` are evaluated
-complex-analytically in ``T``.
+Libraries load from Cantera's YAML format through a single :meth:`SpeciesLibrary.from_cantera`
+that adapts to its input: a file path (or parsed ``dict``) is read directly with no Cantera
+dependency, supporting the subset of the format thermolib needs, while a live
+``cantera.Solution`` is extracted through Cantera itself. Per-species ``cp,h,s,g(T)`` are
+evaluated complex-analytically in ``T``.
 
 All species share one **canonical 9-term NASA representation** and are evaluated in a
 single vectorized expression over ``(n_species, 9)`` coefficient arrays, with no
@@ -23,6 +25,7 @@ Public: :class:`ThermoPoly`, :func:`NASA7`, :func:`NASA9`, :class:`Species`,
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -303,28 +306,31 @@ class SpeciesLibrary:
 
     # -- loaders ---------------------------------------------------------
     @classmethod
-    def from_native(cls, path):
-        """Load a native species library (a subset of Cantera YAML)."""
-        with open(path, "r") as fh:
-            doc = yaml.safe_load(fh)
-        return cls.from_dict(doc)
+    def from_cantera(cls, source):
+        """Build a library from Cantera data, adapting to the input type.
+
+        ``source`` may be a Cantera-YAML file path (``str``/``os.PathLike``), an
+        already-parsed ``dict`` of such a document, or a live ``cantera.Solution``.  Paths
+        and dicts are read directly with no Cantera dependency and honour the subset of the
+        format thermolib needs (NASA7/NASA9 thermo, no transport); a ``cantera.Solution`` is
+        extracted through Cantera itself, so passing one requires Cantera to be installed.
+
+        The direct-parse routes never touch the runtime/equilibrium code path.
+        """
+        if isinstance(source, (str, os.PathLike)):
+            with open(source, "r") as fh:
+                source = yaml.safe_load(fh)
+        if isinstance(source, dict):
+            return cls.from_dict(source)
+        # A live cantera.Solution: extract species and thermo through Cantera.
+        species = [_species_from_cantera(source, name) for name in source.species_names]
+        return cls(elements=list(source.element_names), species=species)
 
     @classmethod
     def from_dict(cls, doc):
-        """Build a library from an already-parsed native-YAML document."""
-        elements, species, _ = _parse_native_doc(doc)
+        """Build a library from an already-parsed Cantera-YAML document."""
+        elements, species, _ = _parse_cantera_doc(doc)
         return cls(elements=elements, species=species)
-
-    @classmethod
-    def from_cantera(cls, source, phase_name=None):
-        """Offline importer: species and thermo from a Cantera phase.
-
-        ``source`` may be a Cantera YAML path or a ``ct.Solution``. Requires Cantera, but
-        this is an offline path, never on the runtime/equilibrium code path.
-        """
-        gas = _cantera_solution(source)
-        species = [_species_from_cantera(gas, name) for name in gas.species_names]
-        return cls(elements=list(gas.element_names), species=species)
 
     @classmethod
     def from_cea(cls, path=None, species=None, P_ref=None):
@@ -340,8 +346,8 @@ class SpeciesLibrary:
         return ThermoInp(path).library(species, P_ref=P_ref)
 
     # -- writer ----------------------------------------------------------
-    def to_native_dict(self):
-        """Serialize to a native-YAML-compatible dict (round-trips with :meth:`from_dict`)."""
+    def to_cantera_dict(self):
+        """Serialize to a Cantera-YAML-compatible dict (round-trips with :meth:`from_dict`)."""
         return {
             "phases": [
                 {
@@ -354,16 +360,16 @@ class SpeciesLibrary:
             "species": [_species_to_dict(s) for s in self.species],
         }
 
-    def write_native(self, path):
+    def write_cantera_yaml(self, path):
         with open(path, "w") as fh:
-            yaml.safe_dump(self.to_native_dict(), fh, sort_keys=False)
+            yaml.safe_dump(self.to_cantera_dict(), fh, sort_keys=False)
 
 
 # ---------------------------------------------------------------------------
 # Shared (de)serialization helpers used by both SpeciesLibrary and Mechanism
 # ---------------------------------------------------------------------------
-def _parse_native_doc(doc):
-    """Return ``(elements, species, raw_reactions)`` from a native-YAML doc."""
+def _parse_cantera_doc(doc):
+    """Return ``(elements, species, raw_reactions)`` from a Cantera-YAML doc."""
     phase = doc.get("phases", [{}])[0] if doc.get("phases") else {}
     species_by_name = {sp["name"]: _species_from_dict(sp) for sp in doc.get("species", [])}
 
@@ -379,7 +385,7 @@ def _parse_native_doc(doc):
 
 
 def _species_from_dict(sp):
-    """Build a :class:`Species` from a native-YAML species block."""
+    """Build a :class:`Species` from a Cantera-YAML species block."""
     th = sp["thermo"]
     model = th.get("model", "NASA7")
     ranges = th["temperature-ranges"]
@@ -398,13 +404,13 @@ def _species_from_dict(sp):
             raise ValueError(f"Species {sp['name']!r}: NASA9 needs len(data) == " f"len(temperature-ranges) - 1.")
         thermo = NASA9(ranges, data)
     else:
-        raise ValueError(f"Species {sp['name']!r}: native format supports NASA7/NASA9 thermo " f"only, got {model!r}.")
+        raise ValueError(f"Species {sp['name']!r}: thermolib reads NASA7/NASA9 thermo " f"only, got {model!r}.")
 
     return Species(name=sp["name"], composition=dict(sp["composition"]), thermo=thermo, note=sp.get("note", ""))
 
 
 def _species_to_dict(s):
-    """Serialize a :class:`Species` to a native-YAML species block."""
+    """Serialize a :class:`Species` to a Cantera-YAML species block."""
     p = s.thermo
     if p.kind == "NASA7":
         thermo = {
@@ -422,17 +428,6 @@ def _species_to_dict(s):
     if s.note:
         out["note"] = s.note
     return out
-
-
-def _cantera_solution(source):
-    try:
-        import cantera as ct
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "Cantera import requested but Cantera is not installed (offline "
-            "path only). Install it, or author a native/CEA species library."
-        ) from exc
-    return source if isinstance(source, ct.Solution) else ct.Solution(source)
 
 
 def _species_from_cantera(gas, name):

@@ -167,7 +167,7 @@ def test_storage_elements_roundtrip(tmp_path):
     assert np.allclose(np.sort_complex(M1.tocoo().data), np.sort_complex(M2.tocoo().data))
 
 
-@pytest.mark.parametrize("name", ["converging_nozzle.yaml", "gas_turbine_large.yaml"])
+@pytest.mark.parametrize("name", ["getting-started/converging_nozzle.yaml", "flow/gas_turbine_large.yaml"])
 def test_provenance_roundtrip_resolves(tmp_path, name):
     net = load_case(os.path.join(_EXAMPLES, name))
     sol = net.solve()
@@ -180,7 +180,7 @@ def test_provenance_roundtrip_resolves(tmp_path, name):
 
 
 def test_provenance_preserves_ids_and_handles(tmp_path):
-    src = os.path.join(_EXAMPLES, "converging_nozzle.yaml")
+    src = os.path.join(_EXAMPLES, "getting-started", "converging_nozzle.yaml")
     orig = yaml.safe_load(open(src).read())
     net = load_case(src)
     _, doc = _reload(net, net.solve(), str(tmp_path))

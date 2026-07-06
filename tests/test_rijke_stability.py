@@ -174,7 +174,7 @@ def test_n_tau_lag_sets_stability_band():
 def _h2_air():
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH_PATH)
+    lib = SpeciesLibrary.from_cantera(MECH_PATH)
     gas = Thermo(lib)
     idx = lib.species_index
     moles = np.zeros(lib.n_species)

@@ -247,7 +247,7 @@ def test_reacting_burnt_matches_standalone_equilibrium(tmp_path):
     sol = net.solve()
     est = states_table(net.compile(), sol.x)
 
-    lib = SpeciesLibrary.from_native(MECH).subset(["H2", "O2", "N2", "H2O", "OH", "H", "O", "HO2"])
+    lib = SpeciesLibrary.from_cantera(MECH).subset(["H2", "O2", "N2", "H2O", "OH", "H", "O", "HO2"])
     gas = Thermo(lib)
     Y, Z = resolve_composition(lib, {"H2": 1.0, "O2": 0.5, "N2": 1.88}, basis="mole")
     # the recovered burnt T is the *static* temperature, so compare against the HP

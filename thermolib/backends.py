@@ -2,7 +2,7 @@
 
 Two backends are envisaged:
 
-* **kernel**: the standalone native CEA-style equilibrium kernel. Its differentiation mode
+* **kernel**: the standalone built-in CEA-style equilibrium kernel. Its differentiation mode
   is *complex-transparent*: it is callable with complex arguments directly, and the
   equilibrium solve propagates complex perturbations via a final implicit-function step.
 

@@ -30,7 +30,7 @@ def _bundle():
     """A two-stream (air, H2) equilibrium bundle plus a stoich-ish mixed-edge point."""
     from thermolib import SpeciesLibrary
 
-    lib = SpeciesLibrary.from_native(MECH)
+    lib = SpeciesLibrary.from_cantera(MECH)
     Y_air = species_mass_fractions(lib, {"O2": 0.21, "N2": 0.79}, "mole")
     Y_h2 = species_mass_fractions(lib, {"H2": 1.0}, "mole")
     stream_Y = np.array([Y_air, Y_h2])

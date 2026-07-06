@@ -85,7 +85,7 @@ def _h2_air_reactant():
     """Stoichiometric H2/air reactant: (Thermo, species mass fractions, elemental Z)."""
     from thermolib import SpeciesLibrary, Thermo
 
-    lib = SpeciesLibrary.from_native(MECH_PATH)
+    lib = SpeciesLibrary.from_cantera(MECH_PATH)
     gas = Thermo(lib)
     idx = lib.species_index
     moles = np.zeros(lib.n_species)

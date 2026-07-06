@@ -8,8 +8,8 @@ from thermolib.constants import R_UNIVERSAL
 
 
 @pytest.fixture
-def gas(native_mech):
-    return Thermo(native_mech, backend="kernel")
+def gas(cantera_mech):
+    return Thermo(cantera_mech, backend="kernel")
 
 
 def _mix(mech):
@@ -22,14 +22,14 @@ def _mix(mech):
     return Y
 
 
-def test_species_thermo_consistency(native_mech):
+def test_species_thermo_consistency(cantera_mech):
     # g/RT = h/RT - s/R, by construction.
     T = 1100.0
-    assert np.allclose(native_mech.g_RT(T), native_mech.h_RT(T) - native_mech.s_R(T))
+    assert np.allclose(cantera_mech.g_RT(T), cantera_mech.h_RT(T) - cantera_mech.s_R(T))
 
 
-def test_frozen_sound_speed_identity(gas, native_mech):
-    Y = _mix(native_mech)
+def test_frozen_sound_speed_identity(gas, cantera_mech):
+    Y = _mix(cantera_mech)
     T, p = 1300.0, 2e5
     pr = gas.properties(Y, T, p)
     # a_frozen^2 = gamma * p / rho.
@@ -38,8 +38,8 @@ def test_frozen_sound_speed_identity(gas, native_mech):
     assert np.isclose(pr.cp - pr.cv, R_UNIVERSAL / pr.W, rtol=1e-12)
 
 
-def test_properties_complex_step_in_T(gas, native_mech):
-    Y = _mix(native_mech)
+def test_properties_complex_step_in_T(gas, cantera_mech):
+    Y = _mix(cantera_mech)
     p = 1.5e5
     T = 1000.0
     eps = 1e-200
@@ -49,9 +49,9 @@ def test_properties_complex_step_in_T(gas, native_mech):
     assert np.isclose(h_cs, cp, rtol=1e-10)
 
 
-def test_properties_complex_step_in_composition(gas, native_mech):
-    Y = _mix(native_mech).astype(complex)
-    idx = native_mech.species_index
+def test_properties_complex_step_in_composition(gas, cantera_mech):
+    Y = _mix(cantera_mech).astype(complex)
+    idx = cantera_mech.species_index
     T, p = 1000.0, 1e5
     eps = 1e-200
     Yp = Y.copy()
@@ -67,8 +67,8 @@ def test_properties_complex_step_in_composition(gas, native_mech):
     assert np.isclose(dh, dh_fd, rtol=1e-5)
 
 
-def test_elemental_mass_fractions_sum_to_one(gas, native_mech):
-    Y = _mix(native_mech)
+def test_elemental_mass_fractions_sum_to_one(gas, cantera_mech):
+    Y = _mix(cantera_mech)
     Z = gas.elemental_mass_fractions(Y)
     assert np.isclose(np.sum(Z), 1.0)
     assert np.all(Z >= 0)

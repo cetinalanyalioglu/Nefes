@@ -40,10 +40,13 @@ class CompositeElementSpec:
         Display name; sub-elements are namespaced under it (``orifice.iac``).
     sub_elements : list of ElementSpec
         The atomic elements the composite expands to (all atomic -- no nesting yet).
-    internal_edges : list of (int, int, float)
+    internal_edges : list of (int, int, float or callable)
         Directed internal edges ``(tail_sub, head_sub, area)`` between sub-elements, by
         *local* sub-element index.  Each internal edge **is** an intermediate flow state
-        (no junction needed for a serial chain).
+        (no junction needed for a serial chain).  An area may be a callable
+        ``f(a_up, a_down) -> float`` resolved at expansion from the areas of the
+        composite's external inflow/outflow edges, so a recipe can size itself relative
+        to the edges it is wired to (areas live on edges, never on elements).
     upstream_sub : int, optional
         Local index of the sub-element the inflow (external head) edge attaches to
         (default 0, the first sub-element, which keeps the composite's node id).
@@ -371,7 +374,9 @@ def validate_composite(spec: CompositeElementSpec):
             raise ValueError(f"{label}: internal edge {j} references sub-element out of range [0, {n}): {(ts, hs)}")
         if ts == hs:
             raise ValueError(f"{label}: internal edge {j} is a self-loop on sub-element {ts}")
-        if not float(a) > 0.0:
+        # a callable area is resolved (and positivity-checked) at expansion, when the
+        # attached external edge areas are known
+        if not callable(a) and not float(a) > 0.0:
             raise ValueError(f"{label}: internal edge {j} must have a positive area; got {a}")
     if not 0 <= spec.upstream_sub < n:
         raise ValueError(f"{label}: upstream_sub {spec.upstream_sub} out of range [0, {n})")
@@ -466,14 +471,31 @@ def expand_composites(elements, edges, ports=None):
         for (t, h, _a), (tp, hp) in zip(edges, ext_pins)
     ]
 
-    # append internal edges (each composite's own internal connectivity)
+    # append internal edges (each composite's own internal connectivity); a callable
+    # area sizes itself from the composite's external inflow/outflow edge areas
+    def _resolve_area(i, el, j, a):
+        if not callable(a):
+            return a
+        label = f"composite {el.name!r}"
+        inflow = [ae for (t, h, ae) in edges if h == i]
+        outflow = [ae for (t, h, ae) in edges if t == i]
+        if len(inflow) != 1 or len(outflow) != 1:
+            raise ValueError(
+                f"{label}: internal edge {j} sizes itself from the attached edges, which needs exactly "
+                f"one inflow and one outflow edge; got {len(inflow)} inflow / {len(outflow)} outflow"
+            )
+        resolved = float(a(float(inflow[0]), float(outflow[0])))
+        if not resolved > 0.0:
+            raise ValueError(f"{label}: internal edge {j} resolved to a non-positive area; got {resolved}")
+        return resolved
+
     internal_edge_ids = set()
     for i, el in enumerate(elements):
         if not is_composite(el):
             continue
-        for ts, hs, a in el.internal_edges:
+        for j, (ts, hs, a) in enumerate(el.internal_edges):
             internal_edge_ids.add(len(new_edges))
-            new_edges.append((slots[i][ts], slots[i][hs], a))
+            new_edges.append((slots[i][ts], slots[i][hs], _resolve_area(i, el, j, a)))
             pins.append((None, None))
 
     # Wire explicit ports, exactly as a user connecting a serial chain by hand: a fixed 2-port

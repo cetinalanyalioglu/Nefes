@@ -910,15 +910,16 @@ def orifice(throat_area, name="orifice", eps=None) -> CompositeElementSpec:
     )
 
 
-def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) -> CompositeElementSpec:
+def lossy_nozzle(throat_area, beta, name="nozzle", eps=None) -> CompositeElementSpec:
     """General lossy nozzle (De Domenico): ``A1 ->isen-> AT ->isen-> Aj ->Borda-> A2``.
 
     A converging nozzle to the throat, a second isentropic change to the jet plane
-    ``Aj = beta * A2``, then a Borda re-expansion to the downstream area.  ``beta`` knobs
-    the loss between the two physical limits:
+    ``Aj = beta * A2``, then a Borda re-expansion to the downstream area.  The downstream
+    area ``A2`` is read off the attached outflow edge at build time (areas live on edges,
+    never on elements).  ``beta`` knobs the loss between the two physical limits:
 
-    * ``beta = throat_area / downstream_area`` -> the orifice (maximum loss): the second
-      isentropic change is ``AT -> AT`` (trivial) and the Borda is the full ``AT -> A2``;
+    * ``beta = AT / A2`` -> the orifice (maximum loss): the second isentropic change is
+      ``AT -> AT`` (trivial) and the Borda is the full ``AT -> A2``;
     * ``beta = 1`` -> the lossless nozzle: the Borda is ``A2 -> A2`` (equal areas, the
       momentum/loss terms vanish), recovering the isentropic limit.
 
@@ -927,9 +928,8 @@ def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) ->
     throat_area : float
         Throat area ``AT`` [m^2].
     beta : float
-        Jet-to-downstream area ratio ``Aj / A2`` in ``[AT/A2, 1]``.
-    downstream_area : float
-        Downstream edge area ``A2`` [m^2] (must match the external outflow edge).
+        Jet-to-downstream area ratio ``Aj / A2`` in ``[AT/A2, 1]``; the lower bound needs
+        the outflow edge area, so it is checked at build time.
     name : str, optional
         Display name.
     eps : float, optional
@@ -939,16 +939,21 @@ def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) ->
     -------
     CompositeElementSpec
     """
-    AT, A2, b = float(throat_area), float(downstream_area), float(beta)
-    if not AT > 0.0 or not A2 > 0.0:
-        raise ValueError(f"lossy_nozzle {name!r}: throat_area and downstream_area must be positive")
-    lo = AT / A2
-    if not lo - 1e-12 <= b <= 1.0 + 1e-12:
-        raise ValueError(
-            f"lossy_nozzle {name!r}: beta must lie in [AT/A2, 1] = [{lo:.4g}, 1] "
-            f"(AT/A2 -> orifice, 1 -> lossless); got {beta}"
-        )
-    Aj = b * A2
+    AT, b = float(throat_area), float(beta)
+    if not AT > 0.0:
+        raise ValueError(f"lossy_nozzle {name!r}: throat_area must be positive; got {throat_area}")
+    if not 0.0 < b <= 1.0 + 1e-12:
+        raise ValueError(f"lossy_nozzle {name!r}: beta must lie in [AT/A2, 1] (1 -> lossless); got {beta}")
+
+    def _jet_area(a_up, a_down):
+        lo = AT / a_down
+        if not lo - 1e-12 <= b:
+            raise ValueError(
+                f"lossy_nozzle {name!r}: beta must lie in [AT/A2, 1] = [{lo:.4g}, 1] "
+                f"(AT/A2 -> orifice, 1 -> lossless); got {b}"
+            )
+        return b * a_down
+
     return CompositeElementSpec(
         name=name,
         sub_elements=[
@@ -956,22 +961,24 @@ def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) ->
             isentropic_area_change(name=f"{name}.iac1"),
             sudden_area_change(name=f"{name}.sac", eps=eps),
         ],
-        internal_edges=[(0, 1, AT), (1, 2, Aj)],  # iac0 -> iac1 at AT, iac1 -> sac at Aj
+        internal_edges=[(0, 1, AT), (1, 2, _jet_area)],  # iac0 -> iac1 at AT, iac1 -> sac at Aj = beta*A2
         kind="lossy_nozzle",
-        params={"throat_area": AT, "beta": b, "downstream_area": A2},
+        params={"throat_area": AT, "beta": b},
     )
 
 
-def sudden_contraction(downstream_area, cc=0.62, name="contraction", eps=None) -> CompositeElementSpec:
+def sudden_contraction(*, cc=0.62, name="contraction", eps=None) -> CompositeElementSpec:
     """Sudden contraction that resolves the vena-contracta state (composite).
 
     A flow contracting into a smaller pipe necks to a **vena contracta** of area
-    ``cc * downstream_area`` just past the contraction plane, where the static pressure
-    is at its minimum, then re-expands (with mixing loss) to fill the downstream pipe.
-    This composite resolves that explicitly -- an :func:`isentropic_area_change` from the
-    upstream area to the vena contracta, then a :func:`sudden_area_change` (Borda-Carnot)
-    re-expansion to the downstream area -- so the total-pressure loss and the **minimum
-    static pressure** are exact at higher Mach.
+    ``cc * A2`` just past the contraction plane, where the static pressure is at its
+    minimum, then re-expands (with mixing loss) to fill the downstream pipe.  The
+    downstream area ``A2`` is read off the attached outflow edge at build time (areas
+    live on edges, never on elements).  This composite resolves the neck explicitly --
+    an :func:`isentropic_area_change` from the upstream area to the vena contracta, then
+    a :func:`sudden_area_change` (Borda-Carnot) re-expansion to the downstream area --
+    so the total-pressure loss and the **minimum static pressure** are exact at higher
+    Mach.
 
     This is the compressible upgrade to :func:`sudden_area_change`'s ``cc``-loss, whose
     incompressible ``1/2 rho u^2`` head is accurate only to ``O(M^2)``.  Read the
@@ -980,8 +987,6 @@ def sudden_contraction(downstream_area, cc=0.62, name="contraction", eps=None) -
 
     Parameters
     ----------
-    downstream_area : float
-        The downstream pipe area ``A2`` [m^2] (must match the wired outflow edge).
     cc : float, optional
         Vena-contracta contraction coefficient in ``(0, 1]`` (default 0.62, a sharp-edged
         contraction; ``cc = 1`` is the loss-free limit).
@@ -994,21 +999,19 @@ def sudden_contraction(downstream_area, cc=0.62, name="contraction", eps=None) -
     -------
     CompositeElementSpec
     """
-    A2, c = float(downstream_area), float(cc)
-    if not A2 > 0.0:
-        raise ValueError(f"sudden_contraction {name!r}: downstream_area must be positive; got {downstream_area}")
+    c = float(cc)
     if not 0.0 < c <= 1.0:
         raise ValueError(f"sudden_contraction {name!r}: cc must be in (0, 1]; got {cc}")
-    A_vc = c * A2  # the vena-contracta (minimum) area
     return CompositeElementSpec(
         name=name,
         sub_elements=[
             isentropic_area_change(name=f"{name}.contract"),
             sudden_area_change(name=f"{name}.borda", eps=eps),
         ],
-        internal_edges=[(0, 1, A_vc)],  # isentropic acceleration to the vena contracta, then Borda re-expansion
+        # isentropic acceleration to the vena contracta cc*A2, then Borda re-expansion
+        internal_edges=[(0, 1, lambda a_up, a_down: c * a_down)],
         kind="sudden_contraction",
-        params={"downstream_area": A2, "cc": c},
+        params={"cc": c},
     )
 
 

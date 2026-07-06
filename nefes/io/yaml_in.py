@@ -116,10 +116,8 @@ _UI_NODE_BUILDERS = {
     # Composite elements: each expands at build time into its atomic recipe (see
     # nefes.elements.catalog); the UI carries only the composite's own parameters.
     "Orifice": lambda a: cat.orifice(a["throatArea"]),
-    "LossyNozzle": lambda a: cat.lossy_nozzle(a["throatArea"], a["beta"], a["downstreamArea"]),
-    "SuddenContraction": lambda a: cat.sudden_contraction(
-        a["downstreamArea"], cc=a.get("contractionCoefficient", 0.62)
-    ),
+    "LossyNozzle": lambda a: cat.lossy_nozzle(a["throatArea"], a["beta"]),
+    "SuddenContraction": lambda a: cat.sudden_contraction(cc=a.get("contractionCoefficient", 0.62)),
     "HelmholtzResonator": lambda a: cat.helmholtz_resonator(a["volume"], a["neckLength"], a["neckArea"]),
     "FannoPipe": lambda a: cat.fanno_pipe(
         a["length"], a["diameter"], a["frictionFactor"], int(a.get("nSegments") or 8)

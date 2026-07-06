@@ -67,8 +67,9 @@ $$A_1 \xrightarrow{\text{isen}} A_T \xrightarrow{\text{Borda}} A_2.$$
 | `throat_area` | $A_T$ | throat (vena-contracta plane) area | m² | required, $>0$ (and $<A_1,A_2$) |
 | `eps` | $\varepsilon$ | sharpens the embedded Borda direction switch | kg/s | `None` |
 
-### `lossy_nozzle(throat_area, beta, downstream_area, eps=None)`
+### `lossy_nozzle(throat_area, beta, eps=None)`
 The general De Domenico nozzle; `orifice` and the lossless nozzle are its endpoints.
+The downstream area $A_2$ is read off the attached outflow edge at build time (areas live on edges, never on elements).
 
 $$A_1 \xrightarrow{\text{isen}} A_T \xrightarrow{\text{isen}} A_j=\beta A_2 \xrightarrow{\text{Borda}} A_2, \qquad \beta \in \left[\tfrac{A_T}{A_2},\, 1\right].$$
 
@@ -78,13 +79,13 @@ its loss vanishes).
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
 | `throat_area` | $A_T$ | throat area | m² | required, $>0$ |
-| `beta` | $\beta$ | jet-to-downstream area ratio $A_j/A_2$ | — | required, in $[A_T/A_2,\,1]$ |
-| `downstream_area` | $A_2$ | downstream edge area (must match the outflow edge) | m² | required, $>0$ |
+| `beta` | $\beta$ | jet-to-downstream area ratio $A_j/A_2$ | — | required, in $[A_T/A_2,\,1]$; the lower bound is checked at build time |
 | `eps` | $\varepsilon$ | sharpens the Borda switch | kg/s | `None` |
 
-### `sudden_contraction(downstream_area, cc=0.62, eps=None)`
+### `sudden_contraction(cc=0.62, eps=None)`
 Resolves the vena contracta explicitly — the compressible upgrade to `sudden_area_change`'s
 $c_c$-loss (exact loss **and** minimum static pressure at higher Mach).
+The downstream area $A_2$ is read off the attached outflow edge at build time.
 
 $$A_1 \xrightarrow{\text{isen}} A_\text{vc}=c_c A_2 \xrightarrow{\text{Borda}} A_2.$$
 
@@ -92,7 +93,6 @@ Read the minimum static pressure off the throat edge (`solution.composite(name).
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
-| `downstream_area` | $A_2$ | downstream pipe area (must match the outflow edge) | m² | required, $>0$ |
 | `cc` | $c_c$ | vena-contracta contraction coefficient | — | `0.62`, in $(0,1]$ |
 | `eps` | $\varepsilon$ | sharpens the Borda switch | kg/s | `None` |
 

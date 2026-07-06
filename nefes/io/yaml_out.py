@@ -817,15 +817,11 @@ _COMPOSITE_TO_UI = {
     "orifice": ("Orifice", lambda p: {"throatArea": float(p["throat_area"])}),
     "lossy_nozzle": (
         "LossyNozzle",
-        lambda p: {
-            "throatArea": float(p["throat_area"]),
-            "beta": float(p["beta"]),
-            "downstreamArea": float(p["downstream_area"]),
-        },
+        lambda p: {"throatArea": float(p["throat_area"]), "beta": float(p["beta"])},
     ),
     "sudden_contraction": (
         "SuddenContraction",
-        lambda p: {"downstreamArea": float(p["downstream_area"]), "contractionCoefficient": float(p["cc"])},
+        lambda p: {"contractionCoefficient": float(p["cc"])},
     ),
     "helmholtz_resonator": (
         "HelmholtzResonator",

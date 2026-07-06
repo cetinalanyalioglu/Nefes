@@ -111,7 +111,7 @@ def test_orifice_roundtrip_scattering_matrix():
 
 def test_lossy_nozzle_orifice_limit_matches_orifice():
     # beta = AT/A2 -> the orifice (maximum loss)
-    els = [cat.total_pressure_inlet(PT, T0), cat.lossy_nozzle(AT, AT / A2, A2), cat.pressure_outlet(P0, T0)]
+    els = [cat.total_pressure_inlet(PT, T0), cat.lossy_nozzle(AT, AT / A2), cat.pressure_outlet(P0, T0)]
     pn = build_problem(CFG, els, [(0, 1, A1), (1, 2, A2)], 1.0, P0, CP * T0)
     rn = solve(pn)
     assert rn.converged
@@ -141,15 +141,18 @@ def test_lossy_nozzle_lossless_limit_conserves_total_pressure():
         est = states_table(prob, res.x)
         return float(est[ES_PT, 0] - est[ES_PT, 1])  # inlet - outlet total pressure
 
-    assert pt_drop(cat.lossy_nozzle(at, 1.0, A2)) == pytest.approx(0.0, abs=1e-3 * pti)  # lossless
-    assert pt_drop(cat.lossy_nozzle(at, at / A2, A2)) > 0.01 * pti  # the orifice limit loses head
+    assert pt_drop(cat.lossy_nozzle(at, 1.0)) == pytest.approx(0.0, abs=1e-3 * pti)  # lossless
+    assert pt_drop(cat.lossy_nozzle(at, at / A2)) > 0.01 * pti  # the orifice limit loses head
 
 
 def test_lossy_nozzle_rejects_out_of_range_beta():
+    # beta > 1 is rejected at the factory; beta < AT/A2 needs the outflow edge area,
+    # so it is rejected at build time, when the composite reads A2 off its edge.
     with pytest.raises(ValueError, match="beta must lie"):
-        cat.lossy_nozzle(AT, 1.5, A2)
+        cat.lossy_nozzle(AT, 1.5)
+    els = [cat.total_pressure_inlet(PT, T0), cat.lossy_nozzle(AT, 0.01), cat.pressure_outlet(P0, T0)]
     with pytest.raises(ValueError, match="beta must lie"):
-        cat.lossy_nozzle(AT, 0.01, A2)
+        build_problem(CFG, els, [(0, 1, A1), (1, 2, A2)], 1.0, P0, CP * T0)
 
 
 # -- helmholtz_resonator (a side-branch composite) -------------------------------------------------
@@ -502,7 +505,7 @@ A_BIG, A_SMALL, CC = 4.0e-3, 1.0e-3, 0.62
 def _contraction(pt_in, cc=CC, eps=None):
     net = Network(CFG, p_ref=P0, T_ref=T0, mdot_ref=1.0)
     i = net.add(cat.total_pressure_inlet(pt_in, T0))
-    sc = net.add(cat.sudden_contraction(A_SMALL, cc=cc, name="contr", eps=eps))
+    sc = net.add(cat.sudden_contraction(cc=cc, name="contr", eps=eps))
     o = net.add(cat.pressure_outlet(P0, T0))
     e_in = net.connect(i, sc, A_BIG)
     e_out = net.connect(sc, o, A_SMALL)
@@ -561,7 +564,7 @@ def test_sudden_contraction_loss_is_compressible():
 
 
 def test_sudden_contraction_validation():
-    with pytest.raises(ValueError, match="downstream_area must be positive"):
-        cat.sudden_contraction(0.0)
     with pytest.raises(ValueError, match="cc must be in"):
-        cat.sudden_contraction(A_SMALL, cc=1.5)
+        cat.sudden_contraction(cc=0.0)
+    with pytest.raises(ValueError, match="cc must be in"):
+        cat.sudden_contraction(cc=1.5)

@@ -67,14 +67,14 @@ def _node_of_type(doc, ui_type):
 COMPOSITES = [
     (cat.orifice(1.2e-3, name="orf"), "Orifice", {"throatArea": 1.2e-3}),
     (
-        cat.lossy_nozzle(1.2e-3, 0.7, 3e-3, name="noz"),
+        cat.lossy_nozzle(1.2e-3, 0.7, name="noz"),
         "LossyNozzle",
-        {"throatArea": 1.2e-3, "beta": 0.7, "downstreamArea": 3e-3},
+        {"throatArea": 1.2e-3, "beta": 0.7},
     ),
     (
-        cat.sudden_contraction(2e-3, cc=0.62, name="con"),
+        cat.sudden_contraction(cc=0.62, name="con"),
         "SuddenContraction",
-        {"downstreamArea": 2e-3, "contractionCoefficient": 0.62},
+        {"contractionCoefficient": 0.62},
     ),
     (
         cat.helmholtz_resonator(1e-3, 0.05, 5e-4, name="hr"),

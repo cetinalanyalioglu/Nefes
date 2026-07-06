@@ -83,9 +83,10 @@ import plotly.graph_objects as go
 from nefes.plotting import use_nefes_theme, COLORWAY
 from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
+from nefes.shell import build_problem
 from nefes.solver import solve
-from nefes.solver.control import states_table
-from nefes.assembly.derive import ES_MDOT, ES_P, ES_M
+from nefes.solver.report import states_table
+from nefes.assembly.recover import ES_MDOT, ES_P, ES_M
 
 use_nefes_theme()
 
@@ -99,7 +100,7 @@ def solve_nozzle(pr):
     cfg = perfect_gas(R_AIR, GAMMA)
     els = [cat.total_pressure_inlet(PT, TT), cat.isentropic_area_change(),
            cat.pressure_outlet(pr * PT, Tt_backflow=TT)]
-    prob = cat.build_problem(cfg, els, [(0, 1, A0), (1, 2, A1)], 14.0, 101325.0, CP * TT)
+    prob = build_problem(cfg, els, [(0, 1, A0), (1, 2, A1)], 14.0, 101325.0, CP * TT)
     est = states_table(prob, solve(prob).x)
     return float(est[ES_M, 1]), float(est[ES_MDOT, 1]), float(est[ES_P, 1])
 

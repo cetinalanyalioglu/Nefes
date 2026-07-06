@@ -42,6 +42,19 @@ def find_terminals(prob, x_bar=None) -> List[Terminal]:
 
     When ``x_bar`` is given, ``inflowing`` is set from the mean flow direction so
     the incoming entropy excitation can be placed at genuine inlets.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+    x_bar : ndarray, optional
+        Converged mean-flow state, shape ``(n_solve, E)``.  When given, each
+        terminal's ``inflowing`` flag is set from the local mean-flow direction.
+
+    Returns
+    -------
+    list of Terminal
+        One :class:`Terminal` per single-port boundary edge, in node order.
     """
     est = states_table(prob, x_bar) if x_bar is not None else None
     terms = []

@@ -109,6 +109,11 @@ $RECYCLE.BIN/
 .nfs*
 
 ###############################################################################
+# Agent tooling scratch
+###############################################################################
+.playwright-mcp/
+
+###############################################################################
 # Editors / IDEs
 ###############################################################################
 .idea/
@@ -125,3 +130,12 @@ $RECYCLE.BIN/
 docs/_site/
 docs/.quarto/
 /.quarto/
+docs/_freeze/
+**/*.quarto_ipynb
+# Example gallery — the whole directory is generated from examples/ by
+# docs/_scripts/build_examples.py at pre-render time.
+docs/examples/
+# API reference generated from docstrings by quartodoc build.
+docs/reference/api/
+docs/objects.json
+docs/_sidebar.yml

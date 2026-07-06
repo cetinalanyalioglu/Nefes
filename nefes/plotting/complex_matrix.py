@@ -176,6 +176,11 @@ def plot_complex_matrix(
     mag_range : tuple of (lo, hi), optional
         Fixed magnitude y-range applied to every entry.  Default ``None`` anchors
         each entry at 0 and scales to its own peak.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+        The assembled magnitude-over-phase figure.
     """
     matrices, freqs, names = _normalize(matrices, freqs, names)
     nrow, ncol = matrices[0].shape[1], matrices[0].shape[2]

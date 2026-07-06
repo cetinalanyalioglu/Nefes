@@ -34,7 +34,21 @@ def duct_nodes(prob):
 
 
 def verify_acoustic(prob, x_bar):
-    """Raise ``ValueError`` unless ``prob`` admits a subsonic acoustic assembly at ``x_bar``."""
+    """Raise ``ValueError`` unless ``prob`` admits a subsonic acoustic assembly at ``x_bar``.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled network.
+    x_bar : ndarray
+        Converged mean-flow state, shape ``(n_solve, E)``.
+
+    Raises
+    ------
+    ValueError
+        If any duct node is not a 2-port, or the mean flow is not everywhere
+        subsonic and flow-aligned, so the linear acoustic assembly is ineligible.
+    """
     est = states_table(prob, x_bar)
     for n in duct_nodes(prob):
         base = int(prob.row_ptr[n])

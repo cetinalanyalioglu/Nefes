@@ -1,16 +1,21 @@
-# Nefes documentation — Quarto render layer (provisional; see documentation-plan.md §6).
+# Nefes documentation — Quarto render layer.
 #
-# The Markdown under docs/ stays the authoritative source; Quarto only renders it to HTML,
-# without moving or rewriting anything. Preview locally with:
+# The Markdown under docs/ stays the authoritative source; Quarto renders it to HTML,
+# without moving or rewriting anything. Two surfaces are generated at build time:
 #
-#     quarto preview docs
+#   * reference/api/  — API pages built from docstrings by quartodoc (pre-render).
+#   * examples/       — the notebook gallery built by _scripts/build_examples.py (pre-render).
 #
-# The Quarto CLI is not in the dev sandbox, so render on your machine or in CI.
+# Preview locally with `quarto preview docs`; the example pages execute notebooks, so point
+# Quarto at the project environment first, e.g. `QUARTO_PYTHON=$(which python) quarto render docs`.
 # The internal planning document is excluded from the render below.
 
 project:
   type: website
   output-dir: _site
+  pre-render:
+    - quartodoc build --config _quarto.yml
+    - _scripts/build_examples.py
   render:
     - "*.md"
     - "theory/*.md"
@@ -19,6 +24,9 @@ project:
     - "design/*.qmd"
     - "validation/*.md"
     - "reference/*.md"
+    - "reference/api/*.qmd"
+    - "examples/*.qmd"
+    - "examples/*.ipynb"
     - "!documentation-plan.md"
 
 website:
@@ -30,7 +38,7 @@ website:
     search: true
     collapse-level: 1
     contents:
-      - href: README.md
+      - href: index.md
         text: Home
       - section: "Theory"
         contents:
@@ -72,8 +80,104 @@ website:
           - reference/composite-elements.md
           - reference/modeling-guide.md
           - reference/examples.md
+          - text: "API reference"
+            href: reference/api/index.qmd
+      - section: "Examples"
+        contents:
+          - examples/index.qmd
       - href: nomenclature.md
         text: Nomenclature
+
+quartodoc:
+  package: nefes
+  dir: reference/api
+  title: "API reference"
+  style: pkgdown
+  parser: numpy
+  sections:
+    - title: "Network and solution"
+      desc: "Assemble a network, solve the mean flow, and read the result."
+      contents:
+        - shell.Network
+        - shell.Solution
+        - shell.build_problem
+        - shell.build_problem_from_connectivity
+        - shell.validate_network
+    - title: "Elements — atomic"
+      desc: "Factories for the atomic elements: boundaries, area changes, losses, ducts, junctions, and reacting closures."
+      contents:
+        - elements.catalog.total_pressure_inlet
+        - elements.catalog.mass_flow_inlet
+        - elements.catalog.pressure_outlet
+        - elements.catalog.mass_flow_outlet
+        - elements.catalog.choked_nozzle_outlet
+        - elements.catalog.isentropic_area_change
+        - elements.catalog.sudden_area_change
+        - elements.catalog.loss
+        - elements.catalog.linear_resistance
+        - elements.catalog.duct
+        - elements.catalog.pipe
+        - elements.catalog.junction
+        - elements.catalog.splitter
+        - elements.catalog.forced_splitter
+        - elements.catalog.wall
+        - elements.catalog.cavity
+        - elements.catalog.heat_release_flame
+        - elements.catalog.equilibrium_flame
+        - elements.catalog.mass_source
+        - elements.catalog.transfer_matrix_element
+    - title: "Elements — composites"
+      desc: "Composite elements that expand into a small graph of atoms, and the element specs."
+      contents:
+        - elements.catalog.orifice
+        - elements.catalog.lossy_nozzle
+        - elements.catalog.sudden_contraction
+        - elements.catalog.helmholtz_resonator
+        - elements.catalog.fanno_pipe
+        - elements.catalog.tapered_duct
+        - elements.catalog.segments_for_frequency
+        - elements.catalog.ElementSpec
+        - elements.catalog.CompositeElementSpec
+    - title: "Perturbation and acoustics"
+      desc: "The linear perturbation network: boundary closures, responses, eigenmodes, matrices, and identification."
+      contents:
+        - perturbation.PerturbationBC
+        - perturbation.perturbation_response
+        - perturbation.PerturbationResponse
+        - perturbation.forced_response
+        - perturbation.ForcedResponse
+        - perturbation.eigenmodes
+        - perturbation.EigenmodeResult
+        - perturbation.TransferMatrix
+        - perturbation.ScatteringMatrix
+        - perturbation.identify_transfer_function
+        - perturbation.identify_transfer_matrix
+        - perturbation.find_terminals
+        - perturbation.verify_perturbation
+    - title: "Input / output"
+      desc: "Load and save cases and solutions."
+      contents:
+        - io.load_case
+        - io.load_connectivity
+        - io.case_from_dict
+        - io.save_case
+        - io.save_solution
+        - io.dump_case
+    - title: "Plotting"
+      desc: "The nefes plotly theme and the standard figure helpers."
+      contents:
+        - plotting.use_nefes_theme
+        - plotting.use_latex
+        - plotting.plot_complex_matrix
+        - plotting.plot_transfer_matrix
+        - plotting.plot_scattering_matrix
+        - plotting.plot_transfer_function
+        - plotting.plot_spectrum
+        - plotting.plot_pole_map
+        - plotting.plot_mode_shape
+        - plotting.animate_mode_shape
+        - plotting.plot_network_topology
+        - plotting.plot_fit
 
 format:
   html:

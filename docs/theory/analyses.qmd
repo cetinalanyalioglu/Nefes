@@ -68,6 +68,7 @@ import plotly.graph_objects as go
 
 from nefes.plotting import use_nefes_theme, COLORWAY
 from nefes.elements import catalog as cat
+from nefes.shell import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import eigenmodes
@@ -92,7 +93,7 @@ def rijke_modes(n, tau, mdot=0.005, dT=400.0, band=(40.0, 520.0)):
         cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
     ]
     edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
-    prob = cat.build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
+    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
     x = solve(prob).x
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

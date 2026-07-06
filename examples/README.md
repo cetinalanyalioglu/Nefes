@@ -45,7 +45,7 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
 - **`reacting_flame.ipynb`** — **reactive-flow fundamentals**. The `nefes.thermo`
   HP-equilibrium solver (adiabatic flame temperature vs equivalence ratio), the perfect-gas
   **heat-release flame** (`Qdot` total-enthalpy jump with the Rayleigh static-pressure drop),
-  and the reacting **equilibrium flame** (`EQ_FROZEN` → `EQ_KERNEL`). Self-contained `matplotlib`.
+  and the reacting **equilibrium flame** (`EQ_FROZEN` → `EQ_KERNEL`). Self-contained. `plotly`, Nefes theme.
 - **`burnt_marker.ipynb`** — the **orientation-proof reacting closure**. A transported
   **burnt marker** scalar `b` gates a single `EQ_MARKER` blend of frozen (unburnt) and
   equilibrium (burnt) states; the flame stamps `b = 1` on whatever edge the flow actually
@@ -149,6 +149,34 @@ conda activate nefes
 jupyter lab examples/getting-started/converging_nozzle.ipynb
 ```
 
+## Rendering into the documentation site
+
+The Quarto docs render a **curated subset** of these notebooks as executed pages and list the rest
+with a link to their source. Which is which is driven by a small block each notebook carries in its
+own JSON metadata (`metadata.nefes`), so the gallery is generated straight from the notebooks with no
+separate list to maintain:
+
+```json
+"metadata": {
+  "nefes": {
+    "title": "Self-excited Rijke tube",
+    "description": "The fundamental thermoacoustic oscillator: a duct with a heat source that self-excites.",
+    "category": "thermoacoustics",
+    "render": "full"
+  }
+}
+```
+
+- `render: full` — executed at build time and shown as a full page.
+- `render: list` — appears in the gallery table with its title and description, linking to its source
+  on GitHub (not executed by the doc build).
+
+The pre-render step `docs/_scripts/build_examples.py` walks every notebook, reads this block, and
+generates the gallery. To promote a notebook from a listed link to a rendered page, flip its `render`
+flag to `full`; to add a notebook, just drop it in with a `metadata.nefes` block. The sources stay
+**output-free** on disk — the doc build executes copies, never the originals — so all plots must be
+Plotly with the Nefes theme (`use_nefes_theme()`); matplotlib is not rendered.
+
 Or solve a UI case in two lines:
 
 ```python
@@ -236,6 +264,7 @@ Python-only closure) and solve:
 ```python
 import numpy as np
 from nefes.elements import catalog as cat
+from nefes.shell import build_problem
 from nefes.perturbation import PerturbationBC, boundary_response
 from nefes.solver import solve
 from nefes.thermo.configure import perfect_gas
@@ -245,7 +274,7 @@ els = [
     cat.duct(0.5),
     cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.impedance_polar(2.0, 0.0)),
 ]
-prob = cat.build_problem(perfect_gas(287.0, 1.4), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, 1004.5 * 300.0)
+prob = build_problem(perfect_gas(287.0, 1.4), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, 1004.5 * 300.0)
 res = solve(prob)
 fr = boundary_response(prob, res.x, np.linspace(50.0, 3000.0, 200))
 gamma_in = fr.reflection_at(0)   # input reflection g/f at the feed edge

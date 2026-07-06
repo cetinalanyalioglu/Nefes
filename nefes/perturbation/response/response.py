@@ -838,12 +838,7 @@ class PerturbationResponse:
         least-squares best fit and a :class:`TransferMatrixWarning` is emitted -- inspect
         :meth:`transfer_residual` and prefer :meth:`multiport_scattering_matrix`.  A second
         warning flavor fires when the response is too under-determined to tell either way.
-
-        Warns
-        -----
-        TransferMatrixWarning
-            If ``a`` and ``b`` straddle an internal branch point, or the response is
-            under-determined so seriality cannot be verified.
+        In both cases a :class:`TransferMatrixWarning` is emitted.
         """
         ci = list(self.cidx)
         Wa = self._waves(a)[:, ci, :]  # (n_omega, n, n_force) over driven characteristics
@@ -870,11 +865,9 @@ class PerturbationResponse:
         a flavor diagonal in the characteristics (``char`` or ``riemann``); mixed
         flavors are undefined for a scattering matrix.
 
-        Warns
-        -----
-        TransferMatrixWarning
-            Via :meth:`transfer_matrix`, if ``a`` and ``b`` straddle an internal branch
-            point or the response is under-determined (see :meth:`transfer_residual`).
+        It delegates to :meth:`transfer_matrix`, so the same :class:`TransferMatrixWarning`
+        fires when ``a`` and ``b`` straddle an internal branch point or the response is
+        under-determined (see :meth:`transfer_residual`).
         """
         ua, ca = float(self.est[ES_U, a]), float(self.est[ES_C, a])
         ub, cb = float(self.est[ES_U, b]), float(self.est[ES_C, b])

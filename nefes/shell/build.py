@@ -461,6 +461,9 @@ def build_problem(
     # expand any composite elements (build-time graph transform) into atomic elements +
     # internal edges; a composite-free network passes through unchanged (composite_map None).
     elements, edges, composite_map = expand_composites(elements, edges)
+    if composite_map is not None and edge_models is not None:
+        # the appended internal edges follow the config's default closure
+        edge_models = list(edge_models) + [int(thermo.model_id)] * (len(edges) - len(edge_models))
     n_nodes = len(elements)
     area = np.array([e[2] for e in edges], dtype=np.float64)
     if composite_map is not None:

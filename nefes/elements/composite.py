@@ -52,6 +52,12 @@ class CompositeElementSpec:
         (default -1, the last sub-element).
     kind : str, optional
         A short type label for reporting (e.g. ``"orifice"``); defaults to ``name``.
+    params : dict, optional
+        The composite's own constructor parameters, as passed to its catalog factory
+        (e.g. ``{"throat_area": 1e-3}``).  Purely descriptive -- the expansion never
+        reads it -- but it lets reporting and the UI serialization
+        (:mod:`nefes.io.yaml_out`) recover the composite as the single element the
+        user specified instead of its expanded internals.
     """
 
     name: str
@@ -60,6 +66,7 @@ class CompositeElementSpec:
     upstream_sub: int = 0
     downstream_sub: int = -1
     kind: str = ""
+    params: Dict[str, object] = field(default_factory=dict)
 
     @property
     def n_sub(self) -> int:
@@ -384,7 +391,7 @@ def validate_composite(spec: CompositeElementSpec):
                 )
 
 
-def expand_composites(elements, edges):
+def expand_composites(elements, edges, ports=None):
     """Expand every composite in ``elements`` into atomic elements + internal edges.
 
     A pure build-time graph transformation.  The first sub-element of each composite keeps
@@ -402,6 +409,12 @@ def expand_composites(elements, edges):
         User elements, atomic or composite.
     edges : list of (int, int, float)
         User directed edges ``(tail, head, area)``.
+    ports : list of (int or None, int or None), optional
+        Per-edge user port pins ``(tail_port, head_port)`` aligned with ``edges`` (as recorded
+        by :meth:`nefes.shell.network.Network.connect` / a UI export).  A pin at an **atomic**
+        endpoint is preserved verbatim; a pin at a **composite** endpoint refers to a node that
+        no longer exists after the expansion, so it is replaced by the rewired sub-element's
+        flow-aligned port.  ``None`` (default) auto-assigns every port as before.
 
     Returns
     -------
@@ -443,8 +456,15 @@ def expand_composites(elements, edges):
         d = el.downstream_sub if el.downstream_sub >= 0 else el.n_sub - 1
         return slots[n][d]
 
-    # rewire external edges by orientation: leave a composite at its tail, enter at its head
+    # rewire external edges by orientation: leave a composite at its tail, enter at its head.
+    # A user pin survives only at an atomic endpoint -- a composite endpoint is rewired to a
+    # sub-element the user never addressed, so its pin is dropped and re-derived flow-aligned.
+    ext_pins = ports if ports is not None else [(None, None)] * len(edges)
     new_edges = [(_down(t), _up(h), a) for (t, h, a) in edges]
+    pins = [
+        (None if is_composite(elements[t]) else tp, None if is_composite(elements[h]) else hp)
+        for (t, h, _a), (tp, hp) in zip(edges, ext_pins)
+    ]
 
     # append internal edges (each composite's own internal connectivity)
     internal_edge_ids = set()
@@ -454,6 +474,7 @@ def expand_composites(elements, edges):
         for ts, hs, a in el.internal_edges:
             internal_edge_ids.add(len(new_edges))
             new_edges.append((slots[i][ts], slots[i][hs], a))
+            pins.append((None, None))
 
     # Wire explicit ports, exactly as a user connecting a serial chain by hand: a fixed 2-port
     # element takes its inflow (the edge it heads) on port 0 and its outflow (the edge it tails)
@@ -472,9 +493,17 @@ def expand_composites(elements, edges):
         next_port[n] += 1
         return p
 
-    new_edges = [
-        (t, h, a, (1 if _two_port(t) else _auto(t)), (0 if _two_port(h) else _auto(h))) for (t, h, a) in new_edges
-    ]
+    def _tail_port(n, pin):
+        if pin is not None:
+            return int(pin)
+        return 1 if _two_port(n) else _auto(n)
+
+    def _head_port(n, pin):
+        if pin is not None:
+            return int(pin)
+        return 0 if _two_port(n) else _auto(n)
+
+    new_edges = [(t, h, a, _tail_port(t, tp), _head_port(h, hp)) for (t, h, a), (tp, hp) in zip(new_edges, pins)]
 
     cmap = CompositeMap(
         user_node_to_expanded=tuple(tuple(s) for s in slots),

@@ -14,7 +14,7 @@ from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
 from . import checks
 from .build import build_problem, build_problem_from_connectivity
-from ..elements.composite import is_composite, CompositeView
+from ..elements.composite import expand_composites, is_composite, CompositeView
 from ..elements.ids import ELEMENT_TYPE_NAMES, CHOKED_NOZZLE_OUTLET
 from .problem import CompiledProblem
 from ..solver import solve as _solve
@@ -345,18 +345,30 @@ class Network:
         # If the ports are explicitly set, use the connectivity builder.
         explicit = self._edges and all(tp is not None and hp is not None for (tp, hp) in self._ports)
         if explicit:
-            endpoints = [(t, int(tp), h, int(hp)) for (t, h, _a), (tp, hp) in zip(self._edges, self._ports)]
-            conn = build_connectivity(len(self._elements), endpoints)
-            area = np.array([a for (_t, _h, a) in self._edges], dtype=np.float64)
+            # Composites expand here too: user pins survive at atomic endpoints, and the expansion
+            # re-derives flow-aligned ports on the rewired sub-elements and the internal edges.
+            elements, edges, cmap = expand_composites(self._elements, self._edges, ports=self._ports)
+            if cmap is None:
+                endpoints = [(t, int(tp), h, int(hp)) for (t, h, _a), (tp, hp) in zip(self._edges, self._ports)]
+                area = np.array([a for (_t, _h, a) in self._edges], dtype=np.float64)
+            else:
+                endpoints = [(t, tp, h, hp) for (t, h, _a, tp, hp) in edges]
+                area = np.array([a for (_t, _h, a, _tp, _hp) in edges], dtype=np.float64)
+                if edge_models is not None:
+                    # the appended internal edges follow the gas default closure
+                    pad = np.full(len(edges) - len(edge_models), int(self.gas.model_id), dtype=np.int64)
+                    edge_models = np.concatenate([edge_models, pad])
+            conn = build_connectivity(len(elements), endpoints)
             return build_problem_from_connectivity(
                 self.gas,
-                self._elements,
+                elements,
                 conn,
                 area,
                 mdot_ref,
                 self.p_ref,
                 h_ref,
                 edge_models=edge_models,
+                composite_map=cmap,
                 require_connected=self.require_connected,
             )
         return build_problem(

@@ -191,12 +191,34 @@ independent Borda composition and the De Domenico / Cambridge references in
 their $\mathbf{P}(\omega)$ ducts — so the acoustic response is the distributed (non-compact) one,
 converged via `grid_refine`.
 
+## UI (FNetLibUI) round trip
+
+A composite serializes to the UI case format as the **single node the user specified**, never its
+expanded internals: the writer (`yaml_out`) maps `CompositeElementSpec.kind` plus the factory
+parameters retained on `CompositeElementSpec.params` to one UI node
+(`Orifice`, `LossyNozzle`, `SuddenContraction`, `HelmholtzResonator`, `FannoPipe`, `TaperedDuct`),
+and the loader (`yaml_in`) rebuilds it through the same catalog factory.
+The UI's *Composite elements* palette category carries the same six elements, so a case authored
+in either place round-trips.
+Two conventions to know:
+
+- a `fanno_pipe` with `n_segments = 1` short-circuits to a plain `pipe` atom and therefore
+  serializes as a `Pipe` node;
+- a `tapered_duct` built from a callable $A(x)$ serializes as its **resolved station table**
+  (the `areaProfile` string), which reloads deterministically.
+
+The port-explicit build path used by UI-loaded cases expands composites too: user port pins
+survive at atomic endpoints, while the expansion re-derives flow-aligned ports on the rewired
+sub-elements (`expand_composites(..., ports=...)`).
+Round-trip coverage lives in `tests/test_composite_ui_io.py`.
+
 ## Known limitations (v1)
 
-- **Export:** a composite raises on YAML serialization (`yaml_out`) — build the network from
-  the atomic primitives to export it. Composite YAML is a deferred extension.
 - **No nesting:** a composite's sub-elements must be atomic (`validate_composite` rejects a
   composite sub-element).
+- **UI export needs a catalog kind:** a hand-built `CompositeElementSpec` with a bespoke `kind`
+  (or without `params`) still raises on YAML serialization — only the catalog recipes above have
+  a UI node type.
 - **Serial + single side-branch only:** Class-3 branching sub-network composites are deferred.
 - **Numbering is tail-append, not bandwidth-optimal:** SuperLU re-permutes internally so this
   costs nothing at solve time; a bandwidth-aware renumber is a deferred refinement.

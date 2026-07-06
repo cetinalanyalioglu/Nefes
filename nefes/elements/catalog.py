@@ -414,6 +414,10 @@ def transfer_matrix_element(tm=None, name="tm"):
     prescribed 2-port response stand in for an element that has no closed-form model.  The
     mean state is unaffected by ``tm``.
 
+    In the UI this is the ``TransferMatrix`` node.  The descriptor itself is a Python
+    object with no YAML form, so it does not round-trip: attach it after loading
+    (``spec.transfer_matrix = ...``).
+
     Parameters
     ----------
     tm : TransferMatrix or UnknownTransferMatrix, optional
@@ -771,7 +775,8 @@ def forced_splitter(fractions, name="splitter"):
     Port order follows attachment order, so wire the **inflow edge first** (port 0)
     and the **remainder outflow last** (highest port).  The build-time check
     requires the wired port count to be ``len(fractions) + 2`` (1 inflow + the
-    controlled outflows + the remainder).  Not representable in the UI export format.
+    controlled outflows + the remainder).  In the UI this is the ``ForcedSplitter``
+    node, whose ``fractions`` string carries the betas in port order.
 
     Because the controlled branches float in pressure, the manifold has weaker
     pressure coupling than a plain splitter and is harder to converge as the inflow
@@ -901,6 +906,7 @@ def orifice(throat_area, name="orifice", eps=None) -> CompositeElementSpec:
         ],
         internal_edges=[(0, 1, AT)],  # iac -> sac at the throat area
         kind="orifice",
+        params={"throat_area": AT},
     )
 
 
@@ -952,6 +958,7 @@ def lossy_nozzle(throat_area, beta, downstream_area, name="nozzle", eps=None) ->
         ],
         internal_edges=[(0, 1, AT), (1, 2, Aj)],  # iac0 -> iac1 at AT, iac1 -> sac at Aj
         kind="lossy_nozzle",
+        params={"throat_area": AT, "beta": b, "downstream_area": A2},
     )
 
 
@@ -1001,6 +1008,7 @@ def sudden_contraction(downstream_area, cc=0.62, name="contraction", eps=None) -
         ],
         internal_edges=[(0, 1, A_vc)],  # isentropic acceleration to the vena contracta, then Borda re-expansion
         kind="sudden_contraction",
+        params={"downstream_area": A2, "cc": c},
     )
 
 
@@ -1045,6 +1053,7 @@ def helmholtz_resonator(volume, neck_length, neck_area, name="hr") -> CompositeE
         upstream_sub=0,  # the main line enters and leaves through the tee
         downstream_sub=0,
         kind="helmholtz_resonator",
+        params={"volume": V, "neck_length": ln, "neck_area": an},
     )
 
 
@@ -1123,7 +1132,13 @@ def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> Co
     area = math.pi * D * D / 4.0  # the constant flow area shared by every segment
     subs = [pipe(L / N, D, f, name=f"{name}.seg{i}") for i in range(N)]
     internal = [(i, i + 1, area) for i in range(N - 1)]  # one edge between consecutive segments
-    return CompositeElementSpec(name=name, sub_elements=subs, internal_edges=internal, kind="fanno_pipe")
+    return CompositeElementSpec(
+        name=name,
+        sub_elements=subs,
+        internal_edges=internal,
+        kind="fanno_pipe",
+        params={"length": L, "diameter": D, "friction_factor": f, "n_segments": N},
+    )
 
 
 def _taper_stations(area, length, n_segments):
@@ -1239,6 +1254,7 @@ def tapered_duct(area, length=None, n_segments=None, name="taper") -> CompositeE
         upstream_sub=0,
         downstream_sub=2 * N - 1,
         kind="tapered_duct",
+        params={"stations": [(float(x), float(a)) for x, a in zip(xs, areas)]},
     )
 
 

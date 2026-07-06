@@ -50,6 +50,7 @@ from ..elements.ids import (
     MASS_FLOW_OUTLET,
     CHOKED_NOZZLE_OUTLET,
     ISEN_AREA_CHANGE,
+    TRANSFER_MATRIX,
     SUDDEN_AREA_CHANGE,
     LOSS,
     JUNCTION,
@@ -62,6 +63,7 @@ from ..elements.ids import (
     FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
     MASS_SOURCE,
+    FORCED_SPLITTER,
     BOUNDARY_RIDS,
     STREAM_INTRODUCING,
 )
@@ -648,9 +650,10 @@ def _build_model(network, prov):
         attrs = copy.deepcopy((prov_nodes.get(ids[i]) or {}).get("attributes") or {}) if prov else {}
         attrs.update(modeled)
         attrs["label"] = spec.name or attrs.get("label") or ui_type
-        if spec.residual_id in BOUNDARY_RIDS:
+        rid = getattr(spec, "residual_id", None)  # None for a composite (never a boundary)
+        if rid in BOUNDARY_RIDS:
             attrs.update(_bc_to_ui(getattr(spec, "perturbation_bc", None)))
-        if reacting and spec.residual_id in STREAM_INTRODUCING:
+        if reacting and rid in STREAM_INTRODUCING:
             attrs.update(_composition_to_ui(spec))
         if reacting and float(getattr(spec, "marker", 0.0)) != 0.0:
             # Burnt-gas feed flag: the UI marker is a boolean, so emit a bool (True = burnt).
@@ -807,13 +810,58 @@ def _manifold_attrs(fp):
     return out
 
 
+# Composite kind -> (UI node type, factory-params -> UI attributes).  The factory params are
+# retained on the spec (``CompositeElementSpec.params``), so a composite serializes as the single
+# element the user specified -- never its expanded internals.
+_COMPOSITE_TO_UI = {
+    "orifice": ("Orifice", lambda p: {"throatArea": float(p["throat_area"])}),
+    "lossy_nozzle": (
+        "LossyNozzle",
+        lambda p: {
+            "throatArea": float(p["throat_area"]),
+            "beta": float(p["beta"]),
+            "downstreamArea": float(p["downstream_area"]),
+        },
+    ),
+    "sudden_contraction": (
+        "SuddenContraction",
+        lambda p: {"downstreamArea": float(p["downstream_area"]), "contractionCoefficient": float(p["cc"])},
+    ),
+    "helmholtz_resonator": (
+        "HelmholtzResonator",
+        lambda p: {
+            "volume": float(p["volume"]),
+            "neckLength": float(p["neck_length"]),
+            "neckArea": float(p["neck_area"]),
+        },
+    ),
+    "fanno_pipe": (
+        "FannoPipe",
+        lambda p: {
+            "length": float(p["length"]),
+            "diameter": float(p["diameter"]),
+            "frictionFactor": float(p["friction_factor"]),
+            "nSegments": int(p["n_segments"]),
+        },
+    ),
+    "tapered_duct": (
+        "TaperedDuct",
+        lambda p: {"areaProfile": ", ".join(f"{x:g}:{a:g}" for x, a in p["stations"])},
+    ),
+}
+
+
 def _spec_to_ui(spec):
     """Map an ``ElementSpec`` to its UI ``(type, modeled-attributes)`` pair."""
     if is_composite(spec):
-        raise ValueError(
-            f"composite element {spec.name!r} ({spec.kind}) cannot yet be serialized to the UI format; "
-            "build the network from its atomic primitives to export it (composite YAML is a future extension)"
-        )
+        entry = _COMPOSITE_TO_UI.get(spec.kind)
+        if entry is None or not getattr(spec, "params", None):
+            raise ValueError(
+                f"composite element {spec.name!r} ({spec.kind!r}) cannot be serialized to the UI format; "
+                "known composite kinds are: " + ", ".join(sorted(_COMPOSITE_TO_UI))
+            )
+        ui_type, to_attrs = entry
+        return ui_type, to_attrs(spec.params)
     rid = spec.residual_id
     fp = spec.fparams
     if rid == MASS_FLOW_INLET:
@@ -828,6 +876,16 @@ def _spec_to_ui(spec):
         return "ChokedNozzleOutlet", {"throatArea": float(fp[0])}
     if rid == ISEN_AREA_CHANGE:
         return "IsentropicAreaChange", _length_attrs(fp, 0)
+    if rid == TRANSFER_MATRIX:
+        # The frequency-domain descriptor is a Python object with no YAML form;
+        # only the element's place in the topology round-trips.
+        if spec.transfer_matrix is not None:
+            warnings.warn(
+                f"transfer-matrix element {spec.name!r}: the attached descriptor is not serializable "
+                "to the UI format; re-attach it (spec.transfer_matrix = ...) after loading",
+                stacklevel=6,
+            )
+        return "TransferMatrix", {}
     if rid == SUDDEN_AREA_CHANGE:
         return "SuddenAreaChange", {"contractionCoefficient": float(fp[0]), **_length_attrs(fp, 1)}
     if rid == LOSS:
@@ -838,6 +896,9 @@ def _spec_to_ui(spec):
         return "JunctionStaticP", _manifold_attrs(fp)
     if rid == SPLITTER:
         return "LosslessSplitter", _manifold_attrs(fp)
+    if rid == FORCED_SPLITTER:
+        # fparams are the N-1 controlled outflow betas, in port order
+        return "ForcedSplitter", {"fractions": ", ".join(f"{float(b):g}" for b in fp)}
     if rid == DUCT:
         return "Duct", {"length": float(fp[0]) if fp else 0.0}
     if rid == PIPE:
@@ -925,7 +986,7 @@ def _assign_ports(network):
 
     src_ord, tgt_ord, port_attrs = {}, {}, {}
     for nd, spec in enumerate(elements):
-        rid = spec.residual_id
+        rid = getattr(spec, "residual_id", None)  # None for a composite (fixed 2-port in the UI)
         inc, out = incoming[nd], outgoing[nd]
         for k, ei in enumerate(inc):
             tgt_ord[ei] = k
@@ -933,7 +994,7 @@ def _assign_ports(network):
             src_ord[ei] = len(inc) + k
         if rid == JUNCTION:
             port_attrs[nd] = {"leftPorts": len(inc), "rightPorts": len(out)}
-        elif rid == SPLITTER:
+        elif rid in (SPLITTER, FORCED_SPLITTER):
             port_attrs[nd] = {"rightPorts": len(out)}
     return src_ord, tgt_ord, port_attrs
 

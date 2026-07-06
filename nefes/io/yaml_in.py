@@ -19,7 +19,9 @@ from .provenance import UIProvenance
 
 _PORT_RE = re.compile(r"port-(\d+)$")
 
-# The UI model id this loader targets TODO Update this
+# The UI model id this loader targets.  The historical id is kept (rather than renamed to
+# "nefes-flow-network") so every existing save file stays loadable; the display name shown
+# in the UI is set independently in the model YAML.
 MODEL_ID = "fns-flow-network"
 
 # Model-level (globalAttributes) defaults, kept in sync with the UI model.
@@ -90,6 +92,9 @@ _UI_NODE_BUILDERS = {
     "Wall": lambda a: cat.wall(),
     "Cavity": lambda a: cat.cavity(a["volume"]),
     "IsentropicAreaChange": lambda a: cat.isentropic_area_change(**_lengths(a)),
+    # The frequency-domain descriptor has no YAML form; the element loads with tm=None
+    # (acoustically an isentropic area change) and is attached in Python afterwards.
+    "TransferMatrix": lambda a: cat.transfer_matrix_element(),
     "SuddenAreaChange": lambda a: cat.sudden_area_change(cc=a.get("contractionCoefficient", 1.0), **_lengths(a)),
     "LossElement": lambda a: cat.loss(a["lossCoefficient"], **_lengths(a)),
     "LinearResistance": lambda a: cat.linear_resistance(a["resistance"], **_lengths(a)),
@@ -107,6 +112,19 @@ _UI_NODE_BUILDERS = {
     ),
     "JunctionStaticP": lambda a: cat.junction(volume=a.get("volume", 0.0) or 0.0),
     "LosslessSplitter": lambda a: cat.splitter(volume=a.get("volume", 0.0) or 0.0),
+    "ForcedSplitter": lambda a: cat.forced_splitter(_parse_fractions(a.get("fractions"))),
+    # Composite elements: each expands at build time into its atomic recipe (see
+    # nefes.elements.catalog); the UI carries only the composite's own parameters.
+    "Orifice": lambda a: cat.orifice(a["throatArea"]),
+    "LossyNozzle": lambda a: cat.lossy_nozzle(a["throatArea"], a["beta"], a["downstreamArea"]),
+    "SuddenContraction": lambda a: cat.sudden_contraction(
+        a["downstreamArea"], cc=a.get("contractionCoefficient", 0.62)
+    ),
+    "HelmholtzResonator": lambda a: cat.helmholtz_resonator(a["volume"], a["neckLength"], a["neckArea"]),
+    "FannoPipe": lambda a: cat.fanno_pipe(
+        a["length"], a["diameter"], a["frictionFactor"], int(a.get("nSegments") or 8)
+    ),
+    "TaperedDuct": lambda a: cat.tapered_duct(_parse_area_profile(a.get("areaProfile"))),
 }
 
 # Boundary types that carry a perturbation BC group in the UI schema.
@@ -154,6 +172,56 @@ def _parse_composition(spec):
             raise ValueError(f"cannot parse composition entry {token!r}; use 'species:fraction'")
         comp[parts[0].strip()] = float(parts[1].strip())
     return comp or None
+
+
+def _parse_fractions(spec) -> List[float]:
+    """Parse a forced splitter's UI ``fractions`` string into the outflow betas.
+
+    Accepts a comma/whitespace/semicolon separated list (``"0.3, 0.2"``), a JSON array
+    (``"[0.3, 0.2]"``), or an already-parsed sequence.  Each value is the mass fraction of a
+    controlled outflow port, in attachment order; the remainder branch is implicit (see
+    :func:`nefes.elements.catalog.forced_splitter`).
+    """
+    if spec is None:
+        raise ValueError("a ForcedSplitter node needs a 'fractions' list (one value per controlled outflow)")
+    if isinstance(spec, (list, tuple)):
+        return [float(v) for v in spec]
+    text = str(spec).strip()
+    if text.startswith("["):
+        return [float(v) for v in json.loads(text)]
+    values = [tok for tok in re.split(r"[,;\s]+", text) if tok]
+    if not values:
+        raise ValueError("a ForcedSplitter node needs a 'fractions' list (one value per controlled outflow)")
+    return [float(v) for v in values]
+
+
+def _parse_area_profile(spec) -> List[Tuple[float, float]]:
+    """Parse a tapered duct's UI ``areaProfile`` string into ``(x, A)`` station pairs.
+
+    Accepts ``"x:A, x:A, ..."`` entries (``=`` also works as the pair separator; comma,
+    semicolon or newline between stations), a JSON array of pairs (``"[[0, 3e-3], ...]"``),
+    or an already-parsed sequence of pairs.  Positions are metres, areas m^2; validation
+    (>= 2 stations, strictly increasing x, positive areas) happens in the catalog factory.
+    """
+    if spec is None:
+        raise ValueError("a TaperedDuct node needs an 'areaProfile' station table, e.g. '0:3e-3, 0.15:1.5e-3'")
+    if isinstance(spec, (list, tuple)):
+        return [(float(x), float(a)) for x, a in spec]
+    text = str(spec).strip()
+    if not text:
+        raise ValueError("a TaperedDuct node needs an 'areaProfile' station table, e.g. '0:3e-3, 0.15:1.5e-3'")
+    if text.startswith("["):
+        return [(float(x), float(a)) for x, a in json.loads(text)]
+    pairs = []
+    for token in re.split(r"[,;\n]+", text):
+        token = token.strip()
+        if not token:
+            continue
+        parts = re.split(r"[:=]+", token)
+        if len(parts) != 2:
+            raise ValueError(f"cannot parse area-profile station {token!r}; use 'x:area'")
+        pairs.append((float(parts[0]), float(parts[1])))
+    return pairs
 
 
 def _parse_species(spec) -> Optional[List[str]]:
@@ -494,7 +562,23 @@ def _build_ui_spec(node: dict):
 
 
 def load_case(path: str):
-    """Load a YAML file exported from the UI tool into a ``Network``."""
+    """Load a YAML file exported from the UI tool into a ``Network``.
+
+    Parameters
+    ----------
+    path : str
+        Path to the ``.yaml`` case written by the UI tool.
+
+    Returns
+    -------
+    Network
+        The reconstructed network, ready to solve.
+
+    See Also
+    --------
+    case_from_dict : Build a network from an already-parsed case mapping.
+    load_connectivity : Read only the topology, without boundary values.
+    """
     with open(path, "r") as fh:
         doc = yaml.safe_load(fh)
     return case_from_dict(doc, case_dir=os.path.dirname(os.path.abspath(path)), source=path)

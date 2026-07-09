@@ -18,6 +18,7 @@ import numpy as np
 from ..assembly.recover import recover_all, NS_EST
 from ..thermo.api import PERFECT_GAS, EQ_KERNEL, EQ_MARKER
 from ..elements.ids import STREAM_INTRODUCING
+from ..elements.composite import is_composite
 from .composition import build_streams
 
 
@@ -69,7 +70,14 @@ def stream_mass_fractions(elements, library):
     ndarray
         Shape ``(K, Ns)`` -- each distinct stream's species mass fractions.
     """
-    comps = [(el.composition_spec, el.basis) for el in elements if el.residual_id in STREAM_INTRODUCING]
+    # Composites carry atomic sub-elements; flatten so ``residual_id`` is always defined.
+    # Stream-introducing elements (inlets/sources/outlets) are top-level atomic and keep their
+    # node order under the build's composite expansion, so the flattened stream sequence -- and
+    # thus stream ``k`` <-> ``xi[k]`` -- stays aligned with the compiled problem.
+    atomic = []
+    for el in elements:
+        atomic.extend(el.sub_elements if is_composite(el) else (el,))
+    comps = [(el.composition_spec, el.basis) for el in atomic if el.residual_id in STREAM_INTRODUCING]
     stream_Y, _assignment = build_streams(library, comps)
     return stream_Y
 

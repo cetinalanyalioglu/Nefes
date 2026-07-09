@@ -388,3 +388,74 @@ def test_reacting_roundtrip_resolves(tmp_path):
     est1 = states_table(net2.compile(), sol2.x)
     assert sol2.converged
     assert float(est1[ES_T, 1]) == pytest.approx(float(est0[ES_T, 1]), rel=1e-6)
+
+
+def _series_reacting_taper(tmp_path, name="reacting_taper.yaml"):
+    """inlet(H2/air) -> TaperedDuct (a composite) -> EquilibriumFlame -> outlet, equilibrium model."""
+    g = {
+        "thermoModel": "equilibrium",
+        "mechanismFile": MECH,
+        "species": "H2, O2, N2, H2O, OH, H, O, HO2",
+        "equilibriumTInit": 2500.0,
+        "frozenTInit": 300.0,
+        "referencePressure": 101325.0,
+        "referenceTemperature": 300.0,
+        "referenceMassFlow": 1.0,
+    }
+    nodes = [
+        _node("in", "MassFlowInlet", 0, label="fuel-air", massFlowRate=1.0, totalTemperature=300.0, composition=H2_AIR),
+        _node("tap", "TaperedDuct", 1, label="taper", areaProfile="0:0.05, 0.1:0.04"),
+        _node("flame", "EquilibriumFlame", 2, label="flame"),
+        _node(
+            "out",
+            "PressureOutlet",
+            3,
+            label="out",
+            pressure=101325.0,
+            backflowTotalTemperature=300.0,
+            composition=H2_AIR,
+        ),
+    ]
+    edges = [
+        _edge("e1", "in", "tap", 0, 0, 0, 0.05, thermoModel="auto"),
+        _edge("e2", "tap", "flame", 1, 0, 1, 0.04, thermoModel="auto"),
+        _edge("e3", "flame", "out", 1, 0, 2, 0.04, thermoModel="auto"),
+    ]
+    return _dump(tmp_path, name, g, nodes, edges)
+
+
+def test_reacting_composite_roundtrip(tmp_path):
+    """A reacting case carrying a composite (TaperedDuct) survives save + reload + re-solve.
+
+    Exercises two composite-aware serialization paths: the per-edge chemistry export
+    (``stream_mass_fractions`` must flatten the composite to read feed compositions, else it
+    reads ``residual_id`` off the composite and raises) and the taper's station areas (which
+    must reload bit-identical to the external edge areas, or the boundary duct's equal-area
+    check fails on reload).  The reload also asserts ``species`` was emitted as a YAML list."""
+    net = load_case(_series_reacting_taper(tmp_path))
+    sol = net.solve()
+    assert sol.converged
+    out = str(tmp_path / "rt_composite.yaml")
+    save_case(net, out, solution=sol)  # composite chemistry export must not raise
+
+    doc = yaml.safe_load(open(out))
+    assert isinstance(doc["model"]["globalAttributes"]["species"], list)  # not a joined string
+
+    net2 = load_case(out)
+    sol2 = net2.solve()
+    assert sol2.converged
+    est0 = states_table(net.compile(), sol.x)
+    est1 = states_table(net2.compile(), sol2.x)
+    assert float(est1[ES_T, -1]) == pytest.approx(float(est0[ES_T, -1]), rel=1e-6)
+
+
+def test_parse_species_list_and_string():
+    """The species slate reads from a YAML list (verbatim, so comma-bearing CEA names survive)
+    or a comma/whitespace string (a hand-written / UI convenience for simple names)."""
+    from nefes.io.yaml_in import _parse_species
+
+    names = ["C2H2,acetylene", "N2", "CH3CHO,ethanal"]
+    assert _parse_species(names) == names  # a list keeps each name verbatim, commas and all
+    assert _parse_species("H2, O2, N2") == ["H2", "O2", "N2"]  # legacy comma/space string
+    assert _parse_species("auto") == ["auto"]
+    assert _parse_species(None) is None

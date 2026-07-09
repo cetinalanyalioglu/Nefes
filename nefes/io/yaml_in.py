@@ -223,9 +223,18 @@ def _parse_area_profile(spec) -> List[Tuple[float, float]]:
 
 
 def _parse_species(spec) -> Optional[List[str]]:
-    """Parse a comma/whitespace separated species list (``None`` if empty)."""
+    """Parse a species list (``None`` if empty).
+
+    Accepts a YAML sequence (each item one species name, kept verbatim -- the form
+    :func:`nefes.io.yaml_out.save_case` emits, so CEA names carrying commas such as
+    ``C2H2,acetylene`` round-trip) or a comma/whitespace separated string (a hand-written
+    or UI convenience for simple, comma-free names).
+    """
     if not spec:
         return None
+    if isinstance(spec, (list, tuple)):
+        names = [str(s).strip() for s in spec if str(s).strip()]
+        return names or None
     names = [s.strip() for s in re.split(r"[,\s]+", str(spec)) if s.strip()]
     return names or None
 
@@ -394,10 +403,17 @@ def _reacting_h_ref(gas, specs) -> float:
     perfect-gas ``cp * T_ref`` fallback is meaningless for a variable-composition gas).
     """
     from ..chem.composition import enthalpy_mass, species_mass_fractions
+    from ..elements.composite import is_composite
+
+    # Composites carry atomic sub-elements (a feed may live inside one), so flatten before
+    # reading feed compositions -- a CompositeElementSpec has no composition of its own.
+    atomic = []
+    for sp in specs:
+        atomic.extend(sp.sub_elements if is_composite(sp) else (sp,))
 
     lib = gas.library
     h_max = 0.0
-    for sp in specs:
+    for sp in atomic:
         comp = sp.composition_spec
         if comp is None:
             continue

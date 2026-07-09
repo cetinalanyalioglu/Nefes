@@ -89,7 +89,8 @@ COMPOSITES = [
     (
         cat.tapered_duct(TAPER_TABLE, name="taper"),
         "TaperedDuct",
-        {"areaProfile": "0:0.003, 0.1:0.002, 0.2:0.003"},
+        # station values are emitted at full round-trip precision (repr), so 0.0 stays "0.0"
+        {"areaProfile": "0.0:0.003, 0.1:0.002, 0.2:0.003"},
     ),
 ]
 
@@ -115,6 +116,27 @@ def test_composite_roundtrip_resolves(tmp_path, element, ui_type, attrs):
     # user-facing edge count is preserved (internals are never serialized)
     assert len(doc["model"]["edges"]) == 2
     np.testing.assert_allclose(sol.field("mdot"), sol2.field("mdot"), rtol=1e-10)
+
+
+def test_tapered_duct_area_roundtrips_exactly(tmp_path):
+    """A non-round taper station area must reload bit-identical to the external edge area.
+
+    The taper's boundary duct is constant-area: one port is the external edge, the other the
+    composite's own station.  If the station were serialized lossily (``%g``) while the edge is
+    full precision, the two disagree past the equal-area tolerance and the reloaded network fails
+    validation.  A round-valued taper (the parametrized case above) hides this; a non-round one
+    exercises it."""
+    import math
+
+    from nefes.io.yaml_in import _parse_area_profile
+
+    a = 3e-3 * math.sqrt(2) / 2  # ~2.12132e-3: %g truncates to 6 figures, repr keeps it exact
+    net = _inline_net(cat.tapered_duct([(0.0, a), (0.1, 1.5e-3), (0.2, a)], name="taper"), area_in=a, area_out=a)
+    _sol, _net2, _sol2, doc = _roundtrip(net, tmp_path)  # re-solve asserts the reload validates
+
+    prof = _node_of_type(doc, "TaperedDuct")["attributes"]["areaProfile"]
+    stations = _parse_area_profile(prof)
+    assert stations[0][1] == a and stations[-1][1] == a  # exact, not truncated
 
 
 def test_composite_provenance_roundtrip(tmp_path):

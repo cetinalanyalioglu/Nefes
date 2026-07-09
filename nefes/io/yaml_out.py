@@ -719,7 +719,9 @@ def _global_attributes(network, prov=None):
         # internals with robust defaults -- not exposed in the UI, so not emitted here.
         g = {
             "thermoModel": "equilibrium",
-            "species": ", ".join(gas.species_names),
+            # A YAML list, not a joined string: CEA species names carry commas (``C2H2,acetylene``),
+            # which a comma/whitespace-delimited string cannot round-trip.
+            "species": list(gas.species_names),
         }
         if mech:
             g["mechanismFile"] = mech
@@ -842,7 +844,10 @@ _COMPOSITE_TO_UI = {
     ),
     "tapered_duct": (
         "TaperedDuct",
-        lambda p: {"areaProfile": ", ".join(f"{x:g}:{a:g}" for x, a in p["stations"])},
+        # Full-precision repr, not ``%g``: the taper's downstream station area must reload
+        # bit-identical to the external downstream edge area, or the boundary duct's two ports
+        # disagree past the equal-area tolerance and the reloaded network fails validation.
+        lambda p: {"areaProfile": ", ".join(f"{float(x)!r}:{float(a)!r}" for x, a in p["stations"])},
     ),
 }
 

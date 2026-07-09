@@ -17,6 +17,7 @@ They live in subfolders by the layer they exercise (`getting-started/`, `flow/`,
 |---|---|---|
 | `flow/gas_turbine_large.ipynb`, `flow/huge_network_stress.ipynb` | Scaling and robustness on large networks | [the solver](../design/solver.md) |
 | `flow/composite_elements.ipynb` | Composite elements built from atomic ones (orifices, nozzles, resonators) | [composite elements](composite-elements.md) |
+| `flow/parameter_studies.ipynb` | The named-parameter API and warm-chained parameter sweeps | [parameters and studies](parameters.md) |
 
 ## Combustion
 

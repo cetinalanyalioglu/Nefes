@@ -67,6 +67,7 @@ website:
           - design/complex-step.qmd
           - design/smoothness-contract.md
           - design/assembly.md
+          - design/parameters.md
           - design/solver.md
           - design/reproducibility.md
           - design/ui-io.md
@@ -79,6 +80,7 @@ website:
         contents:
           - reference/atomic-elements.md
           - reference/composite-elements.md
+          - reference/parameters.md
           - reference/modeling-guide.md
           - reference/examples.md
           - text: "API reference"
@@ -101,6 +103,8 @@ quartodoc:
       contents:
         - shell.Network
         - shell.Solution
+        - shell.parameter_study
+        - shell.StudyResult
         - shell.build_problem
         - shell.build_problem_from_connectivity
         - shell.validate_network

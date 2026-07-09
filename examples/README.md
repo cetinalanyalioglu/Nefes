@@ -39,6 +39,11 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
 - **`composite_elements.ipynb`** — a **composite element** presents as one element but
   expands at build time into a small graph of atomic elements; the solver, Jacobian and
   perturbation layers never see the composite.
+- **`parameter_studies.ipynb`** — the **named-parameter API**: the addressable inventory
+  (`net.parameters()`), validated `get`/`set`/`update` writes (including a composite knob
+  and the constant-area fan-out), the pristine-base `with_params` idiom, and
+  `nefes.parameter_study` sweeps (1-D warm-chained operating line and a 2-D
+  throat-area x inflow grid with `on_fail="continue"` at the choked corner). `plotly`.
 
 ## `combustion/`
 

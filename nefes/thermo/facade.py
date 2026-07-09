@@ -1,6 +1,6 @@
 """The public ``Thermo`` facade: the uniform, backend-selectable API.
 
-Network-agnostic: inputs and outputs are purely thermodynamic (composition, ``T``/``h``,
+Independent of the network: inputs and outputs are purely thermodynamic (composition, ``T``/``h``,
 ``p``, derived properties).
 
 A ``Thermo`` is built from a :class:`~nefes.thermo.species.SpeciesLibrary`, which is all
@@ -57,7 +57,7 @@ class Thermo:
         """TP equilibrium (validation/reuse)."""
         return self.backend.equilibrate_TP(Z_elem, T, p, **kw)
 
-    # -- composition helpers (thermodynamic, network-agnostic) -----------
+    # -- composition helpers (thermodynamic, independent of the network) -----------
     def elemental_mass_fractions(self, Y):
         """Elemental mass fractions ``Z`` from species mass fractions ``Y``.
 

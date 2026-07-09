@@ -74,7 +74,7 @@ def test_adjacent_inlets_rejected():
         Network(gas=CFG, nodes=nodes, edges=edges).compile()
 
 
-def test_connection_check_is_direction_agnostic():
+def test_connection_check_is_direction_independent():
     # the disallow rule is symmetric: the edge is rejected whichever inlet is the tail
     nodes = [cat.mass_flow_inlet(0.1, 300.0), cat.total_pressure_inlet(1.2e5, 300.0)]
     for edges in ([(0, 1, 0.01)], [(1, 0, 0.01)]):

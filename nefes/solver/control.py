@@ -39,7 +39,7 @@ from .report import _Reporter
 EPS_FB = 1e-5
 
 # Globalization tuning for the damped Newton in ``_solve_stage``.  These are standard,
-# solver-agnostic line-search / Levenberg-Marquardt defaults, not physics: the exact values
+# solver-independent line-search / Levenberg-Marquardt defaults, not physics: the exact values
 # only trade robustness against a few extra residual evaluations on hard iterates.
 _LS_MAX_BACKTRACK = 30  # cap on step halvings in the Armijo line search (alpha down to ~2^-30)
 _LS_SHRINK = 0.5  # step-length reduction per backtrack (alpha *= this)

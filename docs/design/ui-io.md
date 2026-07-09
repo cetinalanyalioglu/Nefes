@@ -36,7 +36,7 @@ and each per-frame item then holds one row of element values per frame, `values[
 A flat (un-nested) item inside an animated dataset remains legal and is read as frame-independent.
 The writer validates that every per-frame item has exactly one row per frame value and that its rows have equal length; the UI repeats both checks on load, together with the index-binding rule applied per row.
 
-The frame variable is deliberately self-describing, exactly like the `info` entries: phase, frequency, or any swept parameter are all just a `variable` name, a `unit`, and a value list, so the playback machinery in the UI stays model-agnostic.
+The frame variable is deliberately self-describing, exactly like the `info` entries: phase, frequency, or any swept parameter are all just a `variable` name, a `unit`, and a value list, so the playback machinery in the UI stays independent of the model.
 When a displayed item belongs to an animated dataset, the UI shows a playback control (play/pause/stop, frame stepping, speed, loop) and reports the frame variable's current value alongside the frame index; the colormap range is computed over *all* frames, so colors remain comparable as the animation runs.
 
 Two producers are built into `dump_case`:

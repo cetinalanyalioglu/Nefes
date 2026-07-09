@@ -82,7 +82,7 @@ class TransferFunction:
 
 
 class Constant(TransferFunction):
-    """A frequency-independent (real or complex) gain ``F(f) = value``."""
+    """A frequency-independent (generally complex) response ``F(f) = value``."""
 
     analytic = True
 
@@ -99,7 +99,7 @@ class Constant(TransferFunction):
 class NTau(TransferFunction):
     """The ``n-tau`` flame model ``F(f) = n * exp(-i * 2 pi f * tau)``.
 
-    The interaction index ``n`` (real or complex gain) times a pure time lag ``tau``
+    The (generally complex) interaction index ``n`` times a pure time lag ``tau``
     [s].  Entire in frequency, so it is usable in the stability eigenproblem.  Under
     the ``e^{+i omega t}`` convention the factor ``exp(-i omega tau)`` is the causal
     delay of the response behind the driving fluctuation (same sign as the duct
@@ -108,7 +108,7 @@ class NTau(TransferFunction):
     Parameters
     ----------
     n : float or complex
-        Interaction index (gain).
+        Interaction index; the gain of the model is ``abs(n)``.
     tau : float
         Time lag [s] (``>= 0`` for a causal response).
     """
@@ -146,7 +146,7 @@ class NTauLowpass(TransferFunction):
     Parameters
     ----------
     n : float or complex
-        Low-frequency interaction index (DC gain).
+        Low-frequency interaction index; the zero-frequency gain is ``abs(n)``.
     tau : float
         Time lag [s] (``>= 0`` for a causal response).
     fc : float
@@ -275,7 +275,7 @@ def n_tau(n, tau) -> NTau:
     Parameters
     ----------
     n : float or complex
-        Interaction index (gain).
+        Interaction index; the gain of the model is ``abs(n)``.
     tau : float
         Time lag [s] (``>= 0`` for a causal response).
 
@@ -292,7 +292,7 @@ def n_tau_lowpass(n, tau, fc) -> NTauLowpass:
     Parameters
     ----------
     n : float or complex
-        Low-frequency interaction index (DC gain).
+        Low-frequency interaction index; the zero-frequency gain is ``abs(n)``.
     tau : float
         Time lag [s] (``>= 0`` for a causal response).
     fc : float
@@ -306,12 +306,12 @@ def n_tau_lowpass(n, tau, fc) -> NTauLowpass:
 
 
 def constant(value) -> Constant:
-    """A frequency-independent gain (see :class:`Constant`).
+    """A frequency-independent (generally complex) response (see :class:`Constant`).
 
     Parameters
     ----------
     value : float or complex
-        The constant gain ``F(f) = value``.
+        The constant response ``F(f) = value``; its gain is ``abs(value)``.
 
     Returns
     -------
@@ -388,7 +388,8 @@ class DynamicResponseTerm:
         Reference quantity at ``ref_edge``: ``"u"`` (velocity, default), ``"p"``,
         ``"rho"``, ``"mdot"``, or ``"Z:<name>"`` for a transported composition scalar.
     gain : float, optional
-        Scalar multiplier on this term (default 1.0).
+        Real scalar multiplier on this term (default 1.0).  A complex weight belongs in
+        ``transfer``, not here: a gain is the magnitude ``abs(F)`` of a response.
     """
 
     transfer: object
@@ -402,6 +403,13 @@ class DynamicResponseTerm:
         q = self.quantity
         if q not in _QUANTITIES and not q.startswith("Z:"):
             raise ValueError(f"quantity must be one of {_QUANTITIES} or 'Z:<scalar-name>'; got {q!r}")
+        # a gain is the magnitude abs(F) of a response, hence real; a complex weight is a
+        # response in its own right and belongs in ``transfer``
+        if isinstance(self.gain, complex):
+            raise TypeError(
+                f"gain must be real (a gain is abs(F)); pass a complex weight in 'transfer'; got {self.gain!r}"
+            )
+        self.gain = float(self.gain)
 
 
 @dataclass
@@ -476,8 +484,8 @@ def heat_release_response(transfer, ref_edge, *, quantity="u", gain=1.0, q_mean=
     quantity : str, optional
         Reference quantity: one of ``"u"``, ``"p"``, ``"rho"``, ``"mdot"`` or a composition
         scalar ``"Z:<name>"`` (default ``"u"``).
-    gain : float or complex, optional
-        Scalar gain on the term (default ``1.0``).
+    gain : float, optional
+        Real scalar multiplier on the term (default ``1.0``).
     q_mean : float, optional
         Mean heat release [W]; ``None`` (default) auto-derives it from the mean flame.
 
@@ -494,7 +502,7 @@ def n_tau_flame(n, tau, ref_edge, *, quantity="u", q_mean=None) -> DynamicSource
     Parameters
     ----------
     n : float or complex
-        Interaction index (gain).
+        Interaction index; the gain of the model is ``abs(n)``.
     tau : float
         Time lag [s].
     ref_edge : int
@@ -520,8 +528,8 @@ def mass_flow_response(transfer, ref_edge, *, quantity="u", gain=1.0, mdot_mean=
         Edge whose fluctuation drives the injected-mass modulation.
     quantity : str, optional
         Reference quantity (default ``"u"``); see :func:`heat_release_response`.
-    gain : float or complex, optional
-        Scalar gain on the term (default ``1.0``).
+    gain : float, optional
+        Real scalar multiplier on the term (default ``1.0``).
     mdot_mean : float, optional
         Mean injected mass flow [kg/s]; ``None`` (default) auto-derives it from the element.
 

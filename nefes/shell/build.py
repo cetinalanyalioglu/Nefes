@@ -132,7 +132,7 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
       an element with a fixed port count, ``>= 2`` for the variable junction/splitter;
     * elements that do not permit an area change (``ALLOWS_AREA_CHANGE`` is
       ``False`` -- the constant-area duct) carry one shared area across all their
-      incident edges.  An intended area change at an area-agnostic element (e.g. a
+      incident edges.  An intended area change at an element indifferent to area (e.g. a
       sudden expansion) must use an ``isentropic_area_change`` or
       ``sudden_area_change`` element;
     * a pressure reference exists (see :func:`_check_pressure_reference`);

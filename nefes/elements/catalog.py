@@ -355,7 +355,7 @@ def cavity(volume, name="cavity"):
     so the perturbation layer leaves its inherited ``mdot' = 0`` row in place and lets ``M``
     add the storage onto it. It is never neutralized or stamped with a reflection coefficient.
 
-    The mean state of the cavity gas is slaved to its face (the local ``p``, ``T``,
+    The mean state of the cavity gas is tied to its face (the local ``p``, ``T``,
     composition), so ``c`` is the local sound speed. An independently-stated cavity
     is currently not supported.
 
@@ -866,7 +866,7 @@ def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
 # Composite elements (Class-1 macros): a single user element that expands to a
 # fixed recipe of atomic elements + internal edges at build time.  The expander
 # (nefes.elements.composite.expand_composites) and round-trip-stability guarantees
-# are element-agnostic; these factories just name the recipe.
+# do not depend on the element; these factories just name the recipe.
 # ---------------------------------------------------------------------------
 
 
@@ -1064,7 +1064,7 @@ def helmholtz_resonator(volume, neck_length, neck_area, name="hr") -> CompositeE
 # Composite elements (Class-2 discretization): a continuous 1-D element resolved
 # as an N-segment chain of compact atoms.  N is a fidelity knob -- the chain
 # converges to the true distributed solution as N grows, and grid-refinement (solve
-# at N and 2N) *is* the verification.  Same element-agnostic expander as Class 1.
+# at N and 2N) *is* the verification.  Same element-independent expander as Class 1.
 # ---------------------------------------------------------------------------
 
 

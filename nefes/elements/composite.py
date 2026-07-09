@@ -7,7 +7,7 @@ pure **graph transformation** run once at the top of :func:`nefes.shell.build.bu
 the solver, Jacobian assembly and perturbation layers never see a composite, so at solve time the
 expanded graph is indistinguishable from a hand-built one (no new kernels, no solver changes).
 
-The machinery is deliberately **element-agnostic** -- it knows nothing about what its
+The machinery is deliberately **element-independent** -- it knows nothing about what its
 sub-elements are, only their connectivity -- so one expander serves every composite,
 from a fixed macro recipe (an orifice = ``isentropic_area_change`` + ``sudden_area_change``)
 to an ``N``-segment discretization (a Fanno pipe, a tapered duct) to a future branching
@@ -212,7 +212,7 @@ def grid_refine(build, n_coarse, probe):
 
     The principled way to pick ``N`` for a :func:`~nefes.elements.catalog.fanno_pipe` /
     :func:`~nefes.elements.catalog.tapered_duct`: solve at two resolutions and watch the
-    quantities of interest settle.  Element-agnostic, it only calls the supplied callables.
+    quantities of interest settle.  Element-independent, it only calls the supplied callables.
 
     Parameters
     ----------

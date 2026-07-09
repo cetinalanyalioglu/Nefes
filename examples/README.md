@@ -68,7 +68,7 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
   and primary NO (the RQL low-NOx lever). `plotly`.
 - **`multiple_fuels.ipynb`** — **two very different fuels at different positions**: n-octane
   (`C8H18`) in the primary zone, then hydrogen (`H2`) injected into the hot products as a
-  **reheat** stage. Shows the chemistry plumbing is fuel-agnostic; each injected composition
+  **reheat** stage. Shows the chemistry plumbing does not depend on the fuel; each injected composition
   is its own transported **mixture fraction**.
 - **`multiple_fuel_manifold.ipynb`** — burns **three different fuels in three parallel
   branches** off a single air supply, then mixes the hot products back into one outlet;
@@ -286,5 +286,5 @@ gamma_in = fr.reflection_at(0)   # input reflection g/f at the feed edge
 ```
 
 The transfer/scattering-matrix analysis (`perturbation_response`) is unchanged and
-boundary-condition agnostic; `boundary_response` instead solves the network as it is
+independent of the boundary conditions; `boundary_response` instead solves the network as it is
 *physically terminated*.

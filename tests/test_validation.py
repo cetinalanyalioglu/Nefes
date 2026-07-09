@@ -5,7 +5,7 @@ arity, and -- the headline check -- an area change across an element that does
 not permit one.  Area changes are physically carried by the dedicated
 ``isentropic_area_change`` / ``sudden_area_change`` elements; the constant-area
 duct must share one area across both ports.  The concentrated loss is
-area-agnostic and may straddle an area change.
+invariant under area change and may straddle one.
 """
 
 import numpy as np
@@ -35,7 +35,7 @@ def test_duct_area_change_rejected():
 
 
 def test_loss_area_change_allowed():
-    # the concentrated loss is area-agnostic: it may straddle an area change
+    # the concentrated loss is invariant under area change: it may straddle one
     assert _build(cat.loss(2.5, name="valve"), 0.08, 0.05).n_nodes == 3
 
 

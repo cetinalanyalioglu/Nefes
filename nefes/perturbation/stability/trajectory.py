@@ -87,7 +87,7 @@ def _corrector(A_of, w0, v0, *, rtol=_CONVERGE_RTOL, maxit=_CORRECTOR_MAXIT):
     Iterates on ``omega`` until the update ``|dw|`` is negligible relative to ``|w|`` -- a
     scale-free convergence test.  The derivative action ``A'(omega) x`` is a central
     difference in ``omega`` (the operator is complex-analytic in it), so the step is
-    source-agnostic.  Seeded by the previous continuation step's eigenvector for fast,
+    independent of the source.  Seeded by the previous continuation step's eigenvector for fast,
     identity-preserving convergence.
 
     Returns

@@ -11,7 +11,7 @@ The presentation begins with the graph model and the division of labour between 
 This document inherits the standing assumptions of the [overview](overview.md); the two that are specific to the framework, and are examined in the sections that follow, are stated here:
 
 1. **Port quantities are adequately described by their cross-sectional averages.** Each edge carries a single representative state standing for the average over its port; this is exact for a uniform profile can be corrected, where it matters, by a profile-shape factor.
-2. **A thermodynamic closure supplies the state relations.** The framework requires a closure that returns the thermodynamic state, and its derivatives, from the carried variables; it is agnostic to whether that closure is a calorically perfect gas or a chemical-equilibrium mixture.
+2. **A thermodynamic closure supplies the state relations.** The framework requires a closure that returns the thermodynamic state, and its derivatives, from the carried variables; it does not depend on whether that closure is a calorically perfect gas or a chemical-equilibrium mixture.
 
 ## The network as a directed graph
 
@@ -103,7 +103,7 @@ This *direction-flip invariance* is verified numerically rather than taken on fa
 
 ## The thermodynamic closure
 
-The framework is agnostic to the gas thermodynamics: it requires only that a *thermodynamic closure* be supplied, one that returns the thermodynamic state — and, for the exact Jacobian, its derivatives — from the carried variables and the composition.
+The framework is independent of the gas thermodynamics: it requires only that a *thermodynamic closure* be supplied, one that returns the thermodynamic state — and, for the exact Jacobian, its derivatives — from the carried variables and the composition.
 Two closures are provided, and the element residuals see only the recovered state either produces, never the closure that produced it (see [state and recovery](state-and-recovery.qmd)).
 
 The first, and the simplest, is the *calorically perfect gas*, for which the state relations are given as:

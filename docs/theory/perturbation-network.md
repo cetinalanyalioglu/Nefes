@@ -1,14 +1,15 @@
 # The perturbation network
 
-The consistency goal that motivates the entire framework is realized in this document: the operator assembled for the mean flow, differentiated at the converged operating point, *is* the acoustic network.
+The consistency goal that motivates the entire framework is realized in this document: **the operator assembled for the mean flow, differentiated at the converged operating point, *is* the acoustic network.**
 One operator serves both problems — the steady balance and the linear acoustics — so that the care taken to keep every mean-flow residual smooth and complex-analytic pays off a second time, as the exact linearization the acoustics require.
 This document assembles that operator block by block and shows, for each block, whether it is *inherited* from the base Jacobian or *stamped* onto it.
 
 The acoustic model is posed under three standing assumptions, stated once and relied on throughout.
 The perturbations are *linear*, small departures about the converged mean state, so the operator is the Jacobian of the residuals at that state and nothing higher order.
 The fields are *time-harmonic*, with the convention $X'(t) = \Re\{\widehat{X}\,e^{\mathrm{i}\omega t}\}$; this sign choice is load-bearing for stability, because a mode then grows when $\Im(\omega) < 0$ (see [analyses](analyses.qmd)).
-The disturbances on each edge are *plane waves*, the one-dimensional acoustics of a duct, so that the wave amplitudes of [characteristics](characteristics.md) are the natural per-edge coordinates.
-Frequency is reported as the ordinary frequency $f$ in hertz, with $\omega = 2\pi f$ appearing inside the derivations.
+The disturbances on each edge are *plane waves*, the one-dimensional acoustics of a duct [@dokumaci_2021], so that the wave amplitudes of [characteristics](characteristics.md) are the natural per-edge coordinates.
+This implicitly assumes that the frequencies of interest are below the cut-on frequency of the ducts in the network.
+Nefes offers tools to report the network wide cut-on frequencies to verify this.
 
 The presentation begins with the single assembled operator and its reduction at zero frequency, then proceeds through the four blocks in turn — storage, propagation, source, and boundary closure — and closes with the ledger of what is inherited versus overwritten and the transfer- and scattering-matrix views that every downstream analysis consumes.
 
@@ -16,13 +17,13 @@ The presentation begins with the single assembled operator and its reduction at 
 
 The base of the acoustic operator is the mean-flow Jacobian itself.
 At the converged operating point the solver holds $\overline{\mathbf{J}}$, the exact complex-step Newton Jacobian of the residuals — the *algebraic block*, which the implementation names `J_alg` — and the per-edge characteristic maps of [characteristics](characteristics.md) turn its rows into the zero-frequency acoustic jump conditions without any re-derivation.
-The full perturbation operator adds to this base the unsteady physics that a steady solve discards, and is given as:
+The full perturbation operator $\mathbf{A}(\omega)$ adds to this base the unsteady physics that a steady solve discards, and is given as:
 
 $$
 \mathbf{A}(\omega) \;=\; \overline{\mathbf{J}} \;+\; \mathrm{i}\omega\,\mathbf{M} \;+\; \mathbf{P}(\omega) \;+\; \mathbf{S}(\omega),
 $$
 
-where $\overline{\mathbf{J}}$ is the base (algebraic) Jacobian, $\mathbf{M}$ is the storage block of finite-volume compliance and inertance entering through $\mathrm{i}\omega$, $\mathbf{P}(\omega)$ is the propagation block of lossless-duct phase relations, and $\mathbf{S}(\omega)$ is the source block of prescribed unsteady feedback; a terminal reflection closure, written onto the boundary rows, completes the assembly.
+where $\overline{\mathbf{J}}$ is the base (algebraic) Jacobian, $\mathbf{M}$ is the storage block of finite-volume compliance and inertance entering through $\mathrm{i}\omega$, $\mathbf{P}(\omega)$ is the propagation block of lossless-duct phase relations, and $\mathbf{S}(\omega)$ is the source block of prescribed unsteady feedback where thermoacoustics live. A boundary reflection closure, written onto the boundary rows, completes the assembly.
 Each block is either *added* onto the rows $\overline{\mathbf{J}}$ already populates or *overwrites* a set of rows, and the sections below take them in turn.
 
 The reduction at zero frequency is what makes the reuse exact.
@@ -88,7 +89,7 @@ At a quiescent mean state the entropy path is stationary and its phase decouples
 The source block carries the one piece of physics that is genuinely *prescribed* rather than inherited: an element's unsteady feedback, of which a flame's heat-release response is the archetype.
 Unlike the propagation and boundary blocks, it *adds* onto the rows the base Jacobian already populates rather than overwriting them, so it modifies — but does not replace — the element's mean-flow relation.
 For a flame it lands on the downstream edge's total-enthalpy row with a factor $-\delta$, where $\delta = \overline{Q}/\dot m$ is the mean specific enthalpy rise, scaling the flame transfer function $\mathcal{F}(\omega)$ that maps a reference fluctuation to the heat-release response.
-Because the transfer function is nonzero at $\omega = 0$, so is the source block's direct-current value, which is the qualification noted above; the full form of $\mathcal{F}$, its $n$–$\tau$ and tabulated instances, and the reference it responds to are the subject of [dynamic sources](dynamic-sources.qmd).
+Because the transfer function not necessarily zero at $\omega = 0$, so is the source block's direct-current value, which is the qualification noted above; the full form of $\mathcal{F}$, its $n$–$\tau$ and tabulated instances, and the reference it responds to are the subject of [dynamic sources](dynamic-sources.qmd).
 
 ## The boundary closure
 
@@ -106,7 +107,7 @@ The coefficient depends on the termination and, through the mean Mach number $M$
 2. **Open end**: $R = -1$ (the pressure fluctuation vanishes), or $R = -(1 - M)/(1 + M)$ with a mean flow.
 3. **Anechoic**: $R = 0$ (no reflection).
 4. **Impedance $Z$**: $R = (Z - \overline{\varrho}\,\overline{c})/(Z + \overline{\varrho}\,\overline{c})$.
-5. **Choked-nozzle outlet**: the compact Marble–Candel reflection, $R = (2 - (\gamma-1)M)/(2 + (\gamma-1)M)$.
+5. **Choked-nozzle outlet**: the compact Marble–Candel reflection [@marble_candel_1977], $R = (2 - (\gamma-1)M)/(2 + (\gamma-1)M)$.
 
 The choked-nozzle termination is the one that also carries an entropy coupling, given as $R_s = (\overline{c}/\overline{\varrho})\,M/(2 + (\gamma-1)M)$, which converts an arriving entropy spot into a reflected acoustic wave — the compact-nozzle mechanism of indirect combustion noise, and the reason a reacting analysis cannot in general set $\widehat{h} = 0$ (see [identification](identification.md)).
 In the limit $M \to 0$ the choked nozzle reduces to a hard wall, $R \to +1$ and $R_s \to 0$, as it must (tests: `test_terminated_duct_reflection`, `test_mean_flow_open_end`, `test_choked_nozzle_outlet_marble_candel`).

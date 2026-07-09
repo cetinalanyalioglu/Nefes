@@ -36,7 +36,7 @@ The second relation is the *critical pressure ratio*: while the ratio of back pr
 
 ## The throat is always an edge
 
-A structural convention of the model makes the sonic state easy to place: every element is taken to be *internally monotone* in area, interpolating between its port areas and hiding no interior extremum.
+A structural convention of the model makes the sonic state easy to place: **every (atomic) element is taken to be *internally monotone* in area**, interpolating between its port areas and hiding no interior extremum.
 The minimum area along any flow path is therefore an edge area, so any throat coincides with an edge, and the natural home of the sonic state is that edge — a state the recovery of [state and recovery](state-and-recovery.qmd) returns without any singularity, since the density root remains single and regular through $M = 1$.
 Consequently the choking constraint is attached to the existing elements adjacent to their small-port edges, rather than to a special nozzle element with hidden internal geometry; the physics is expressed on the geometry the network already carries.
 
@@ -141,15 +141,6 @@ The three regimes are all emergent from the one set of rows, and each matches th
 Beyond these lies the shock regime — a normal shock standing in a *diverging* passage downstream of a supersonic patch — which requires supersonic flow inside the domain and is outside the present subsonic scope.
 It is worth noting how it would be recovered: a normal shock conserves mass and total enthalpy, so the converged total-pressure loss determines it in post-processing, and the shock's Mach number and location are *deduced* from the Rankine–Hugoniot relations rather than imposed as unknowns — the location is an output, not an input.
 
-## What remains non-emergent
-
-One configuration cannot be made emergent within the present degree-of-freedom set, and the reason is instructive rather than incidental.
-At a *supersonic exit edge* all three characteristics leave the domain, so the back pressure physically imposes nothing on the interior over a finite range of its values (see [characteristics](characteristics.md)).
-No smooth, outlet-local residual row can express "impose nothing over a range": scaling a row never weakens its root, and fading a row to exactly zero leaves the system structurally singular, so a square smooth system with an active back-pressure row cannot reproduce the continuum of back pressures that share one internal supersonic solution.
-
-The precise statement is narrower than "impossible," and worth keeping exact.
-An emergent supersonic outlet through any outlet-local smooth row is impossible in the present formulation; an emergent supersonic converging–diverging nozzle is *not* impossible in principle, but it requires an additional internal unknown — a shock-position degree of freedom in the diverging element — that the current element set does not carry.
-Supplying that unknown, so that each regime freedom gets a physical degree of freedom and each regime boundary becomes a bound complementarity on it, is the same enrichment that finite-frequency acoustics of shocked nozzles will require; it is deferred with the rest of the supersonic scope, not refuted.
 Within the subsonic scope, the choking mechanism of this document is complete: the network finds the choke point, caps the flow, and matches the classical operating map, all from the element rows written for the mean flow.
 
 With the mean-flow model complete through choking, the same rows are ready to be linearized at the operating point into the acoustic layer, where the compact choked nozzle contributes its Marble–Candel reflection (see [perturbation network](perturbation-network.md)).

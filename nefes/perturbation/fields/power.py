@@ -438,7 +438,7 @@ def _edge_network_var(w, est, e, v):
 def _lumped_storage_energy(stamps, est, waves, n_solve):
     """Acoustic energy stored in the lumped storage block ``M``, shape ``(K,)``.
 
-    The element-agnostic complement of :func:`_stored_energy` (which integrates the
+    The element-independent complement of :func:`_stored_energy` (which integrates the
     *distributed* duct field): every storage stamp ``(row, col = n_solve*e + v, val)`` adds a
     term ``i*omega*val*x'_{e,v}`` onto a conservation row, and stores the time-averaged
     acoustic energy ``0.25 * |val|/rho_e * |x'_{e,v}|^2`` -- a compliance entry (``v = 1``) its

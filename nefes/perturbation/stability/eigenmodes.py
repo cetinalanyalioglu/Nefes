@@ -433,7 +433,7 @@ def _refine(A_of, residual, omega, x, *, rtol=_REFINE_RTOL, maxit=_REFINE_MAXIT)
     ``A(omega) y = A'(omega) x`` for the direction ``y``, then sets ``d_omega = -1/(x^H y)``
     and ``x <- -d_omega y`` (renormalized) -- a step that converges quadratically once the
     iterate is near the eigenvalue.  The derivative action ``A'(omega) x`` is a central
-    difference in ``omega`` (:data:`_NEWTON_FD_REL`), which keeps the polish source-agnostic:
+    difference in ``omega`` (:data:`_NEWTON_FD_REL`), which keeps the polish independent of the source:
     it re-evaluates the same assembled operator, so a future flame/storage term is
     differentiated automatically and never re-derived here.
 

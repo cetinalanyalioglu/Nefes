@@ -1,7 +1,7 @@
 """Thermo boundary: the single gateway through which all gas models are reached.
 
 The gas model is selected by an integer ``model_id``, so the registry, assembly
-kernel, and solver stay model-agnostic.  Two entry points share that dispatch:
+kernel, and solver never see the gas model.  Two entry points share that dispatch:
 
 * :func:`thermo_update` fills the band-2 fields ``(T, rho, c, W)`` in place from a
   thermodynamic point ``(Z_el, h, p)`` -- ``Z_el`` being the transported

@@ -20,7 +20,7 @@ $$
 $$
 
 where $\mathbf{X}$ is the unknown transfer matrix and $\mathbf{G}$ the unknown source gains, $\mathbf{P}$ selects the element's overwritten rows, and $\mathbf{Q}$ carries the upstream-face characteristic map.
-Because the update is low-rank, the Woodbury identity recovers the unknown from the network response while re-using a *single* factorization of $\mathbf{A}_0$ per frequency, which serves the whole network whether it is a simple cascade or a branched topology — the branch simply folds into $\mathbf{A}_0$.
+Because the update is low-rank, the Woodbury identity [@hager_1989] recovers the unknown from the network response while re-using a *single* factorization of $\mathbf{A}_0$ per frequency, which serves the whole network whether it is a simple cascade or a branched topology — the branch simply folds into $\mathbf{A}_0$.
 Intuitively, all the acoustics of the known part are captured once in $\mathbf{A}_0^{-1}$, and the measurement then only has to pin down the small block the unknown occupies.
 
 ## Recovering a two-port transfer matrix
@@ -75,6 +75,6 @@ Second, the unknown is declared by a *marker* on the element itself, which stamp
 
 The identification returns a real-frequency table of the recovered response and, by default, its analytic continuation.
 The raw table lives only on the real axis, which suffices for a forced response and for the real-axis Nyquist stability driver of [analyses](analyses.qmd), both of which evaluate only there.
-The stability eigensolver, however, searches the complex plane for the roots of $\det\mathbf{A}(\omega)$ and therefore needs an analytic function, so the table is continued by the barycentric-rational (AAA) fit of [dynamic sources](dynamic-sources.qmd); the same continued object then drives both the real-axis Nyquist analysis and the complex-plane eigensolver, and the conversions between transfer and scattering forms preserve its analyticity (test: `test_identify_transfer_matrix_continuation_is_analytic`).
+The stability eigensolver, however, searches the complex plane for the roots of $\det\mathbf{A}(\omega)$ and therefore needs an analytic function, so the table is continued by the barycentric-rational (AAA) fit [@nakatsukasa_2018] of [dynamic sources](dynamic-sources.qmd); the same continued object then drives both the real-axis Nyquist analysis and the complex-plane eigensolver, and the conversions between transfer and scattering forms preserve its analyticity (test: `test_identify_transfer_matrix_continuation_is_analytic`).
 
 Identification thus closes the loop between measurement and model: a measured or simulated network response becomes a network-ready element — a transfer matrix or a flame transfer function — continued into the complex plane and ready to be placed back into the operator for the stability and response analyses of [analyses](analyses.qmd).

@@ -2,10 +2,10 @@
 
 A disturbance in a flowing gas travels in three distinct ways: as a pressure (sound) wave running downstream, as a pressure wave running upstream, and as a temperature or composition pattern simply convected along with the gas.
 The *characteristic variables* $f$, $g$, and $h$ are the amplitudes that book-keep these three carriers, and they are the natural language of duct acoustics and thermoacoustics.
-This document derives the exact, invertible map between the wave amplitudes and the network's own unknowns, and then uses it to settle a foundational question that shaped the whole project: whether solving the *mean flow* in wave variables — rather than in the network variables — improves convergence.
+This document derives the exact, invertible map between the wave amplitudes and the network's own unknowns, and then explores the question of whether solving the *mean flow* in wave variables (rather than in the network variables introduced in [state-and-recovery](state-and-recovery.qmd)) improves convergence.
+Or, in a more general sense, this document shows whether solving the mean flow using any other linearly dependent variable set can affect the convergence behaviour.
 
-The answer is negative, and it follows from a two-line theorem; establishing it cleanly separates what the wave language is genuinely for (the acoustics, and the counting of conditions) from a hope that does not survive scrutiny (faster mean-flow convergence).
-The presentation begins with the decomposition of the one-dimensional Euler system and the definition of the amplitudes, then proceeds to the exact per-edge map to the network variables and the determinant that guarantees its invertibility, building on this to the Newton-invariance theorem, and closing with the three roles the characteristics actually play.
+The presentation begins with the decomposition of the one-dimensional Euler system and the definition of the amplitudes, then proceeds to the exact per-edge map to the network variables and the determinant that guarantees its invertibility, building on the "Newton-invarance", and closing with the three roles the characteristics actually play.
 
 ## Decomposition of the one-dimensional Euler system
 
@@ -70,9 +70,9 @@ $$
 so the inverse $\mathbf{L}_e = \mathbf{T}_e^{-1}$, giving $\mathbf{w} = \mathbf{L}_e\,\widehat{\mathbf{x}}_e$, exists at $M = 0$, in reversed flow, and in supersonic flow alike — the change to and from wave amplitudes never breaks down on a physical state.
 An important remark is that the entropy (third) row of the map carries the gas's *caloric coupling* through $\Gamma$, and for a reacting or variable-$\gamma$ edge this row is taken instead from a complex step of the converged closure, so that the wave maps remain consistent with the mean-flow Jacobian rather than assuming a perfect gas (see [perturbation network](perturbation-network.md)).
 
-## The Newton-invariance theorem
+## The Newton-invariance 
 
-With an invertible map in hand, one can ask whether posing the *mean-flow* Newton correction in wave amplitudes — the project's original convergence hypothesis — changes the iteration.
+With an invertible map in hand, one can ask whether posing the *mean-flow* Newton correction in wave amplitudes would change the iteration.
 The claim is that it does not: solving the Newton system in characteristic amplitudes and mapping back yields the identical update as solving directly in the network variables.
 
 The proof is immediate.
@@ -87,14 +87,14 @@ $$
 
 which is exactly the update obtained in the network variables.
 Intuitively, a change of unknowns is a similarity transformation of the linear system, and Newton's method is invariant under it.
-It should be noted that casting the mean-flow correction in characteristic variables therefore **cannot, by itself, improve convergence** — the original project hypothesis fails at this fence, in two lines.
+It should be noted that casting the mean-flow correction in characteristic variables therefore **cannot, by itself, improve convergence**.
 What a change of variables *can* affect is the floating-point conditioning of the linear solve and the metric of any relaxation, both second-order effects; the genuine levers on robustness are the equation structure of [equation structure](equation-structure.md) and [transport](transport.qmd), the scaling, and the globalization of the solver (see [the solver](../design/solver.md)).
 
 ## What the characteristics are actually for
 
 The wave language earns its place not in the mean-flow solve but in three other roles, each of which the map above makes exact.
 
-1. **Counting and well-posedness.** The characteristic decomposition is what tells one how many boundary and jump conditions a well-posed problem needs, and on which side each belongs — an inflow carries conditions its outflow does not; the fixed per-edge split of [equation structure](equation-structure.md) is the smooth, direction-agnostic realization of that count.
+1. **Counting and well-posedness.** The characteristic decomposition is what tells one how many boundary and jump conditions a well-posed problem needs, and on which side each belongs — an inflow carries conditions its outflow does not; the fixed per-edge split of [equation structure](equation-structure.md) is the smooth, direction-independent realization of that count.
 2. **Diagnostics.** Any residual or Newton update can be read per edge as three wave amplitudes through $\mathbf{L}_e$, which makes the state of the iteration physically legible; at the converged mean state the residual-driven wave amplitudes vanish identically, the natural statement that no unbalanced waves remain.
 3. **The acoustic network.** Linearizing the very same element equations at the converged mean state and transforming with $\mathbf{T}$ turns the base Jacobian $\overline{\mathbf{J}}$ into the acoustic scattering relations between the wave amplitudes — the reuse that is the consistency goal of the whole framework, and the subject of the [perturbation network](perturbation-network.md).
 

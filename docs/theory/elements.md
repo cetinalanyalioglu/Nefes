@@ -183,7 +183,7 @@ $$
 $$
 
 where $\varrho_t$ and $c_t$ are the stagnation density and sound speed recovered from the local state and $\gamma$ the local isentropic exponent.
-Because the sonic point sits in the lumped throat rather than in the domain, the application plane stays subsonic and the inherited acoustic operator is the compact choked-nozzle (Marble–Candel) reflection, entropy coupling included.
+Because the sonic point sits in the lumped throat rather than in the domain, the application plane stays subsonic and the inherited acoustic operator is the compact choked-nozzle (Marble–Candel) reflection [@marble_candel_1977], entropy coupling included.
 
 **Wall.**
 An impermeable termination sets $R = \sigma_{P,e}\dot m_e = 0$, admitting no mass across the face.

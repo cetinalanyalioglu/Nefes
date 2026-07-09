@@ -18,7 +18,7 @@ The first two root causes below are artifacts, removed by construction in the ea
 
 ## Root cause A: flux-form energy balances degenerate at zero flow
 
-The most tempting way to impose energy conservation on a two-port element is the flux form $R_E = \sum_i \sigma_i\,\dot m_i\,h_{t,i}$, summed over its ports.
+The most intuitive and tempting way to impose energy conservation on a two-port element is the flux form $R_E = \sum_i \sigma_i\,\dot m_i\,h_{t,i}$, summed over its ports.
 Differentiating this row exhibits its defect, and its derivative is given as:
 
 $$

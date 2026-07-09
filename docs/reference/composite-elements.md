@@ -170,7 +170,7 @@ equispaced stations over $[0, L]$ (then `length` and `n_segments` are required).
 
 ## How composites interact with the rest of Nefes
 
-**Centralized, element-agnostic machinery.** One expander (`expand_composites`) serves every
+**Centralized, element-independent machinery.** One expander (`expand_composites`) serves every
 composite; it knows only their connectivity, never what the sub-elements are. Adding a new
 composite means writing a constructor that returns a `CompositeElementSpec` — no solver,
 Jacobian or perturbation code changes.

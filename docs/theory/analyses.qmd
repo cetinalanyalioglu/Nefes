@@ -37,7 +37,7 @@ $$
 where each root $\omega$ yields a modal frequency $\omega_r/(2\pi)$ and a growth rate $\sigma = -\omega_i$.
 The operator is *entire* in $\omega$ — its only $\omega$-dependence is through $\mathrm{i}\omega\mathbf{M}$, the duct phases $e^{-\mathrm{i}\omega\tau}$, and any analytic source or boundary transfer function, none of which has a pole — so the roots are isolated and can be counted.
 
-The roots are found by the contour-integral method of Beyn, which recovers all eigenvalues inside a chosen contour from moments of the resolvent, given as:
+The roots are found by the contour-integral method of Beyn [@beyn_2012], which recovers all eigenvalues inside a chosen contour from moments of the resolvent, given as:
 
 $$
 \mathbf{A}_0 = \frac{1}{2\pi\mathrm{i}}\oint \mathbf{A}(z)^{-1}\widehat{\mathbf{V}}\,\mathrm{d}z,
@@ -138,7 +138,7 @@ fig
 ## Open-loop stability on the real axis
 
 The contour eigensolver is powerful but not universal, and three circumstances defeat it: a *measured* flame transfer function is defined only on the real axis and cannot be evaluated on the complex contour; a flowing network fills its spectrum with dense, near-marginal convected entropy and composition modes that overwhelm the completeness certificate; and a long convective delay makes $e^{-\mathrm{i}\omega\tau_u}$ overflow once the contour reaches into the complex plane.
-For these regimes stability is assessed on the real axis, by a Nyquist argument on the feedback the source introduces.
+For these regimes stability is assessed on the real axis, by a Nyquist argument [@nyquist_1932] on the feedback the source introduces.
 
 The construction splits the operator into its passive part and the source, given as:
 
@@ -169,7 +169,7 @@ An important qualification is that this counts unstable modes *relative to* $\ma
 
 ## Acoustic energy and passivity
 
-A complementary reading of the operator is energetic, through the mean-flow acoustic energy of Myers.
+A complementary reading of the operator is energetic, through the mean-flow acoustic energy of Myers [@myers_1991].
 For a plane-wave field the downstream energy flux (intensity) and the energy density are given as:
 
 $$

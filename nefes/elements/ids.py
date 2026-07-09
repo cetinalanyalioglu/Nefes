@@ -175,7 +175,7 @@ def port_kinds(rid, deg):
 
 
 # Whether an element permits an area change across it (its incident edges may carry
-# different areas).  Most elements are area-agnostic; the exceptions are the ones
+# different areas).  Most elements are indifferent to area change; the exceptions are the ones
 # whose mean face assumes equal-area continuity -- the constant-area duct / pipe and
 # the compact flames / mass source.  Elements absent from this map default to ``True``
 # (unconstrained); add an entry when a new element type needs the equal-area rule.
@@ -198,7 +198,7 @@ ALLOWS_AREA_CHANGE = {
     FLAME_HEAT_RELEASE: False,  # constant-area compact flame (Pt-continuity pressure row)
     FLAME_EQUILIBRIUM: False,  # constant-area compact reacting flame (static-p continuity)
     MASS_SOURCE: False,  # constant-area inline injection (momentum balance with a source)
-    LINEAR_RESISTANCE: True,  # area-agnostic: the Pt drop is set by mass flow, not area
+    LINEAR_RESISTANCE: True,  # insensitive to area: the Pt drop is set by mass flow
     TRANSFER_MATRIX: True,  # mean flow is an isentropic area change (contraction/diffuser allowed)
 }
 

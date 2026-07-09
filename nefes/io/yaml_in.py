@@ -640,7 +640,7 @@ def case_from_dict(doc: dict, case_dir: str = None, source: str = "<dict>"):
         raise ValueError(f"{path}: the network has no nodes or no edges")
 
     # Thermo model: a calorically-perfect gas, or the reacting equilibrium model (transported
-    # feed-stream mixture fractions slaved to HP equilibrium).
+    # feed-stream mixture fractions constrained to HP equilibrium).
     model_kind = str(g.get("thermoModel") or "perfect_gas")
     if model_kind == "perfect_gas":
         gas = perfect_gas(R=float(g["gasConstant"]), gamma=float(g["heatCapacityRatio"]))

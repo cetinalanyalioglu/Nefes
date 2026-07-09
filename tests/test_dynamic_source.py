@@ -99,6 +99,17 @@ def test_descriptor_validation():
         DynamicSource(terms=[DynamicResponseTerm((1.0, 1e-3), 0)], target="bogus")
     with pytest.raises(ValueError, match="quantity"):
         DynamicResponseTerm((1.0, 1e-3), 0, quantity="w")
+    # a gain is abs(F), hence real; a complex weight is itself a response and goes in `transfer`
+    with pytest.raises(TypeError, match="gain must be real"):
+        DynamicResponseTerm((1.0, 1e-3), 0, gain=1.0 + 2.0j)
+    assert DynamicResponseTerm((1.0, 1e-3), 0, gain=2).gain == 2.0  # int -> float
+
+
+def test_complex_weight_goes_in_the_transfer_function():
+    # a complex weight is a response in its own right: it is carried by `transfer`, not by `gain`
+    term = DynamicResponseTerm(1.0 + 2.0j, 0)
+    assert complex(np.asarray(term.transfer(0.0)).reshape(-1)[0]) == pytest.approx(1.0 + 2.0j)
+    assert term.gain == 1.0
 
 
 def test_descriptor_analytic_and_max_delay():

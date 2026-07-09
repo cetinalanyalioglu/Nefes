@@ -11,7 +11,7 @@ For every duct node the acoustic assembly requires:
   into the duct (tail station), port 1 out of it (head station).  Fixing the axis
   this way lets the characteristic decomposition run without sign/label-swap
   algebra; it is a graph-construction convention and does **not** constrain the mean
-  flow direction (the mean solve is direction-agnostic, which is why it carries no
+  flow direction (the mean solve does not depend on direction, which is why it carries no
   such check -- see the boundary-reversal note below);
 * a positive ``length``;
 * a strictly **subsonic** mean state on both incident edges -- the acoustic layer

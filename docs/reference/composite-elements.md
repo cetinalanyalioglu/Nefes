@@ -191,7 +191,7 @@ independent Borda composition and the De Domenico / Cambridge references in
 their $\mathbf{P}(\omega)$ ducts — so the acoustic response is the distributed (non-compact) one,
 converged via `grid_refine`.
 
-## UI (FNetLibUI) round trip
+## UI (Nemo) round trip
 
 A composite serializes to the UI case format as the **single node the user specified**, never its
 expanded internals: the writer (`yaml_out`) maps `CompositeElementSpec.kind` plus the factory

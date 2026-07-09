@@ -1,4 +1,4 @@
-# Converging nozzle -- saved from the FNetLibUI tool (model: fns-flow-network).
+# Converging nozzle -- saved from the Nemo tool (model: nefes).
 #
 #   reservoir --(feed)--> Duct --(pipe)--> IsentropicAreaChange
 #             --(throat)--> Duct --(tailpipe)--> back-pressure
@@ -14,7 +14,7 @@
 
 version: 2.0.0
 model:
-  id: fns-flow-network
+  id: nefes
   globalAttributes:
     gasConstant: 287.0
     heatCapacityRatio: 1.4

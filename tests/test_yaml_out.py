@@ -200,7 +200,7 @@ def test_ui_schema_invariants(tmp_path):
     _, doc = _reload(net, sol, str(tmp_path), node_data=True)
 
     assert doc["version"] == SAVE_FILE_VERSION
-    assert doc["model"]["id"] == "fns-flow-network"
+    assert doc["model"]["id"] == "nefes"
 
     n_nodes, n_edges = len(net._elements), len(net._edges)
     # Indices are dense 0..N-1 (values[i] binds to the element with index i).

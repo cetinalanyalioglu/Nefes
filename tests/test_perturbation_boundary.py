@@ -566,7 +566,7 @@ def _branched_terminations_case():
     return {
         "version": "2.0.0",
         "model": {
-            "id": "fns-flow-network",
+            "id": "nefes",
             "globalAttributes": {
                 "gasConstant": 287.0,
                 "heatCapacityRatio": 1.4,
@@ -637,7 +637,7 @@ def _ui_case(outlet_attrs):
     return {
         "version": "2.0.0",
         "model": {
-            "id": "fns-flow-network",
+            "id": "nefes",
             "globalAttributes": {
                 "gasConstant": 287.0,
                 "heatCapacityRatio": 1.4,

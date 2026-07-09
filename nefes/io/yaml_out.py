@@ -1,7 +1,7 @@
 """Write a Nefes network (and its results) as a UI-readable YAML case.
 
 This is the symmetric counterpart of :mod:`nefes.io.yaml_in`.  It emits the native
-``SaveFilePayload`` the FNetLibUI tool reads: ``version``/``timestamp``/``meta``,
+``SaveFilePayload`` the Nemo tool reads: ``version``/``timestamp``/``meta``,
 the ``model`` (gas + reference scales, ``nodes``, ``edges``), the UI-only
 ``uiAttributes`` (canvas positions) and ``uiState`` (id counters), and an
 optional ``data`` section holding result datasets.

@@ -19,10 +19,10 @@ from .provenance import UIProvenance
 
 _PORT_RE = re.compile(r"port-(\d+)$")
 
-# The UI model id this loader targets.  The historical id is kept (rather than renamed to
-# "nefes-flow-network") so every existing save file stays loadable; the display name shown
-# in the UI is set independently in the model YAML.
-MODEL_ID = "fns-flow-network"
+# The UI model id this loader targets.  Must match `id` in the Nemo model library
+# (Nemo/public/models/nefes.yaml); the display name shown in the UI is set
+# independently there.
+MODEL_ID = "nefes"
 
 # Model-level (globalAttributes) defaults, kept in sync with the UI model.
 _GLOBAL_DEFAULTS = {

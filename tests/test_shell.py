@@ -429,7 +429,7 @@ def _contraction_case(tmp_path, sac_attrs):
     doc = {
         "version": "2.0.0",
         "model": {
-            "id": "fns-flow-network",
+            "id": "nefes",
             "globalAttributes": {
                 "gasConstant": 287.0,
                 "heatCapacityRatio": 1.4,
@@ -496,7 +496,7 @@ def test_load_case_sudden_contraction_coefficient(tmp_path):
 
 
 def _ui_case(tmp_path, name, nodes, edges, glob=None):
-    """Write a minimal ``fns-flow-network`` UI export to ``tmp_path`` and return its path.
+    """Write a minimal ``nefes`` UI export to ``tmp_path`` and return its path.
 
     ``nodes`` are ``(id, type, index, attrs)`` tuples and ``edges`` are
     ``(id, src, src_port, tgt, tgt_port, index, area)`` tuples, so a test can spell a
@@ -515,7 +515,7 @@ def _ui_case(tmp_path, name, nodes, edges, glob=None):
     doc = {
         "version": "2.0.0",
         "model": {
-            "id": "fns-flow-network",
+            "id": "nefes",
             "globalAttributes": g,
             "nodes": [
                 {"id": nid, "type": ntype, "attributes": {"label": nid, "index": idx, **attrs}}

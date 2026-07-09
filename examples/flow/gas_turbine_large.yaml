@@ -1,5 +1,5 @@
-# Gas-turbine secondary-air system -- saved from the FNetLibUI tool
-# (model: fns-flow-network).  The large showcase network; it loads and solves
+# Gas-turbine secondary-air system -- saved from the Nemo tool
+# (model: nefes).  The large showcase network; it loads and solves
 # verbatim on the current Nefes.
 #
 #   HP bleed (total-P) --\
@@ -45,7 +45,7 @@
 
 version: 2.0.0
 model:
-  id: fns-flow-network
+  id: nefes
   globalAttributes:
     gasConstant: 287.0
     heatCapacityRatio: 1.4

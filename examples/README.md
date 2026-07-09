@@ -13,7 +13,7 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
 ## `getting-started/`
 
 - **`converging_nozzle.ipynb`** (+ **`converging_nozzle.yaml`**) — the canonical first
-  example. Loads a network **saved from the FNetLibUI tool** (reservoir → feed pipe →
+  example. Loads a network **saved from the Nemo tool** (reservoir → feed pipe →
   isentropic contraction → tailpipe → back-pressure outlet), solves the steady mean flow,
   prints the converged edge states, sweeps the back pressure to show emergent choking
   (mass-flow saturation at `M = 1`), and runs the full `3 x 3` **perturbation** transfer /
@@ -192,13 +192,13 @@ print(sol.edge(1))   # throat state: mdot, M, p, p_t, T, ...
 
 ## The UI case format
 
-`load_case` reads the native YAML the **FNetLibUI** tool writes out for the
-`fns-flow-network` model (defined in that repo under `public/models/`). The
+`load_case` reads the native YAML the **Nemo** tool writes out for the
+`nefes` model (defined in that repo under `public/models/`). The
 relevant sections:
 
 ```yaml
 model:
-  id: fns-flow-network
+  id: nefes
   globalAttributes: {gasConstant: 287.0, heatCapacityRatio: 1.4,
                      referencePressure: 101325.0, referenceTemperature: 300.0,
                      referenceMassFlow: 5.0}      # 0 -> auto

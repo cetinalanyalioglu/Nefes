@@ -1,6 +1,6 @@
 """UI-export (YAML) loader: thermo-model selection, new elements, reacting wiring.
 
-The loader (:mod:`nefes.io.yaml_in`) is the contract between the FNetLibUI tool and the
+The loader (:mod:`nefes.io.yaml_in`) is the contract between the Nemo tool and the
 solver.  These tests cover the additions that bring it in step with the catalog: the
 ``thermoModel`` selector (perfect gas vs equilibrium), the string-encoded compositions,
 the per-edge frozen/equilibrium closure (auto-from-flames + explicit override), the
@@ -48,7 +48,7 @@ def _edge(eid, src, tgt, sp, tp, index, area, **attrs):
 def _dump(tmp_path, name, global_attrs, nodes, edges):
     doc = {
         "version": "2.0.0",
-        "model": {"id": "fns-flow-network", "globalAttributes": global_attrs, "nodes": nodes, "edges": edges},
+        "model": {"id": "nefes", "globalAttributes": global_attrs, "nodes": nodes, "edges": edges},
     }
     path = tmp_path / name
     path.write_text(yaml.safe_dump(doc))

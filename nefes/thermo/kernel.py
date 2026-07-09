@@ -45,6 +45,11 @@ MAX_ITER = 300
 TOL = 1.0e-11
 TRACE = 1.0e-8  # mole-fraction threshold: "major" vs "trace" species
 LN_TRACE_CAP = 9.2103404  # -ln(1e-4): caps trace-species growth per step
+# Floor on a species mole fraction inside ``log``: at low temperature an active species'
+# moles can underflow to exactly zero, and ``log(0) = -inf`` would then poison the
+# element/energy sums through ``n_j f_j = 0 * (-inf) = NaN``.  Flooring the argument keeps
+# ``f_j`` finite; the vanishing moles still contribute ~0 to every sum.
+MOLE_FRAC_FLOOR = 1.0e-300
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +260,13 @@ def equilibrate_hp(coeffs, Tint, Af, b0, h_target, p, p_ref, T_init, nj, Mout):
             # dropped species hold no moles; fj is left at 0 so every ``nj*fj`` sum
             # below stays 0 (avoids log(0)) without special-casing each sum
             if active_sp[j]:
-                fj[j] = gRT[j] + np.log(nj[j] / ntot) + lnp
+                # An active species whose moles underflow to ~0 (cold, near-inert
+                # mixtures) would give log(0) = -inf; floor the mole fraction so fj
+                # stays finite (its ~0 moles still contribute ~0 to every sum).
+                xj = nj[j] / ntot
+                if xj < MOLE_FRAC_FLOOR:
+                    xj = MOLE_FRAC_FLOOR
+                fj[j] = gRT[j] + np.log(xj) + lnp
             else:
                 fj[j] = 0.0
         hhat_target = h_target / (RU * T)

@@ -19,6 +19,7 @@ from ..elements.ids import (
     row_kind_tags,
 )
 from ..assembly.assemble import residual
+from ..thermo.api import PERFECT_GAS
 
 
 @dataclass
@@ -216,6 +217,48 @@ def print_states(prob, x2d, edges=None, precision=5, file=None):
     print(format_states(prob, x2d, edges=edges, precision=precision), file=file)
 
 
+def scalar_field_labels(prob):
+    """Display labels for the transported composition scalars (band-1 rows ``3 .. n_solve-1``).
+
+    The transported scalars depend on the thermo model:
+
+    * a **reacting** (equilibrium) network transports one mixture fraction per distinct feed
+      stream, plus the burnt marker when the closure is marker-gated.  The mixture fractions are
+      labeled generically ``z1, z2, ...`` (in band order) and the marker ``marker`` -- the
+      feed-stream labels are element names and read poorly in a residual table;
+    * a **perfect gas with passive scalars** transports user-named scalars, kept verbatim (a
+      ``scalar#c`` fallback covers an unnamed one).
+
+    The marker is located by :attr:`CompiledProblem.marker_row` (``< 0`` when the network carries
+    none), so a marker anywhere in the band is labeled correctly.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem whose transported scalars are labeled.
+
+    Returns
+    -------
+    list of str
+        One label per composition scalar (length ``n_solve - 3``), in band order.
+    """
+    n_scalars = prob.n_solve - 3
+    marker_c = int(getattr(prob, "marker_row", -1)) - 3  # composition-scalar ordinal of the marker
+    reacting = prob.model_id != PERFECT_GAS
+    scalars = prob.scalar_names or ()
+    labels = []
+    z = 0
+    for c in range(n_scalars):
+        if c == marker_c:
+            labels.append("marker")
+        elif reacting:  # reacting mixture fractions: generic z1, z2, ... (feed labels read poorly)
+            z += 1
+            labels.append(f"z{z}")
+        else:  # perfect-gas passive scalars keep their user-given names
+            labels.append(scalars[c] if c < len(scalars) and scalars[c] else f"scalar#{c}")
+    return labels
+
+
 def residual_labels(prob):
     """Human-readable label for every residual equation, in row order.
 
@@ -237,7 +280,7 @@ def residual_labels(prob):
         ``prob.n_eq`` labels, in residual-row order.
     """
     names = prob.node_names or ()
-    scalars = prob.scalar_names or ()
+    scalar_labels = scalar_field_labels(prob)
     nrp = prob.node_row_ptr
     labels = []
     for n in range(prob.n_nodes):
@@ -249,12 +292,8 @@ def residual_labels(prob):
             labels.append(f"node {n} [{label}] {type_name}: {KIND_NAMES[tag]}")
     E = prob.n_edges
     for s in range(prob.n_solve - 2):
-        if s == 0:
-            field = "h_t"  # the s=0 transport row carries total enthalpy
-        elif (s - 1) < len(scalars) and scalars[s - 1]:
-            field = scalars[s - 1]
-        else:
-            field = f"scalar#{s - 1}"
+        # s=0 is the total-enthalpy (energy) transport row; s>=1 are the composition scalars
+        field = "h_t" if s == 0 else scalar_labels[s - 1]
         for e in range(E):
             labels.append(f"edge {e} transport: {field}")
     return labels
@@ -295,10 +334,8 @@ def residual_groups(prob):
     base = prob.transport_row0
     for s in range(prob.n_solve - 2):
         ids[base + s * E : base + (s + 1) * E] = 2 + s
-    scalars = prob.scalar_names or ()
-    labels = ["mass", "pressure", "energy"]
-    for s in range(prob.n_solve - 3):  # one column per composition scalar
-        labels.append(scalars[s] if s < len(scalars) and scalars[s] else f"scalar#{s}")
+    # one column per composition scalar: mixture fractions z1, z2, ... and the burnt marker
+    labels = ["mass", "pressure", "energy"] + scalar_field_labels(prob)
     return labels, ids
 
 
@@ -368,7 +405,14 @@ def format_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precis
     str
         A newline-joined, column-aligned table ready to print.
     """
-    labels, R, R_hat = residual_breakdown(prob, x2d, kappa=kappa, eps=eps)
+    try:
+        labels, R, R_hat = residual_breakdown(prob, x2d, kappa=kappa, eps=eps)
+    except Exception:
+        # The residual could not even be assembled: an edge recovered a non-finite state (a
+        # failed h->T inversion, a diverged equilibrium solve), and the inner linear algebra
+        # raised.  Rather than surface that opaque error, locate the offending edges and report
+        # them -- this is the failed-solve diagnostic, so it must not itself crash.
+        return _nonphysical_report(prob, x2d)
     order = np.argsort(-np.abs(R_hat)) if sort else np.arange(len(R_hat))
     if top is not None:
         order = order[: int(top)]
@@ -385,6 +429,73 @@ def format_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precis
     lines = [_row(headers), _row(["-" * w for w in widths])] + [_row(r) for r in rows]
     lines.append(f"||R_hat|| = {float(np.linalg.norm(R_hat)):.{precision}e}  ({len(R_hat)} equations)")
     return "\n".join(lines)
+
+
+def _nonphysical_report(prob, x2d, top=10):
+    """A readable diagnostic when a state is non-physical and the residual cannot be assembled.
+
+    Recovers each edge in isolation and lists those whose recovered state raises or comes back
+    non-finite, with the band-1 unknowns that produced it.  Used by :func:`format_residuals` as
+    a graceful fallback so a failed solve reports *which* edge broke and with what state, instead
+    of propagating the inner ``LinAlgError`` from the recovery.
+
+    Parameters
+    ----------
+    prob : CompiledProblem
+        The compiled problem to probe.
+    x2d : ndarray
+        The offending state, shape ``(n_solve, n_edges)``.
+    top : int, optional
+        Maximum number of offending edges to list (default 10).
+
+    Returns
+    -------
+    str
+        A newline-joined report of the non-physical edges.
+    """
+    from ..assembly.recover import recover_edge, NS_EST
+
+    x = np.ascontiguousarray(x2d, dtype=np.float64)
+    n_elem = int(prob.n_elem)
+    mrow = int(getattr(prob, "marker_row", -1))
+    has_marker = mrow >= 0
+    names = prob.edge_names if getattr(prob, "edge_names", None) else ()
+    bad = []
+    for e in range(prob.n_edges):
+        out = np.zeros(NS_EST)
+        marker = float(x[mrow, e]) if has_marker else 0.0
+        try:
+            recover_edge(
+                int(prob.edge_model[e]),
+                prob.tf,
+                prob.ti,
+                x[0, e],
+                x[1, e],
+                x[2, e],
+                prob.area[e],
+                x[3 : 3 + n_elem, e],
+                marker,
+                out,
+                np.zeros(0),
+            )
+            reason = "" if np.all(np.isfinite(out)) else "non-finite recovered state"
+        except Exception as ex:  # the inner equilibrium / h->T solve raised
+            reason = f"{type(ex).__name__}: {ex}"
+        if reason:
+            label = f"{names[e]} (edge {e})" if e < len(names) and names[e] else f"edge {e}"
+            z = np.array2string(x[3 : 3 + n_elem, e], precision=4, separator=", ")
+            bad.append(
+                f"  {label}: {reason}\n"
+                f"      mdot={x[0, e]:.4g}, p={x[1, e]:.6g}, h_t={x[2, e]:.6g}, "
+                f"area={prob.area[e]:.4g}, Z={z}" + (f", marker={marker:.4g}" if has_marker else "")
+            )
+    if not bad:
+        return (
+            "residual could not be assembled, but every edge recovered a finite state "
+            "(the failure is elsewhere; re-run with a debugger)."
+        )
+    head = f"state is non-physical: {len(bad)} edge(s) failed recovery (showing up to {top}):"
+    return "\n".join([head] + bad[:top])
 
 
 def print_residuals(prob, x2d, kappa=0.0, eps=None, sort=True, top=None, precision=4, file=None):

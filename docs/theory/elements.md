@@ -203,11 +203,15 @@ During the early solver stages only, every interior pressure-type row carries th
 $$
 R_{1+i} \;\mathrel{-}=\; \kappa\,\dot m^{\text{out}}_{P,\text{port }i},
 \qquad
-\kappa = \text{stab}\cdot \frac{p_{\text{ref}}}{\dot m_{\text{ref}}},
+\kappa = \kappa_s\, r_{\text{art}},
+\qquad
+r_{\text{art}} = \min\!\left(\frac{\Delta p_{\max}}{\dot m_{\text{ref}}},\, 1\right),
 $$
 
-where $\kappa$ is the stabilization coefficient built from a reference pressure and mass flow and $\text{stab}$ a dimensionless schedule.
-It is a small fictitious friction between port $0$ and port $i$, signed as the second law dictates, and its necessity — it removes a zero-flow degeneracy that would otherwise strand the solver — is argued in [well-posedness](well-posedness.md).
-It is harmless because the final solver stage sets $\text{stab} = 0$, so the equations satisfied at convergence are the exact constitutive relations of this document rather than their stabilized surrogates (test: `test_long_serial_chain_cold_start`, converging from rest through the staged continuation to $\kappa = 0$).
+where $\kappa$ is the artificial-resistance coefficient actually stamped into the row, $\kappa_s$ the dimensionless continuation schedule, and $r_{\text{art}}$ a resistance scale built from $\Delta p_{\max}$, the span between the network's highest and lowest prescribed absolute pressure.
+Scaling by $r_{\text{art}}$ sizes the fictitious pressure drop at the reference flow as a fixed fraction $\kappa_s$ of the real driving drop; the cap at unity means it only ever *softens* the friction, for a network whose driving drop is small against its flow, and leaves a healthy one untouched at $r_{\text{art}} = 1$.
+Where no driving drop is known a priori, as in a purely mass-driven network, the scale falls back to unity.
+It is a small fictitious friction between port $0$ and port $i$, signed as the second law dictates, and its necessity (it removes a zero-flow degeneracy that would otherwise strand the solver) is argued in [well-posedness](well-posedness.md).
+It is harmless because the final solver stage sets $\kappa_s = 0$, so the equations satisfied at convergence are the exact constitutive relations of this document rather than their stabilized surrogates (test: `test_long_serial_chain_cold_start`, converging from rest through the staged continuation to $\kappa = 0$).
 
 With every element's residual rows in hand, the next question is why these particular forms are chosen over the more obvious flux-form or hard-switch alternatives — the subject of [well-posedness](well-posedness.md).

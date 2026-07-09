@@ -9,7 +9,7 @@ Where a symbol is genuinely reused in two roles, the two are listed together and
 The notation follows a small set of rules, applied uniformly:
 
 - **Mean (base) states** carry an overbar, $\overline{X}$, and denote the converged steady state about which the acoustics are linearized (for example the mean density $\overline{\varrho}$ and sound speed $\overline{c}$). A subscript zero is *not* used for the mean, as numeric subscripts denote port indices.
-- **Fluctuations** carry a prime, $X' = X - \overline{X}$, and are the small unsteady departures from the mean.
+- **Fluctuations** carry a prime, $X' = X - \overline{X}$, and are the small unsteady departures from the mean. They are the *organized* (coherent, phase-resolved) fluctuations that the acoustic layer resolves; where the *stochastic* turbulent departure must be named alongside them it carries a double prime, $X''$, and it is closed by the constitutive models rather than resolved (see [governing equations](theory/governing-equations.md)).
 - **Complex amplitudes** carry a hat, $\widehat{X}$, and are the frequency-domain amplitude of a time-harmonic fluctuation, $X'(t) = \Re\{\widehat{X}\,e^{\mathrm{i}\omega t}\}$.
 - **Section (area) averages** carry angle brackets, $\langle X\rangle \equiv \tfrac{1}{A}\int_A X\,\mathrm{d}A$, and denote the average of a field over a port cross-section; the edge quantities are averages of this kind (see [framework](theory/framework.md)).
 - **Vectors and matrices** are set in bold, $\mathbf{X}$; scalars are set in plain italic, $X$.
@@ -70,6 +70,8 @@ The notation follows a small set of rules, applied uniformly:
 | $\varepsilon$ | smoothing width of a regularized primitive (mass-flow units) |
 | $\theta,\ w,\ \xi$ | smooth upwind / donor / boundary-regime blending weights |
 | $\kappa$ | artificial-resistance (stabilization) coefficient |
+| $\kappa_s$ | dimensionless artificial-resistance continuation schedule |
+| $r_{\text{art}}$ | artificial-resistance scale |
 | $\varphi_\varepsilon$ | smoothed complementarity residual (Fischer–Burmeister), selecting the subsonic and choked regimes of a single row |
 | $\lambda$ | Levenberg–Marquardt damping parameter |
 | $\tau_+,\ \tau_-,\ \tau_u$ | duct transit times of the downstream-acoustic, upstream-acoustic, and convected paths |

@@ -62,7 +62,7 @@ Newton's method, which moves entirely on first-order sensitivities, sees a flat 
 
 The cure must inject first-order flow sensitivity without altering the converged answer, which is exactly what the artificial-resistance continuation of [elements](elements.md) does.
 With the fictitious friction $\kappa$ active, each pressure relation acquires a term linear in the flow, so the network behaves like a pipe-resistance circuit in which pressure differences push directly on the flows — as a voltage drives a current through a resistor — and the solver locates the correct flow pattern readily.
-The friction is then reduced to zero over a short sequence of stages, $\kappa$ stepping through a schedule such as $(0.1,\ 0.01,\ 0)$ with each stage warm-started from the previous solution, so that the final stage solves the exact, friction-free equations (test: `test_quiescent_cold_start_converges`).
+The friction is then reduced to zero over a short sequence of stages, the dimensionless schedule $\kappa_s$ stepping through values such as $(0.1,\ 0.01,\ 0)$ with each stage warm-started from the previous solution, so that the final stage solves the exact, friction-free equations (test: `test_quiescent_cold_start_converges`).
 An important remark is that this is a continuation in a *physical* parameter, not a numerical fudge: every intermediate problem is a well-posed resistive network, and only the limit $\kappa \to 0$ restores the original equations, whose solution the continuation reaches by a path that is nonsingular throughout.
 
 ## A milder, physical indeterminacy

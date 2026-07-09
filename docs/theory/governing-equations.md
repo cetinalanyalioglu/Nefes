@@ -40,12 +40,20 @@ where $\varrho$ is the density, $u$ the velocity, $p$ the static pressure, $e_t$
 Intuitively, $h_t$ is the energy currency of a steady stream: it is exactly conserved along an adiabatic flow no matter how the gas accelerates, decelerates, or loses pressure, which is precisely why it, and not the temperature, is the quantity transported across the network (see [transport](transport.qmd)).
 
 The surface integral over a port is a section average of the flux, in the sense of the [framework](framework.md): the boundary term $\oint_{\mathcal{S}} \mathbf{f}_n\,\mathrm{d}\mathcal{S}$ evaluated over a port of area $A$ is $A\,\langle \mathbf{f}_n\rangle$, and the single-state closure of the final section is exactly the statement that this average is adequately represented by the flux formed from the edge state.
-Under that closure the turbulent contributions to the port flux are taken to cancel on averaging, so the balances below are those of the section-averaged profile.
+Under that closure the *stochastic* contributions to the port flux, the turbulent departures $X''$ from the section-averaged profile, are taken to cancel on averaging wherever they are not already carried by the constitutive coefficients of the element relations, so the balances below are those of the averaged profile.
+The fluctuation that survives them, and on which the acoustic layer of [perturbation network](perturbation-network.md) is built, is the *organized* one, $X'$: the coherent, phase-resolved departure that a harmonic excitation of the network produces.
 
 ## The steady balance and jump conditions
 
 We seek a steady operating point, so the time-derivative term vanishes and the integral law reduces to a balance of surface fluxes against the source.
 This reduction requires only steadiness: at the operating point the stored mass, momentum, and energy do not change in time, and the transient term is zero for an element of *any* internal volume.
+Under the linear-acoustics assumption of the [overview](overview.md) the steady operating point coincides with the temporal mean of the unsteady flow: averaging the exact balances returns the steady equations together with correlation sources $\overline{\varrho' u'}$, $\overline{p' u'}$, and their kin, every one of which is of second order in the organized fluctuation and is therefore discarded at the same stroke as the nonlinear acoustics.
+The two part company once that fluctuation is no longer infinitesimal, since the correlation sources then bias the mean state by an amount growing with the square of the amplitude, most sharply across the elements whose losses are quadratic in the velocity (see [limitations](limitations.md)).
+
+The correlations of the two fluctuating fields are thus removed from the mean balances by arguments that must not be conflated.
+The stochastic correlations are *modeled*: they do not vanish physically, and the loss coefficients and discharge coefficients of [elements](elements.md) exist precisely to carry their effect, so the closure is empirical and its accuracy is that of the constitutive model.
+The organized correlations are *neglected*: they are genuinely small, uniformly of the order the acoustic layer already discards, so the closure is one of asymptotic ordering and needs no model at all.
+An overbar therefore denotes an average over both fields, but only the second of the two closures is a matter of order, and only the first is a matter of calibration.
 For an element $P$ whose boundary consists of its port surfaces (the incident edges $e_i$) together with solid walls, the balance is given as:
 
 $$

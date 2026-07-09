@@ -26,7 +26,14 @@ The kinetic-energy-coupled recovery is the exact path, and closing this residual
 
 ## Acoustic-model scope
 
-Three bounds apply to the acoustic layer, each already noted where it arises.
+Before the specific bounds, the premise beneath all of them: the acoustic layer is *linear*, and its perturbation is an infinitesimal one.
+The consequence worth recording here is one the mean flow inherits.
+The state the solver converges is the steady operating point, and it coincides with the temporal mean of the unsteady flow only to the order the linearization retains: averaging the exact balances leaves the correlation sources $\overline{\varrho' u'}$, $\overline{p' u'}$, and their kin, which are quadratic in the fluctuation and are therefore dropped (see [governing equations](governing-equations.md)).
+At finite amplitude those sources bias the observed mean away from the steady solution, by an amount growing with the square of the amplitude and concentrating in the elements whose losses are quadratic in the velocity.
+What the tool therefore predicts is whether a mode grows, not the amplitude at which its growth arrests, nor the mean state a saturated oscillation settles into; a measurement taken on a strongly oscillating rig is not the state this mean flow computes.
+The forward-compatible path is the amplitude-dependent describing function: retaining the correlation sources and evaluating the dynamic sources of [dynamic sources](dynamic-sources.qmd) at a prescribed amplitude turns the same operator into a saturation condition, and the machinery to carry it — a nonlinear source stamp on an otherwise unchanged network — is already the shape of the source block.
+
+Three further bounds apply to the acoustic layer, each already noted where it arises.
 The compositional (indirect) noise coupling $R_\xi$ is retained everywhere the acoustic linearization is inherited from the mean-flow kernel, but it is dropped by the hand-written analytic terminal closures for a choked-nozzle or constant-mass-flow outlet, which carry the entropy coupling $R_s$ but no composition column; the solver raises a warning precisely when a reacting flow meets such a closure, so the gap is surfaced rather than silent (see [dynamic sources](dynamic-sources.qmd)).
 The isentropic reduction removes the convected entropy wave altogether — exact for the acoustic spectrum of a flow without entropy sources, but by construction silent about indirect combustion noise — so a study of entropy-generated sound must use the full three-wave mode (see [identification](identification.md)).
 The real-axis Nyquist stability count is taken relative to the passive operator $\mathbf{A}_0$ and equals the absolute count only when $\mathbf{A}_0$ is itself stable, a premise the driver checks with a rational fit; it is moreover a tally up to the swept band edge rather than an unqualified total (see [analyses](analyses.qmd)).
@@ -41,5 +48,5 @@ The mean-flow mass balance is exactly linear and globally conservative, and the 
 The isentropic and choking rows reproduce the classical compressible-flow relations exactly in the subsonic regime, to the order of the fixed complementarity smoothing (see [choking](choking.qmd)).
 The characteristic maps that turn the base Jacobian into the acoustic operator are the exact linearization of the state definitions, invertible at every physical state (see [characteristics](characteristics.md)).
 
-The honest summary is therefore that the subsonic, equilibrium-reacting mean flow and the acoustics linearized about it form a complete and internally exact core, ringed by a small set of named, bounded approximations — each with a designed path to removal — and one firm scope boundary at supersonic internal flow.
+The honest summary is therefore that the subsonic, equilibrium-reacting mean flow and the acoustics linearized about it form a complete and internally exact core, ringed by a small set of named, bounded approximations — each with a designed path to removal — and two firm scope boundaries: supersonic internal flow, and the finite-amplitude response beyond the linear one.
 The evidence that the core performs as claimed is the subject of the validation track.

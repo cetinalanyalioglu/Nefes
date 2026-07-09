@@ -84,13 +84,16 @@ def test_branches_are_continuous_and_identity_preserving(gain_sweep):
     """
     traj = gain_sweep
     n_mid = 0.5
+    # freq_band/growth_band are the semi-axes of an *ellipse*, and by mid-sweep one branch has
+    # drifted onto its rim (growth ~ -487 against a -500 half-axis, at 0.28 of the frequency
+    # half-axis).  The oracle gets a wider growth window so every branch has a mode to match.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         ref = eigenmodes(
             make_rijke(n_mid).solve().problem,
             make_rijke(n_mid).solve().x,
             freq_band=BAND,
-            growth_band=GROWTH,
+            growth_band=(2.0 * GROWTH[0], 2.0 * GROWTH[1]),
             isentropic=True,
         )
     ref_w = np.array([complex(2 * np.pi * f, -g) for f, g in zip(ref.freqs, ref.growth_rates)])

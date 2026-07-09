@@ -48,6 +48,9 @@ The test names are the actual functions in the suite, so an entry can be run dir
 | Transfer and scattering matrices round-trip, and across flavors | closed-form conversions | `test_transfer_scattering_round_trip`, `test_flavor_round_trip` |
 | An $n$–$\tau$ flame drives a self-excited instability | analytic dispersion root | `test_n_tau_flame_drives_self_excited_instability` |
 | The eigensolver's mode count is certified complete | argument-principle winding | `test_eigenmodes_certified_count_matches` |
+| An eigenvalue-free region yields no modes, whatever the band | argument-principle winding as the Beyn rank | `test_beyn_moment_rank_is_ambiguous_on_an_empty_contour`, `test_no_modes_survive_an_eigenvalue_free_region`, `test_eigenmodes_are_insensitive_to_the_band_edge` |
+| A mode is told from an arbitrary frequency on an ill-conditioned operator | residual on the equilibrated $\mathbf{D}_r\mathbf{A}\mathbf{D}_c$ | `test_equilibrated_residual_separates_a_mode_from_an_arbitrary_point` |
+| The search sub-contours cover the region they certify | elliptical tiling geometry | `test_subcontours_cover_the_counted_region` |
 | The growth-rate sign matches the boundary energy budget | Myers acoustic energy | `test_boundary_power_sign_matches_growth_every_mode` |
 | The Nyquist count agrees with the eigensolver | matrix-determinant lemma | `test_unstable_count_matches_eigenmodes` |
 | A de-embedded element reproduces its measured response | Woodbury identity | `test_identify_transfer_matrix_cascade`, `test_identify_single_input_ftf` |

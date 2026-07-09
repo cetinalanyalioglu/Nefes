@@ -380,6 +380,187 @@ def test_eigenmodes_certified_count_matches():
     assert res.certified
 
 
+# --------------------------------------------------------------------------
+# 7. The rank of the moment matrix comes from the argument principle, not from its
+#    own singular values, and the residual is measured on the equilibrated operator.
+# --------------------------------------------------------------------------
+
+
+def test_beyn_moment_rank_is_ambiguous_on_an_empty_contour():
+    # On a contour enclosing an eigenvalue the moment's singular values show a gap of many
+    # decades at the true rank.  On an eigenvalue-free contour A_0 is analytically zero, its
+    # singular values are pure quadrature error, and no threshold on them can see rank 0:
+    # the relative test svd_tol * s[0] reports the full probe width.  This is why the driver
+    # supplies the rank instead of letting beyn infer it.
+    c = 340.0
+    da = DuctAcoustics(c, LDUCT, 0.0)
+    w1 = np.pi * c / LDUCT
+
+    def solve(z, B):
+        return np.linalg.solve(da.system(z, 1.0, 1.0), B)
+
+    populated = circle_contour(w1 + 0j, 0.4 * w1, 128)
+    _, _, info = beyn(solve, 4, populated, n_probe=4)
+    s = info["svals"]
+    assert info["rank"] == 1
+    assert s[0] / s[1] > 1e6  # a clean gap at the true rank
+
+    empty = circle_contour(0.4 * w1 + 0j, 0.2 * w1, 128)
+    _, _, info = beyn(solve, 4, empty, n_probe=4)
+    s = info["svals"]
+    assert info["rank"] == 4  # the relative threshold sees full rank where the true rank is 0
+    assert s[0] / s[-1] < 1e3  # no gap anywhere: the singular values are all quadrature noise
+    assert s[0] < 1e-9  # ... and all of them are at the noise floor
+
+
+def test_beyn_rank_override_pins_the_mode_count():
+    # Handing beyn the argument-principle count makes it exact on both contours above.
+    c = 340.0
+    da = DuctAcoustics(c, LDUCT, 0.0)
+    w1 = np.pi * c / LDUCT
+
+    def solve(z, B):
+        return np.linalg.solve(da.system(z, 1.0, 1.0), B)
+
+    def det_phase(z):
+        return float(np.angle(da.det(z, 1.0, 1.0)))
+
+    empty = circle_contour(0.4 * w1 + 0j, 0.2 * w1, 128)
+    k, _ = winding_count(det_phase, empty)
+    lam, vecs, info = beyn(solve, 4, empty, rank=k)
+    assert k == 0 and lam.size == 0 and vecs.shape == (4, 0) and info["rank"] == 0
+
+    populated = ellipse_contour(1.5 * w1 + 0j, 0.9 * w1, 0.3 * w1, 256)
+    k, _ = winding_count(det_phase, populated)
+    lam, _, info = beyn(solve, 4, populated, rank=k)
+    assert k == 2 and info["rank"] == 2
+    _match(lam, [w1, 2.0 * w1], rtol=1e-5)  # the two modes, and nothing else
+
+
+def test_equilibrated_residual_separates_a_mode_from_an_arbitrary_point():
+    # A network operator mixes rows in incompatible units, so cond(A) is huge at every omega
+    # and ||A x|| / max|A| is tiny even where there is no mode.  Equilibrating first restores
+    # the separation.  The diagonal below stands in for that unit disparity.
+    import scipy.sparse as sp
+
+    from nefes.perturbation.stability.eigenmodes import _ResidualScale
+
+    c = 340.0
+    da = DuctAcoustics(c, LDUCT, 0.0)
+    w1 = np.pi * c / LDUCT
+    D = np.diag([1.0, 1e6, 1e-3, 1e8])  # rows in wildly different units
+
+    def A_of(z):
+        return sp.csr_matrix(D @ da.system(complex(z), 1.0, 1.0))
+
+    def raw_residual(z, v):
+        A = A_of(z)
+        return float(np.linalg.norm(A @ v)) / float(np.abs(A.data).max())
+
+    def min_singular_vector(z):
+        return np.linalg.svd(A_of(z).toarray())[2][-1].conj()
+
+    residual = _ResidualScale(A_of, w1)
+
+    # away from any mode, the raw residual of the near-null vector passes any sane cutoff...
+    for z in (0.4 * w1, 0.7 * w1):
+        v = min_singular_vector(z)
+        assert raw_residual(z, v) < 1e-9  # indistinguishable from a converged mode
+        assert residual(A_of, z, v) > 1e-6  # ... but the equilibrated residual rejects it
+
+    # on the mode, both agree that the residual is at round-off
+    v = min_singular_vector(w1)
+    assert residual(A_of, w1, v) < 1e-12
+
+
+def test_subcontours_cover_the_counted_region():
+    # The certificate counts eigenvalues inside `bound`, and modes are accepted inside `bound`;
+    # the tiles must therefore cover it.  Side-by-side ellipses of the region's own half-height
+    # pinch at every seam, leaving a mode of large growth rate there counted but unreachable.
+    from nefes.perturbation.stability.eigenmodes import _band_subcontours, _tile, build_operator
+
+    _, sol = _duct_net(PerturbationBC.hard_wall(), cat.wall())
+    _, blocks, _, _ = build_operator(sol.problem, sol.x)
+    band = (50.0, 2000.0)
+    subs, bound, _, geom = _band_subcontours(band, None, 64, blocks, None)
+
+    # the region is exactly the band the caller asked for -- no hidden margin, so "counted
+    # inside" and "kept inside" are the same set
+    c_re, rx = np.pi * (band[0] + band[1]), np.pi * (band[1] - band[0])
+    assert bound.center.real == pytest.approx(c_re) and bound.rx == pytest.approx(rx)
+
+    assert len(subs) > 1, "the band must tile into several sub-contours for this to bite"
+    for t in np.linspace(0.0, 2.0 * np.pi, 181):
+        for r in (0.35, 0.7, 0.95, 0.999):  # rings of the region ellipse, out to its rim
+            z = bound.center + r * (bound.rx * np.cos(t) + 1j * bound.ry * np.sin(t))
+            assert any(s.inside(z) for s in subs), f"z={z} lies in no sub-contour"
+
+    # ... and re-tiling finer (the adaptive refinement path) keeps covering it
+    c_re, c_im, rx, ry = geom
+    for s in _tile(c_re, c_im, rx, ry, 4 * len(subs), 64):
+        assert s.ry > ry, "a tile must be taller than the region it helps cover"
+
+
+def test_eigenmodes_finds_nothing_between_harmonics():
+    # A band that encloses no mode must come back empty and certified so, not populated with
+    # the quadrature noise of an eigenvalue-free contour.
+    _, sol = _duct_net(PerturbationBC.hard_wall(), cat.wall())
+    u, c = _uc(sol)
+    f1 = c / (2.0 * LDUCT)  # modes sit at f1, 2 f1, 3 f1, ...
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", EigenmodeWarning)  # and without complaining
+        res = eigenmodes(sol.problem, sol.x, (1.2 * f1, 1.8 * f1))
+    assert res.n_modes == 0 and res.expected == 0 and res.certified
+
+
+def _broken_loop_net():
+    """A duct with one reflecting end and one anechoic end: no round trip, so no free mode.
+
+    The small area leaves the assembled operator with ``cond(A) ~ 1e9``, the regime a real
+    network lives in, where ``||A x|| / max|A|`` is ``~1e-9`` at *every* frequency and cannot
+    tell a mode from an arbitrary point.
+    """
+    return _duct_net(
+        PerturbationBC.reflection(0.2),
+        cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.anechoic()),
+        area=1e-4,
+        mdot_ref=1e-3,
+    )[1]
+
+
+def test_no_modes_survive_an_eigenvalue_free_region():
+    # The spectrum is empty, and the driver must say so at every band, on an operator whose
+    # conditioning makes the raw residual useless as a filter.  Inferring the rank from the
+    # moment's singular values instead invents a handful of modes per band, each with a
+    # convincingly small raw residual, and each at a different frequency for a different band.
+    sol = _broken_loop_net()
+    for band in [(50.0, 900.0), (50.0, 1200.0), (50.0, 1800.0), (50.0, 2400.0)]:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", EigenmodeWarning)
+            res = eigenmodes(sol.problem, sol.x, band, isentropic=True)
+        assert res.expected == 0, f"the region {band} Hz should enclose no eigenvalue"
+        assert res.n_modes == 0, f"invented {res.n_modes} mode(s) at {np.sort(res.freqs)} Hz in {band}"
+        assert res.certified
+
+
+def test_eigenmodes_are_insensitive_to_the_band_edge():
+    # The tiling is derived from the band, so moving its upper edge re-cuts the sub-contours and
+    # changes which of them enclose a mode.  What is found below the edge must not care.
+    _, sol = _duct_net(PerturbationBC.hard_wall(), cat.wall())
+    u, c = _uc(sol)
+    f1 = c / (2.0 * LDUCT)
+    common = None
+    for f_hi in (2.2, 2.4, 2.6, 2.8):  # every edge lies between the 2nd and 3rd harmonic
+        res = eigenmodes(sol.problem, sol.x, (0.5 * f1, f_hi * f1))
+        assert res.certified, f"uncertified at f_hi = {f_hi} f1"
+        found = np.sort(res.freqs)
+        assert found.size == 2
+        if common is None:
+            common = found
+        assert np.allclose(found, common, rtol=1e-6)
+    _match(common, [f1, 2.0 * f1], rtol=1e-4)
+
+
 def test_eigenmodes_certify_toggle():
     # certify=False leaves the count unset and certified False; certify=True fills it in.
     _, sol = _duct_net(PerturbationBC.hard_wall(), cat.wall())

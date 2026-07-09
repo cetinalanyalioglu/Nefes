@@ -16,10 +16,26 @@ spectrum with no change here.
 
 The driver takes a converged mean state, builds the frozen blocks once, and sweeps
 the operator over a quadrature *contour* in the complex plane (rather than a
-real-frequency line).  The eigenvalues come from :func:`contour.beyn`; each is then
-Newton-polished on ``A(omega) v = 0`` (:func:`_refine`) and kept only if its scaled
-residual is small, so spurious quadrature artifacts are dropped.  The result is an
-:class:`EigenmodeResult` exposing modal frequencies, growth rates, and mode shapes.
+real-frequency line).  The search region is tiled into overlapping sub-contours; on
+each, the argument principle (:func:`contour.winding_count`) first counts how many
+eigenvalues are enclosed, and that integer is handed to :func:`contour.beyn` as the
+rank of its moment matrix.  An eigenvalue-free tile is therefore skipped outright
+rather than mined for the quadrature noise that a self-inferred rank would mistake
+for modes.  Each eigenpair is then Newton-polished on ``A(omega) v = 0``
+(:func:`_refine`) and kept only if its residual on the *equilibrated* operator is
+small.  The result is an :class:`EigenmodeResult` exposing modal frequencies, growth
+rates, and mode shapes.
+
+Two scaling facts govern the design.  A network operator mixes rows in incompatible
+units (pressure, velocity, mass flow), so ``cond(A)`` is routinely ``1e12`` or worse
+at *every* frequency; a residual normalized by ``max|A|`` is then satisfied by a
+near-null vector at any ``omega`` whatsoever and cannot certify a mode.  The residual
+here is therefore measured on ``D_r A D_c`` with the equilibrating diagonals frozen
+once at the band centre (:class:`_ResidualScale`), which restores several decades of
+separation between a true mode and an arbitrary point.  Second, the moment matrix of
+an eigenvalue-free contour is analytically zero, so its singular values carry no
+scale of their own and no threshold on them can distinguish rank 0 from rank
+``n_probe``; only the winding count can.
 
 Sign convention.  The operator's time dependence is ``e^{+i*omega*t}`` (the duct
 delay ``f_head = e^{-i*omega*tau} f_tail`` is the causal lag of a downstream wave
@@ -41,6 +57,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
+import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from ..operator.operator import build_acoustic_blocks, assemble_acoustic
@@ -68,7 +85,20 @@ _EXP_LIMIT = 650.0
 # the frequency band into sub-contours of a few modes each is the standard robust practice.
 _MODES_PER_SUBCONTOUR = 2
 
-# Adaptive certification: if Beyn finds fewer modes than the argument-principle count
+# Tile geometry.  The sub-contours must *cover* the search region: side-by-side ellipses of the
+# region's own half-height leave uncovered lenses at every seam (a mode there is counted by the
+# certificate but is unreachable, so the search can never certify).  A tile of half-width
+# _TILE_RX_OVERLAP * sub_rx reaches its neighbour's centre-line at |Im| = ry only if its own
+# half-height is at least ry / sqrt(1 - 1/_TILE_RX_OVERLAP**2) = 1.342 ry; _TILE_RY_INFLATION
+# carries a margin above that.
+_TILE_RX_OVERLAP = 1.5
+_TILE_RY_INFLATION = 1.4
+
+# A Beyn eigenvalue is kept as a candidate if it lies within this margin of its own tile: a mode
+# on a seam is found by both neighbours, and de-duplication merges the two.
+_TILE_ACCEPT_MARGIN = 1.05
+
+# Adaptive refinement: if fewer modes are resolved than the argument-principle count
 # (:func:`contour.winding_count`) says are inside the region, the band is re-tiled into
 # _REFINE_GROWTH times more sub-contours and the probe widened, then re-searched -- up to
 # _MAX_REFINE_ROUNDS times.  This is what makes the driver self-correcting: the user never has
@@ -76,9 +106,31 @@ _MODES_PER_SUBCONTOUR = 2
 _REFINE_GROWTH = 2
 _MAX_REFINE_ROUNDS = 3
 
+# A winding number this far from an integer means the counting contour under-resolves the
+# det-phase or passes very close to an eigenvalue; the count is then not trusted as a rank.
+_WINDING_ROUND_TOL = 0.05
+
 # Relative step of the central difference that forms the eigen-Newton derivative A'(omega) x
 # (h = _NEWTON_FD_REL * (|omega| + 1)).  Shared with the continuation corrector in trajectory.py.
 _NEWTON_FD_REL = 1e-6
+
+# Newton polish: stop once the eigenvalue update is this small relative to |omega| (a scale-free
+# test in omega, unlike a residual), and never take more than _REFINE_MAXIT steps.
+_REFINE_RTOL = 1e-12
+_REFINE_MAXIT = 12
+
+# Default scaled-residual cutoff for keeping a mode, measured on the equilibrated operator
+# (:class:`_ResidualScale`).  On a well-equilibrated network operator a true mode lands near
+# 1e-12 and an arbitrary point near 1e-7, so this sits between them with decades to spare.
+_RESIDUAL_TOL = 1e-9
+
+# Sinkhorn-style sweeps used to equilibrate the operator's rows and columns to unit max-norm.
+# The scaling is set by each row's physical units, so it converges in a handful of sweeps.
+_EQUIL_SWEEPS = 20
+
+# Above this operator dimension the per-tile factorizations are not cached (one LU per quadrature
+# node would dominate memory); the winding count and the moments then factorize independently.
+_LU_CACHE_MAX_DIM = 4096
 
 # Relative amount by which a factorization node is nudged off an exact eigenvalue (where A(z)
 # is singular) before it is factorized; far below the contour scale, so the moments are unaffected.
@@ -171,10 +223,24 @@ def _estimate_mode_count(blocks, w_lo, w_hi) -> int:
 
 
 def _tile(c_re, c_im, rx, ry, n_sub, n_nodes):
-    """``n_sub`` contiguous, slightly overlapping search ellipses tiling ``[c_re-rx, c_re+rx]``."""
+    """``n_sub`` overlapping search ellipses whose union covers the region ellipse ``(rx, ry)``.
+
+    Each tile spans ``sub_rx = rx / n_sub`` of the real axis but is drawn
+    ``_TILE_RX_OVERLAP`` times wider and ``_TILE_RY_INFLATION`` times taller than that
+    share, so that adjacent tiles overlap and no lens of the region is left outside every
+    tile.  Without the height inflation the ellipses pinch at each seam and a mode of large
+    growth rate sitting there is invisible to the search while still being counted by the
+    certificate.
+    """
     sub_rx = rx / n_sub
     return [
-        ellipse_contour((c_re - rx + sub_rx * (2 * i + 1)) + 1j * c_im, sub_rx * 1.1, ry, n_nodes) for i in range(n_sub)
+        ellipse_contour(
+            (c_re - rx + sub_rx * (2 * i + 1)) + 1j * c_im,
+            sub_rx * _TILE_RX_OVERLAP,
+            ry * _TILE_RY_INFLATION,
+            n_nodes,
+        )
+        for i in range(n_sub)
     ]
 
 
@@ -185,11 +251,13 @@ def _band_subcontours(freq_band, growth_band, n_nodes, blocks, n_probe):
     (growth ``= -Im(omega)``).  The band is split into ``ceil(estimated modes /
     _MODES_PER_SUBCONTOUR)`` overlapping elliptical sub-contours so each encloses only a
     few modes (a single contour over many symmetric modes is rank-deficient).  The
-    imaginary half-axis is clamped to keep the duct phases from overflowing.
+    imaginary half-axis is clamped to keep the duct phases from overflowing, allowing for
+    the taller tiles :func:`_tile` draws over it.
 
-    Returns ``(subcontours, bound, n_probe, geom)``: the list of search ellipses, a
-    bounding ellipse for the in-region test, the (possibly defaulted) probe width, and
-    the region geometry ``(c_re, c_im, rx, ry)`` for adaptive re-tiling.
+    Returns ``(subcontours, bound, n_probe, geom)``: the list of search ellipses, the region
+    ellipse itself (which the tiles cover and which both the completeness count and the
+    in-region test use, so the two agree by construction), the (possibly defaulted) probe
+    width, and the region geometry ``(c_re, c_im, rx, ry)`` for adaptive re-tiling.
     """
     f_lo, f_hi = float(freq_band[0]), float(freq_band[1])
     if not f_hi > f_lo:
@@ -204,9 +272,11 @@ def _band_subcontours(freq_band, growth_band, n_nodes, blocks, n_probe):
 
     tau_max = _max_tau(blocks)
     im_limit = _EXP_LIMIT / tau_max if tau_max > 0.0 else np.inf
+    # the tiles reach _TILE_RY_INFLATION * ry in |Im(omega)|, so that is what must stay overflow-safe
+    tile_im_limit = 0.8 * im_limit / _TILE_RY_INFLATION
     if growth_band is None:
         c_im = 0.0
-        ry = min(sub_rx, 0.8 * im_limit)  # default: near-circular sub-contours, overflow-clamped
+        ry = min(sub_rx, tile_im_limit)  # default: near-circular sub-contours, overflow-clamped
     else:
         g_lo, g_hi = float(growth_band[0]), float(growth_band[1])
         if not g_hi > g_lo:
@@ -214,10 +284,10 @@ def _band_subcontours(freq_band, growth_band, n_nodes, blocks, n_probe):
         # growth rate = -Im(omega), so a growth-rate band maps to an Im(omega) band of opposite sign
         c_im = -0.5 * (g_lo + g_hi)
         ry = 0.5 * (g_hi - g_lo)
-        if abs(c_im) + ry > im_limit:
+        if abs(c_im) + ry * _TILE_RY_INFLATION > im_limit:
             warnings.warn(
                 f"growth_band reaches |Im(omega)|={abs(c_im) + ry:.3g} rad/s, beyond the "
-                f"overflow-safe limit {im_limit:.3g} for the longest duct (tau={tau_max:.3g} s); "
+                f"overflow-safe limit {tile_im_limit:.3g} for the longest duct (tau={tau_max:.3g} s); "
                 "the duct phases would overflow. Narrow growth_band or shorten/split the duct.",
                 EigenmodeWarning,
                 stacklevel=3,
@@ -225,7 +295,7 @@ def _band_subcontours(freq_band, growth_band, n_nodes, blocks, n_probe):
     ry = max(ry, 1e-9 * max(sub_rx, 1.0))
 
     subs = _tile(c_re, c_im, rx, ry, n_sub, n_nodes)
-    bound = ellipse_contour(c_re + 1j * c_im, rx * 1.02, ry, 8)  # for the in-region test only
+    bound = ellipse_contour(c_re + 1j * c_im, rx, ry, 8)  # the region: counted, covered, and tested against
     if n_probe is None:
         per_sub = max(1, int(np.ceil(est_modes / n_sub)))
         n_probe = max(6, 2 * per_sub + 4)
@@ -240,19 +310,36 @@ class _Factorizer:
     singular); if it does, the node is nudged by a negligible fraction of ``|z|`` -- far
     below the contour scale, so neither the moment integral nor the winding phase is
     affected -- and then factorized.
+
+    Both the winding count and the moment integral visit the *same* quadrature nodes of a
+    tile, so the factorization of each node is cached and reused across the two passes; the
+    cache is dropped between tiles (:meth:`clear`) and disabled entirely above
+    :data:`_LU_CACHE_MAX_DIM`, where one LU per node would dominate memory.
     """
 
-    def __init__(self, A_of):
+    def __init__(self, A_of, n=None):
         self._A_of = A_of
+        self._cache = {} if n is not None and int(n) <= _LU_CACHE_MAX_DIM else None
+
+    def clear(self):
+        """Drop the cached factorizations (called between tiles)."""
+        if self._cache is not None:
+            self._cache.clear()
 
     def _factor(self, z):
+        if self._cache is not None and z in self._cache:
+            return self._cache[z]
         last = None
         for k in range(5):
             zz = z if k == 0 else z + (_FACTOR_NUDGE_REL * (k + 1)) * abs(z) * (1.0 + 1.0j)
             try:
-                return spla.splu(self._A_of(zz).tocsc())
+                lu = spla.splu(self._A_of(zz).tocsc())
             except RuntimeError as exc:  # "Factor is exactly singular"
                 last = exc
+                continue
+            if self._cache is not None:
+                self._cache[z] = lu
+            return lu
         raise last
 
     def solve(self, z, B):
@@ -264,18 +351,79 @@ class _Factorizer:
         return lu_logdet_phase(self._factor(z))
 
 
-def _residual(A_of, omega, x):
-    """Scaled residual ``||A(omega) x|| / max|A(omega)|`` for a unit-norm ``x``.
+def _equilibrate(A, sweeps=_EQUIL_SWEEPS):
+    """Diagonal scalings ``d_r``, ``d_c`` driving every row and column of ``|A|`` to unit max-norm.
 
-    Normalizing by the operator's largest entry makes the threshold dimensionless:
-    a genuine null vector gives ``<< 1``, a spurious one ``O(1)``.
+    A Sinkhorn-style iteration on the magnitudes.  Empty rows/columns are left alone.
+
+    Parameters
+    ----------
+    A : scipy.sparse.spmatrix
+        The operator to equilibrate (only its magnitudes are used).
+    sweeps : int, optional
+        Number of alternating row/column sweeps (default :data:`_EQUIL_SWEEPS`).
+
+    Returns
+    -------
+    d_r, d_c : ndarray
+        Positive row and column scalings, such that ``diag(d_r) A diag(d_c)`` is balanced.
     """
-    A = A_of(omega)
-    scale = float(np.abs(A.data).max()) if A.nnz else 1.0
-    return float(np.linalg.norm(A @ x)) / max(scale, 1e-300)
+    M = abs(A).tocsr()
+    m, k = M.shape
+    d_r, d_c = np.ones(m), np.ones(k)
+    for _ in range(sweeps):
+        S = sp.diags(d_r) @ M @ sp.diags(d_c)
+        row = np.asarray(S.max(axis=1).todense()).ravel()
+        col = np.asarray(S.max(axis=0).todense()).ravel()
+        row[row <= 0.0] = 1.0
+        col[col <= 0.0] = 1.0
+        d_r /= np.sqrt(row)
+        d_c /= np.sqrt(col)
+    return d_r, d_c
 
 
-def _refine(A_of, omega, x, *, tol, maxit=8):
+class _ResidualScale:
+    """Scale-invariant residual ``||A(omega) x||`` measured on the equilibrated operator.
+
+    A network operator's rows carry incompatible units, so ``max|A|`` is set by whichever
+    stamp happens to be largest and bears no relation to the scale of the rows that actually
+    go singular at a mode.  In practice ``sigma_min / sigma_max ~ 1e-13`` uniformly in
+    ``omega``, so the naive ``||A x|| / max|A|`` is tiny at *every* frequency and accepts any
+    candidate at all.  Equilibrating first (``A_s = D_r A D_c``) removes the unit disparity
+    and restores a usable gap: a true mode falls near ``1e-12`` while an arbitrary point sits
+    near ``1e-7``.
+
+    The scalings are computed once, at a real reference frequency.  Every ``omega``-dependence
+    of ``A`` is a phase ``e^{-i omega tau}`` or a factor ``i omega``, so along the real axis
+    the entry magnitudes -- and hence the equilibration -- barely move; freezing them keeps the
+    residual a fixed, comparable measure across the whole search region.
+
+    Parameters
+    ----------
+    A_of : callable
+        ``omega -> A(omega)``, the assembled sparse operator.
+    omega_ref : complex
+        Reference frequency at which the scalings are frozen (the band centre).
+    """
+
+    def __init__(self, A_of, omega_ref):
+        d_r, d_c = _equilibrate(A_of(complex(omega_ref)))
+        self.d_c = d_c
+        self._D_r = sp.diags(d_r)
+        self._D_c = sp.diags(d_c)
+
+    def __call__(self, A_of, omega, x):
+        """Residual of the unit-norm ``x`` at ``omega``, in the equilibrated metric."""
+        A_s = self._D_r @ A_of(omega) @ self._D_c
+        y = x / self.d_c
+        nrm = np.linalg.norm(y)
+        if nrm == 0.0 or not np.isfinite(nrm):
+            return np.inf
+        scale = float(np.abs(A_s.data).max()) if A_s.nnz else 1.0
+        return float(np.linalg.norm(A_s @ (y / nrm))) / max(scale, 1e-300)
+
+
+def _refine(A_of, residual, omega, x, *, rtol=_REFINE_RTOL, maxit=_REFINE_MAXIT):
     """Polish ``(omega, x)`` by Newton on the bordered system ``[A(omega) x; x^H x - 1] = 0``.
 
     Beyn returns each eigenpair only to quadrature accuracy; this refines it to a true
@@ -287,20 +435,42 @@ def _refine(A_of, omega, x, *, tol, maxit=8):
     iterate is near the eigenvalue.  The derivative action ``A'(omega) x`` is a central
     difference in ``omega`` (:data:`_NEWTON_FD_REL`), which keeps the polish source-agnostic:
     it re-evaluates the same assembled operator, so a future flame/storage term is
-    differentiated automatically and never re-derived here.  Iterating stops as soon as the
-    scaled residual :func:`_residual` drops below ``tol``, and any diverging step is rejected.
+    differentiated automatically and never re-derived here.
+
+    Iterating stops when the update ``|d_omega|`` falls below ``rtol * max(|omega|, 1)`` -- a
+    scale-free test in ``omega`` rather than a threshold on the residual, which would let the
+    polish quit at whatever accuracy the acceptance cutoff happens to demand.  The residual
+    only guards against divergence: a step that worsens it is rejected.
+
+    Parameters
+    ----------
+    A_of : callable
+        ``omega -> A(omega)``.
+    residual : callable
+        ``(A_of, omega, x) -> float``, the equilibrated residual (:class:`_ResidualScale`).
+    omega : complex
+        Starting eigenvalue estimate.
+    x : ndarray
+        Starting eigenvector estimate.
+    rtol : float, optional
+        Relative ``|d_omega|`` convergence threshold (default :data:`_REFINE_RTOL`).
+    maxit : int, optional
+        Maximum Newton steps (default :data:`_REFINE_MAXIT`).
+
+    Returns
+    -------
+    omega, x, residual : complex, ndarray, float
+        The polished eigenpair and its residual.
     """
     x = x / np.linalg.norm(x)
     w = complex(omega)
-    r = _residual(A_of, w, x)
+    r = residual(A_of, w, x)
     for _ in range(maxit):
-        if r < tol:
-            break
         A = A_of(w)
         try:
             lu = spla.splu(A.tocsc())
         except RuntimeError:
-            break  # singular factorization (w sits on the eigenvalue): residual already tiny
+            break  # singular factorization (w sits on the eigenvalue): already converged
         h = _NEWTON_FD_REL * (abs(w) + 1.0)
         Ap_x = (A_of(w + h) @ x - A_of(w - h) @ x) / (2.0 * h)  # A'(omega) x
         y = lu.solve(Ap_x)
@@ -314,10 +484,12 @@ def _refine(A_of, omega, x, *, tol, maxit=8):
             break
         x_new /= nrm
         w_new = w + dw
-        r_new = _residual(A_of, w_new, x_new)
+        r_new = residual(A_of, w_new, x_new)
         if not np.isfinite(r_new) or r_new > r:
             break  # diverging: keep the better iterate
         w, x, r = w_new, x_new, r_new
+        if abs(dw) <= rtol * max(abs(w), 1.0):
+            break
     return w, x, r
 
 
@@ -347,7 +519,7 @@ def eigenmodes(
     u_floor=1e-8,
     isentropic=False,
     svd_tol=1e-10,
-    residual_tol=1e-6,
+    residual_tol=_RESIDUAL_TOL,
     refine=True,
     certify=True,
     max_refine_rounds=_MAX_REFINE_ROUNDS,
@@ -362,6 +534,12 @@ def eigenmodes(
     method (:func:`contour.beyn`), polishing and validating each by its residual.
     The operator is identical to the one the forced/scattering driver uses, so the
     spectrum and the response are guaranteed consistent.
+
+    The search region is covered by overlapping sub-contours.  On each, the argument
+    principle counts the enclosed eigenvalues *before* Beyn runs, and that count fixes
+    the rank of the moment matrix; a sub-contour enclosing none is skipped.  The result
+    is insensitive to how the band happens to be tiled, which a rank inferred from the
+    moment's singular values is not.
 
     Use **passive** terminal BCs (``hard_wall``/``open_end``/``anechoic``/
     ``reflection``/``impedance``, or ``inherit``); a terminal's ``driven`` forcing
@@ -383,6 +561,12 @@ def eigenmodes(
         positive is unstable).  Default: a roughly square region about the real axis
         (clamped to keep the duct phases from overflowing).  Widen it to hunt
         strongly growing/decaying modes.
+
+        The two bands set the *semi-axes* of an elliptical search region, not a
+        rectangle: a mode near a corner of the implied box -- high growth at the edge of
+        the frequency window -- lies outside the ellipse and is neither counted nor
+        returned.  Widen the band that it sits close to.  The region is reported on
+        :attr:`EigenmodeResult.contour`.
     n_nodes : int, optional
         Quadrature points on the contour (default 128).  Trapezoidal quadrature
         converges exponentially, so more points buy accuracy cheaply; each costs one
@@ -401,19 +585,22 @@ def eigenmodes(
         and uses the *same* solver, contour, and certificate machinery (no reconfiguration).
     svd_tol : float, optional
         Relative singular-value cutoff for the Beyn rank (mode count). Default 1e-10.
+        Consulted only on a sub-contour whose winding count could not be trusted; the
+        rank normally comes from the argument principle.
     residual_tol : float, optional
-        Scaled-residual cutoff to keep a mode (drops Beyn quadrature artifacts).
-        Default 1e-6.
+        Residual cutoff to keep a mode, measured on the equilibrated operator (see
+        :class:`_ResidualScale`).  Default 1e-9: a converged mode lands orders of
+        magnitude below it, an arbitrary point orders above.
     refine : bool, optional
         Whether to Newton-polish each eigenpair before validating (default True).
     certify : bool, optional
-        Whether to certify completeness with the argument principle (default True).
-        The number of modes the region truly contains is counted independently from
-        the winding of ``det A`` (:func:`contour.winding_count`); if Beyn resolves
-        fewer, the band is re-tiled finer and the probe widened, then re-searched,
-        until the two agree or ``max_refine_rounds`` is exhausted (then a warning is
-        raised).  The count is reported on :attr:`EigenmodeResult.expected` and the
-        match on :attr:`EigenmodeResult.certified`.
+        Whether to cross-check completeness over the whole region with the argument
+        principle (default True).  The per-sub-contour counts that set the Beyn rank
+        are always taken; this option adds one count over the region as a whole, whose
+        result is reported on :attr:`EigenmodeResult.expected` and compared with the
+        modes resolved on :attr:`EigenmodeResult.certified`.  If fewer are resolved,
+        the band is re-tiled finer and the probe widened, then re-searched, until the
+        two agree or ``max_refine_rounds`` is exhausted (then a warning is raised).
     max_refine_rounds : int, optional
         Maximum adaptive re-tile/re-search rounds when the Beyn count falls short of
         the certificate (default 3).  Each round multiplies the sub-contour count and
@@ -494,20 +681,21 @@ def eigenmodes(
     else:
         subs, bound, n_probe, geom = _band_subcontours(freq_band, growth_band, n_nodes, blocks, n_probe)
 
-    factorizer = _Factorizer(A_of)
+    factorizer = _Factorizer(A_of, n)
+    residual = _ResidualScale(A_of, complex(geom[0]))
 
     # Completeness certificate: count the eigenvalues actually inside the region from the
     # winding of det A (argument principle) -- independent of what Beyn's probe resolves.
-    # The counting contour matches the acceptance region (bound at the validate margin), so
+    # The counting contour *is* the region the tiles cover and the acceptance test uses, so
     # "counted inside" and "kept inside" agree; it is resolved with enough nodes that the
     # det-phase rotates well under pi per step even at the full mode count.
     expected = None
     if certify:
-        rx_c, ry_c = bound.rx * 1.05, bound.ry * 1.05
-        est_region = max(1, _estimate_mode_count(blocks, bound.center.real - rx_c, bound.center.real + rx_c))
+        est_region = max(1, _estimate_mode_count(blocks, bound.center.real - bound.rx, bound.center.real + bound.rx))
         n_count = int(min(4096, max(n_nodes, 8 * est_region)))
-        count_contour = ellipse_contour(bound.center, rx_c, ry_c, n_count)
+        count_contour = ellipse_contour(bound.center, bound.rx, bound.ry, n_count)
         expected, cert_info = winding_count(factorizer.det_phase, count_contour)
+        factorizer.clear()
         if expected is None:
             warnings.warn(
                 "completeness uncertified: the operator overflowed on the counting contour, so the "
@@ -523,16 +711,50 @@ def eigenmodes(
                 stacklevel=2,
             )
 
+    def _tile_rank(sub):
+        """Eigenvalues enclosed by ``sub`` from the argument principle, or ``None`` if untrustworthy."""
+        k, info = winding_count(factorizer.det_phase, sub)
+        if k is None:
+            warnings.warn(
+                "the operator overflowed on a sub-contour, so its eigenvalue count is unavailable; "
+                "falling back to the singular-value rank there, which may report modes that do not "
+                "exist. Narrow growth_band or split long ducts.",
+                EigenmodeWarning,
+                stacklevel=3,
+            )
+            return None
+        if info["round_error"] > _WINDING_ROUND_TOL:
+            warnings.warn(
+                f"the det-phase winding on a sub-contour is {info['winding']:.3f}, not close to an integer: "
+                "an eigenvalue probably sits on the sub-contour. Raise n_nodes or shift the band.",
+                EigenmodeWarning,
+                stacklevel=3,
+            )
+            return None
+        return k
+
     def _search(subcontours, probe):
-        """Beyn over each sub-contour; pool the candidate eigenpairs that fall inside it."""
+        """Beyn over each sub-contour, at the rank the argument principle dictates.
+
+        A tile that encloses nothing is skipped: its moment matrix is analytically zero, and a
+        rank inferred from its singular values would be pure quadrature noise promoted to modes.
+        """
         cand_w, cand_v, sat = [], [], False
         for sub in subcontours:
-            lam, vecs, info = beyn(factorizer.solve, n, sub, n_probe=probe, svd_tol=svd_tol, rng=rng)
+            factorizer.clear()  # the LU cache is per-tile: the nodes change with the tile
+            rank = _tile_rank(sub)
+            if rank == 0:
+                continue
+            if rank is None:  # count unavailable: Beyn infers its own rank (see contour.beyn Notes)
+                lam, vecs, info = beyn(factorizer.solve, n, sub, n_probe=probe, svd_tol=svd_tol, rng=rng)
+            else:
+                lam, vecs, info = beyn(factorizer.solve, n, sub, rank=rank, n_probe=probe, rng=rng)
             sat = sat or info.get("saturated", False)
             for i in range(lam.size):
-                if sub.inside(complex(lam[i])):
+                if sub.inside(complex(lam[i]), margin=_TILE_ACCEPT_MARGIN):
                     cand_w.append(complex(lam[i]))
                     cand_v.append(vecs[:, i])
+        factorizer.clear()
         return cand_w, cand_v, sat
 
     def _validate(cand_w, cand_v):
@@ -541,10 +763,10 @@ def eigenmodes(
         for w0, v0 in zip(cand_w, cand_v):
             w, x = w0, v0 / np.linalg.norm(v0)
             if refine:
-                w, x, r = _refine(A_of, w, x, tol=residual_tol)
+                w, x, r = _refine(A_of, residual, w, x)
             else:
-                r = _residual(A_of, w, x)
-            if r < residual_tol and bound.inside(w, margin=1.05):
+                r = residual(A_of, w, x)
+            if r < residual_tol and bound.inside(w):
                 oms.append(w)
                 mds.append(x)
                 res.append(r)
@@ -618,7 +840,9 @@ class EigenmodeResult:
         Unit-norm nodal eigenvectors (mode shapes in solution variables), shape
         ``(n_modes, n_col)``.
     residuals : ndarray
-        Per-mode scaled residual ``||A(omega) v|| / max|A(omega)|``.
+        Per-mode residual ``||A_s(omega) v_s|| / max|A_s(omega)|`` on the equilibrated
+        operator ``A_s = D_r A D_c`` (see :class:`_ResidualScale`); dimensionless, and
+        far below ``residual_tol`` for a converged mode.
     L : list of ndarray
         Per-edge ``dx_to_char`` (3x3) maps at the frozen mean state.
     est : ndarray

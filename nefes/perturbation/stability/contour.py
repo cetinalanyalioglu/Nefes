@@ -29,11 +29,14 @@ Completeness certificate
 ------------------------
 Beyn's SVD rank counts the modes its random probe *resolved*; it can silently
 under-count if the probe is too narrow or a contour encloses too many (especially symmetric)
-modes.  :func:`winding_count` supplies the independent truth: the argument principle counts
-the eigenvalues actually *inside* a contour from the winding of ``det A``
+modes.  It can equally *over*-count: on a contour that encloses no eigenvalue the first
+moment ``A_0`` vanishes identically, so its singular values are pure quadrature error and a
+threshold taken relative to the largest of them (``svd_tol * s[0]``) sees full rank where the
+true rank is zero.  :func:`winding_count` supplies the independent truth: the argument
+principle counts the eigenvalues actually *inside* a contour from the winding of ``det A``
 (via :func:`lu_logdet_phase`, phases only -- the determinant's magnitude is never formed).
-Comparing the two turns the conditional guarantee into a checkable one, and lets the driver
-search until they agree.
+Passing that integer back to :func:`beyn` as ``rank`` removes the threshold from the
+algorithm entirely, which is how the driver uses the pair.
 
 See also
 --------
@@ -120,7 +123,39 @@ def circle_contour(center, radius, n_nodes=128) -> Contour:
     return ellipse_contour(center, radius, radius, n_nodes)
 
 
-def beyn(solve, n, contour: Contour, *, n_probe=None, svd_tol=1e-10, rng=None, max_probe=None):
+def _moments(solve, contour: Contour, V):
+    """First two contour moments ``A_0 = oint A^{-1} V``, ``A_1 = oint z A^{-1} V`` (both scaled by 1/(2 pi i))."""
+    A0 = np.zeros(V.shape, dtype=np.complex128)
+    A1 = np.zeros(V.shape, dtype=np.complex128)
+    for z, w in zip(contour.nodes, contour.weights):
+        Y = solve(complex(z), V)  # A(z)^{-1} V_hat, shape (n, width)
+        A0 += w * Y
+        A1 += (w * z) * Y
+    return A0, A1
+
+
+def _eigenpairs(A0, A1, k):
+    """Eigenvalues/vectors from the rank-``k`` truncation of the moment pair (Beyn's small eigenproblem)."""
+    U, s, Wh = np.linalg.svd(A0, full_matrices=False)
+    U0 = U[:, :k]
+    s0 = s[:k]
+    W0 = Wh[:k, :].conj().T  # (width, k) right singular vectors
+    # B = U0^H A1 W0 Sigma0^{-1}  -- the small (k x k) operator whose spectrum is the eigenvalues
+    B = (U0.conj().T @ A1 @ W0) / s0[None, :]
+    lam, S = np.linalg.eig(B)
+    return lam, U0 @ S, s  # right null vectors of A at each eigenvalue
+
+
+def _no_eigenvalues(n, width):
+    """The empty return of :func:`beyn`: no eigenvalues, no vectors."""
+    return (
+        np.empty(0, dtype=np.complex128),
+        np.empty((n, 0), dtype=np.complex128),
+        {"n_probe": width, "rank": 0, "saturated": False, "svals": np.empty(0)},
+    )
+
+
+def beyn(solve, n, contour: Contour, *, rank=None, n_probe=None, svd_tol=1e-10, rng=None, max_probe=None):
     """Eigenvalues (and eigenvectors) of ``A(z)`` inside ``contour`` by Beyn's method.
 
     Solves the holomorphic nonlinear eigenproblem ``A(z) v = 0`` for every ``z``
@@ -137,19 +172,25 @@ def beyn(solve, n, contour: Contour, *, n_probe=None, svd_tol=1e-10, rng=None, m
         Operator dimension.
     contour : Contour
         The search contour (see :func:`ellipse_contour`).
+    rank : int, optional
+        Known eigenvalue count inside ``contour`` (with algebraic multiplicity), as
+        returned by :func:`winding_count`.  When given, it *is* the rank: the moment
+        SVD is truncated to it and ``svd_tol`` is never consulted.  This is the
+        reliable mode of operation and the one :func:`eigenmodes` uses; see Notes.
     n_probe : int, optional
         Probe-block width ``l`` -- an upper bound on the eigenvalue count the call
-        can resolve.  Defaults to ``min(n, 20)``; grown automatically (up to
-        ``max_probe``) when the SVD rank saturates, which signals more eigenvalues
-        than probes.
+        can resolve.  Defaults to ``min(n, 20)``, and to ``rank + 2`` when ``rank``
+        is given and larger.  Without ``rank`` it is grown automatically (up to
+        ``max_probe``) when the SVD rank saturates.
     svd_tol : float, optional
         Relative singular-value threshold for the numerical rank of the first
-        moment (the count of eigenvalues inside the contour).  Default ``1e-10``.
+        moment.  Default ``1e-10``.  Ignored when ``rank`` is given.
     rng : numpy.random.Generator, optional
         Random source for the probe block (default: a fixed seed, for
         reproducibility).
     max_probe : int, optional
         Cap on the probe width during growth (default ``min(n, 4*n_probe)``).
+        Ignored when ``rank`` is given.
 
     Returns
     -------
@@ -159,18 +200,46 @@ def beyn(solve, n, contour: Contour, *, n_probe=None, svd_tol=1e-10, rng=None, m
     eigenvectors : ndarray
         Right null vectors, one per column, shape ``(n, k)``.
     info : dict
-        ``{"n_probe": l, "rank": k, "saturated": bool}`` -- ``saturated`` flags that
-        the rank hit the probe width even at ``max_probe`` (modes may be missed;
-        shrink the contour or raise ``max_probe``).
+        ``{"n_probe": l, "rank": k, "saturated": bool, "svals": ndarray}`` --
+        ``saturated`` flags that the rank hit the probe width even at ``max_probe``
+        (modes may be missed; shrink the contour or raise ``max_probe``), and
+        ``svals`` are the moment's singular values (the rank gap is visible in them).
 
     Notes
     -----
+    Without ``rank`` the eigenvalue count is inferred from a *relative* threshold on
+    the singular values of the first moment, ``s_j > svd_tol * s_0``.  That test is
+    only meaningful when the contour actually encloses an eigenvalue: then ``s_0`` is
+    a residue magnitude and the true rank stands out by many decades.  On an
+    eigenvalue-free contour ``A_0`` is analytically zero, ``s_0`` is the quadrature
+    error, every ``s_j`` sits within a decade or two of it, and the test reports full
+    rank -- ``n_probe`` eigenvalues that do not exist.  There is no absolute
+    threshold that separates the two cases in general, because the floor is set by
+    the truncation error from poles just *outside* the contour, not by round-off.
+    Supply ``rank`` from :func:`winding_count` and the ambiguity disappears.
+
     The integrand has poles *at* the eigenvalues, so a quadrature node must not
     coincide with one (generic for a smooth contour); ``solve`` may guard against a
     singular factorization by nudging ``z``.
     """
     rng = np.random.default_rng(0) if rng is None else rng
     n = int(n)
+
+    if rank is not None:
+        k = int(rank)
+        if k < 0:
+            raise ValueError(f"rank must be non-negative; got {rank}")
+        if k == 0:
+            return _no_eigenvalues(n, 0)
+        width = max(int(n_probe) if n_probe else 0, k + 2)
+        width = min(width, n)
+        if width < k:
+            raise ValueError(f"operator dimension n={n} is smaller than the requested rank {k}")
+        V = rng.standard_normal((n, width)) + 1j * rng.standard_normal((n, width))
+        A0, A1 = _moments(solve, contour, V)
+        lam, vecs, s = _eigenpairs(A0, A1, k)
+        return lam, vecs, {"n_probe": width, "rank": k, "saturated": False, "svals": s}
+
     width = int(n_probe) if n_probe else min(n, 20)
     width = max(1, min(width, n))
     cap = int(max_probe) if max_probe else min(n, 4 * width)
@@ -179,23 +248,10 @@ def beyn(solve, n, contour: Contour, *, n_probe=None, svd_tol=1e-10, rng=None, m
     saturated = False
     while True:
         V = rng.standard_normal((n, width)) + 1j * rng.standard_normal((n, width))
-        A0 = np.zeros((n, width), dtype=np.complex128)
-        A1 = np.zeros((n, width), dtype=np.complex128)
-        for z, w in zip(contour.nodes, contour.weights):
-            Y = solve(complex(z), V)  # A(z)^{-1} V_hat, shape (n, width)
-            A0 += w * Y
-            A1 += (w * z) * Y
-        U, s, Wh = np.linalg.svd(A0, full_matrices=False)
+        A0, A1 = _moments(solve, contour, V)
+        s = np.linalg.svd(A0, compute_uv=False)
         if s.size == 0 or s[0] == 0.0:
-            return (
-                np.empty(0, dtype=np.complex128),
-                np.empty((n, 0), dtype=np.complex128),
-                {
-                    "n_probe": width,
-                    "rank": 0,
-                    "saturated": False,
-                },
-            )
+            return _no_eigenvalues(n, width)
         k = int(np.sum(s > svd_tol * s[0]))
         if k < width or width >= cap:
             saturated = k >= width and width >= cap
@@ -203,24 +259,10 @@ def beyn(solve, n, contour: Contour, *, n_probe=None, svd_tol=1e-10, rng=None, m
         width = min(2 * width, cap)  # rank hit the probe width: more modes than probes, grow and retry
 
     if k == 0:
-        return (
-            np.empty(0, dtype=np.complex128),
-            np.empty((n, 0), dtype=np.complex128),
-            {
-                "n_probe": width,
-                "rank": 0,
-                "saturated": False,
-            },
-        )
+        return _no_eigenvalues(n, width)
 
-    U0 = U[:, :k]
-    s0 = s[:k]
-    W0 = Wh[:k, :].conj().T  # (width, k) right singular vectors
-    # B = U0^H A1 W0 Sigma0^{-1}  -- the small (k x k) operator whose spectrum is the eigenvalues
-    B = (U0.conj().T @ A1 @ W0) / s0[None, :]
-    lam, S = np.linalg.eig(B)
-    vecs = U0 @ S  # right null vectors of A at each eigenvalue
-    return lam, vecs, {"n_probe": width, "rank": k, "saturated": saturated}
+    lam, vecs, s = _eigenpairs(A0, A1, k)
+    return lam, vecs, {"n_probe": width, "rank": k, "saturated": saturated, "svals": s}
 
 
 def _perm_parity(perm) -> int:

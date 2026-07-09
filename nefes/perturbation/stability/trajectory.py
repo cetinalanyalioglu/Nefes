@@ -51,7 +51,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from .eigenmodes import build_operator, eigenmodes, EigenmodeResult, _NEWTON_FD_REL
+from .eigenmodes import build_operator, eigenmodes, EigenmodeResult, _NEWTON_FD_REL, _RESIDUAL_TOL
 
 
 class TrajectoryWarning(UserWarning):
@@ -59,9 +59,10 @@ class TrajectoryWarning(UserWarning):
 
 
 # Relative |omega| update below which the Newton corrector is considered converged onto an
-# eigenvalue.  A scale-free test in omega -- deliberately NOT a residual ||A x|| / max|A|,
-# which is blind to the eigenvalue when the operator carries a hugely dominant entry (a
-# boundary/regularizer stamp can be ~1e9, swamping the residual long before omega settles).
+# eigenvalue.  A scale-free test in omega -- deliberately not a residual on the raw operator,
+# which is blind to the eigenvalue when A carries a hugely dominant entry (a boundary or
+# regularizer stamp can be ~1e9, swamping the residual long before omega settles).  The same
+# test governs the seed polish in :func:`eigenmodes._refine`.
 _CONVERGE_RTOL = 1.0e-9
 _CORRECTOR_MAXIT = 40
 
@@ -296,7 +297,7 @@ def eigenvalue_trajectory(
     eps=None,
     eps_fb=1e-6,
     u_floor=1e-8,
-    residual_tol=1e-6,
+    residual_tol=_RESIDUAL_TOL,
     max_step_halvings=4,
     store_modes=True,
     warm_start=True,
@@ -334,7 +335,8 @@ def eigenvalue_trajectory(
     eps, eps_fb, u_floor : float, optional
         Operator-assembly regularizers forwarded to :func:`build_operator`.
     residual_tol : float, optional
-        Scaled-residual acceptance for a corrected eigenvalue (default 1e-6).
+        Residual acceptance for a seed eigenvalue, on the equilibrated operator
+        (forwarded to :func:`eigenmodes`; default 1e-9).
     max_step_halvings : int, optional
         Maximum adaptive interval bisections per parameter step (default 4).  When a corrector
         fails at the full step, the parameter interval is halved (re-solving the mean flow at

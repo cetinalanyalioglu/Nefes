@@ -46,18 +46,32 @@ $$
 $$
 
 where $\widehat{\mathbf{V}}$ is a random probe block and the contour is an ellipse spanning the frequency band and growth range of interest.
-The singular-value decomposition of the zeroth moment $\mathbf{A}_0$ reveals the number of enclosed modes, and a small dense eigenproblem built from the two moments returns the eigenvalues and eigenvectors — the method never forms $\det\mathbf{A}$ itself, which would overflow.
+The rank of the zeroth moment $\mathbf{A}_0$ is the number of enclosed modes, and a small dense eigenproblem built from the two moments returns the eigenvalues and eigenvectors — the method never forms $\det\mathbf{A}$ itself, which would overflow.
 
-An important feature is that the mode set is *certified complete* rather than merely "some modes found".
-Independently of Beyn's probe, the argument principle counts the enclosed roots by the winding of the determinant, given as:
+That rank cannot be read off $\mathbf{A}_0$ alone.
+When the contour encloses no eigenvalue the integrand is analytic, $\mathbf{A}_0$ vanishes identically, and its computed singular values are nothing but quadrature error; a threshold placed relative to the largest of them then reports the full probe width where the true rank is zero, and the search returns as many modes as it was given probes.
+Nor is there an absolute threshold that separates the two cases, because the floor is set by the truncation error from poles lying just *outside* the contour rather than by round-off.
+
+The rank is therefore supplied from outside the method.
+The argument principle counts the enclosed roots by the winding of the determinant, given as:
 
 $$
 N \;=\; \frac{1}{2\pi\mathrm{i}}\oint \frac{\det'\mathbf{A}(z)}{\det\mathbf{A}(z)}\,\mathrm{d}z \;=\; \frac{1}{2\pi}\,\Delta\arg\det\mathbf{A},
 $$
 
-where the phase of $\det\mathbf{A}$ is accumulated from the triangular factors of an LU decomposition so that its magnitude is never formed, and the driver re-tiles and re-searches the region until Beyn's eigenvalue count matches this winding count.
+where the phase of $\det\mathbf{A}$ is accumulated from the triangular factors of an LU decomposition so that its magnitude is never formed.
+The search region is covered by overlapping elliptical sub-contours; on each, $N$ is evaluated first and handed to Beyn as the rank of its moment matrix, so a sub-contour enclosing nothing is skipped rather than mined for noise.
+The same count over the region as a whole then certifies the mode set as *complete* rather than merely "some modes found", and the driver re-tiles and re-searches until the two agree.
+The sub-contours must genuinely cover the region they certify: ellipses laid side by side pinch at their seams, and a strongly damped mode sitting in such a gap would be counted yet never found.
+
+Membership must also be decided on a scale-invariant footing.
+A network operator assembles rows in incompatible units — pressure, velocity, mass flow — so $\operatorname{cond}\mathbf{A}$ routinely reaches $10^{12}$ at *every* frequency, and a residual normalised by $\max|\mathbf{A}|$ is satisfied by a near-null vector wherever one cares to look.
+Modes are accepted on the residual of the equilibrated operator $\mathbf{A}_s = \mathbf{D}_r\mathbf{A}\mathbf{D}_c$, whose diagonal scalings are frozen once at the band centre; the Newton polish that precedes the test converges on $|\Delta\omega|$, which needs no scale at all.
+
 Each mode carries an eigenvector, projected per edge to the characteristic amplitudes $(f, g, h)$ through $\mathbf{L}_e$ (see [characteristics](characteristics.md)), which is the mode's spatial wave pattern.
-The behaviour is illustrated in @fig-spectrum for a Rijke tube — a duct with a compact heat source — whose modes move across the stability boundary as the flame is activated (tests: `test_beyn_oracle_lossy_complex_modes_and_sign`, `test_eigenmodes_certified_count_matches`, `test_n_tau_flame_drives_self_excited_instability`).
+The behaviour is illustrated in @fig-spectrum for a Rijke tube — a duct with a compact heat source — whose modes move across the stability boundary as the flame is activated (tests: `test_beyn_oracle_lossy_complex_modes_and_sign`, `test_eigenmodes_certified_count_matches`, `test_beyn_moment_rank_is_ambiguous_on_an_empty_contour`, `test_no_modes_survive_an_eigenvalue_free_region`, `test_n_tau_flame_drives_self_excited_instability`).
+
+The frequency and growth bands set the *semi-axes* of the search ellipse, not the sides of a rectangle: a mode near a corner of the implied box lies outside the region, and is neither counted nor returned.
 
 ```{python}
 #|label: setup

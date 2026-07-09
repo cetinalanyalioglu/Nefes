@@ -1,10 +1,8 @@
 # The solver
 
-Newton's method converges quadratically near a solution and not at all far from one, so a bare Newton iteration on the network equations would fail from the uninformed cold start the framework insists on supporting.
-This document describes the globalization that closes that gap — the scaling, damping, and continuation that turn the local method into one that finds the operating point from exact rest on an arbitrary network — and the warm-start caches that keep repeated solves cheap.
-It builds on the exact Jacobian of [the complex-step derivative](complex-step.qmd) and the assembled system of [assembly](assembly.md), and it is the machinery that realizes the *discovery over prescription* principle of [the design philosophy](philosophy.md).
-
-The presentation begins with the scaling that makes the system well-conditioned, then proceeds to the damped Newton step, building on this to the artificial-resistance continuation that removes the zero-flow trap, and closes with the warm-start caches.
+Newton's method converges rapidly near a solution and often not at all far from one, so iterating it alone on the network equations would fail when the solver must start from rest with no prior guess.
+This document describes the safeguards that close that gap: scaling, step damping, and staged continuation that together find the operating point from rest on an arbitrary network, and the reuse of previous solutions that keeps later solves inexpensive.
+It relies on the exact Jacobian from [the complex-step derivative](complex-step.qmd) and the assembled equations of [assembly](assembly.md), and it puts into practice the *discovery over prescription* principle of [the design philosophy](philosophy.md).
 
 ## Nondimensionalization
 
@@ -21,7 +19,7 @@ $$
 
 where the hatted quantities are the scaled unknowns and $\dot m_{\text{ref}}$, $p_{\text{ref}}$, $T_{\text{ref}}$ are the problem references.
 With mass, pressure, and energy residuals each reduced to order unity, "small" means the same thing across every equation, and the convergence test and the linear solve both behave.
-This single step accounts for much of the difference between a solver that crawls and one that converges cleanly.
+The references are a mix of user anchors and automatic estimates: $p_{\text{ref}}$ and $T_{\text{ref}}$ are set on the network (defaults $101325\,\mathrm{Pa}$ and $300\,\mathrm{K}$; see [reference/parameters](../reference/parameters.md)), $\dot m_{\text{ref}}$ and $h_{\text{ref}}$ are derived at build time from the boundary specification when not overridden (total specified inflow, an isentropic estimate from the largest boundary pressure drop, or a low-Mach fallback for a quiescent network; $h_{\text{ref}} = c_p T_{\text{ref}}$ for a perfect gas), and during the solve the mass and enthalpy scales are re-measured from the realized inlet flows at each continuation ($\kappa$) stage while $p_{\text{ref}}$ stays fixed, so the scaling tracks the flow once it establishes without collapsing at the quiescent start.
 
 ## Damped Newton steps
 
@@ -38,14 +36,19 @@ The damping is adapted per iteration, raised when a step fails to reduce the res
 ## The artificial-resistance continuation
 
 The damped Newton step is still defeated by one structural trap: in a network driven only by pressure boundary conditions, the residuals have zero first-order sensitivity to the flows at the quiescent state, so the solver sees a flat landscape and cannot start the flow moving (see [well-posedness](../theory/well-posedness.md)).
-The cure is a continuation in a physical parameter [@allgower_georg_1990] — a small fictitious friction $\kappa$ added to every pressure-type row — that injects first-order flow sensitivity without changing the final answer.
-With the friction active the network behaves like a resistive circuit, in which pressure differences push directly on the flows, and the solver locates the flow pattern readily — the same regularization of the zero-flow Jacobian that gradient methods for hydraulic pipe networks employ [@todini_pilati_1988]; the friction is then reduced to zero over a short sequence of stages, given as:
+The cure is a continuation in a physical parameter [@allgower_georg_1990]: a small fictitious friction $\kappa$ added to every pressure-type row.
+This injects first-order flow sensitivity without changing the final answer.
+With the friction active the network behaves like a resistive circuit, in which pressure differences push directly on the flows, and the solver locates the flow pattern readily.
+This is the same regularization of the zero-flow Jacobian that gradient methods for hydraulic pipe networks employ [@todini_pilati_1988].
+Of course, upon convergence, the artifical resistance should vanish.
+Therefore, it is applied through a sequence of stages, given as:
 
 $$
 \kappa \in \{0.1,\ 0.01,\ 0\},
 $$
 
-each stage warm-started from the previous solution and using a smoothing width that shrinks with $\kappa$, so that the final stage solves the exact, friction-free equations.
+each stage warm-started from the previous solution, with a smoothing width $\varepsilon = \max(0.3\kappa,\ 10^{-4})\,\dot m_{\text{ref}}$ that rounds the transport upwind switches and the other regularized primitives (see [transport](../theory/transport.qmd) and [the smoothness contract](smoothness-contract.md)).
+At $\kappa = 0.1$, $0.01$, and $0$ this gives $\varepsilon = 0.03$, $0.001$, and $10^{-4}$ times $\dot m_{\text{ref}}$ respectively, sharpening toward the exact, friction-free equations on the final stage.
 An important remark is that this is a continuation in a physical parameter rather than a numerical fudge: every intermediate problem is a well-posed resistive network, and only the limit $\kappa \to 0$ restores the original equations, reached by a path that stays nonsingular throughout (tests: `test_quiescent_cold_start_converges`, `test_long_serial_chain_cold_start`, `test_many_parallel_branches_converge`).
 
 ## Warm-start caches

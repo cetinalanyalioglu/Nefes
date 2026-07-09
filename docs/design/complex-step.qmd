@@ -8,7 +8,7 @@ execute:
 # The complex-step derivative
 
 The entire solver rests on having *exact* Jacobians: Newton's method advances by the derivative of the residual, and a derivative corrupted even slightly corrupts every search direction, so an inexact Jacobian is not a small error but a slow, unreliable solve.
-This document explains the engine that supplies those derivatives exactly and at negligible cost in accuracy — the complex-step derivative — and the contract it demands of every residual in return.
+This document explains the engine that supplies those derivatives exactly and at negligible cost in accuracy and the contract it demands of every residual in return.
 The method is not a marginal improvement over finite differences; it removes their defining weakness entirely, delivering machine-precision derivatives for a step so small that the truncation error vanishes.
 
 The one price is a discipline on how residuals are written — they must be complex-analytic — which is enforced by the smoothness contract of [the smoothness contract](smoothness-contract.md) and checked by a roll-call test.
@@ -27,7 +27,7 @@ $$
 $$
 
 where $\varepsilon_{\text{mach}} \approx 2.2\times10^{-16}$ is the machine epsilon and $C_1, C_2$ depend on the function's derivatives.
-The best attainable relative accuracy is around $10^{-10}$ to $10^{-8}$, and — worse for an automated solver — the optimal $h$ depends on the unknown magnitude of the higher derivatives, so no fixed step is safe across the whole state space.
+The best attainable relative accuracy is around $10^{-10}$ to $10^{-8}$, worse for an automated solver, and the optimal $h$ depends on the unknown magnitude of the higher derivatives, so no fixed step is safe across the whole state space.
 
 ## The complex-step formula
 
@@ -98,21 +98,12 @@ fig
 ## The analyticity requirement
 
 The formula's power comes with a precise condition: the Taylor expansion into the imaginary direction is valid only where $R$ is *complex-analytic*, so the residual must be built from operations that remain analytic in a neighbourhood of the real axis.
-Any construct that branches on the flow state — an absolute value, a sign, a minimum or maximum, an `if` on a solution variable — destroys analyticity: it takes its decision on the real part and discards or corrupts the imaginary seed travelling alongside, returning a derivative that is silently wrong.
-This is exactly why every residual kernel in the framework is assembled from the regularized primitives of [the smoothness contract](smoothness-contract.md) rather than from raw branching, and why a static detector flags any residual whose complex-step and finite-difference derivatives disagree — the signature of a hidden non-analytic operation (test: `test_cs_detector_flags_nonanalytic`).
-
-## The seeded-path discipline
-
-An imaginary perturbation is a *derivative carrier*, not a value, and it must be recomputed on every evaluation rather than cached — a stored real result carries no seed, and reusing it would return a zero derivative.
-The kernels are therefore written once and compiled twice, in a `float64` specialization that evaluates the real residual and a `complex128` specialization that carries the seed, both generated from the same source (see [kernel architecture](kernel-architecture.md)).
-
-One place resists a purely functional seed: the implicit density recovery, where a root is found by a safeguarded Newton iteration that *branches* — on the bracket, on the sign of the residual — and a branch taken on the real part discards any imaginary seed carried through it.
-The recovery is therefore split into a real solve and an analytic derivative: the root is located on the real parts alone, and its sensitivity to a seed is attached afterwards by the implicit function theorem applied to the consistency equation, which is exact rather than approximate (see [state and recovery](../theory/state-and-recovery.qmd)).
-The construction returns the bare real root on the real path and splices the exact imaginary part on the seeded path, so the complex-step Jacobian of the whole solver remains exact to machine precision even though its innermost step is an iteration (tests: `test_complex_step_jacobian_matches_ift`, `test_real_root_matches_brentq`).
+Any construct that branches on the flow state, e.g. an absolute value, a sign, a minimum or maximum, an `if` on a solution variable, destroys analyticity: it takes its decision on the real part and discards or corrupts the imaginary seed travelling alongside, returning a derivative that is silently wrong.
+This is exactly why every residual kernel in the framework is assembled from the regularized primitives of [the smoothness contract](smoothness-contract.md) rather than from raw branching, and why a static detector flags any residual whose complex-step and finite-difference derivatives disagree, as this is the signature of a hidden non-analytic operation (test: `test_cs_detector_flags_nonanalytic`).
 
 ## Validation
 
-Because the derivative is meant to be *exact*, its validation is stringent: the assembled complex-step Jacobian is checked against a finite-difference Jacobian to tolerance, both at the operating point and away from it, and every residual is verified to be continuously differentiable through the zero-flow state on every edge — the one place where a hidden branch would most likely lurk (tests: `test_cs_jacobian_matches_finite_difference`, `test_cs_jacobian_matches_fd_off_operating_point`, `test_residual_c1_through_zero_flow_all_edges`).
+Because the derivative is meant to be *exact*, its validation is stringent: the assembled complex-step Jacobian is checked against a finite-difference Jacobian to tolerance, both at the operating point and away from it, and every residual is verified to be continuously differentiable through the zero-flow state on every edge (tests: `test_cs_jacobian_matches_finite_difference`, `test_cs_jacobian_matches_fd_off_operating_point`, `test_residual_c1_through_zero_flow_all_edges`).
 
 The complex-step engine is thus the reason the Jacobian is never itself a source of error.
-The contract it demands — analyticity of every residual — is the subject of [the smoothness contract](smoothness-contract.md), and the machinery that wires the seeded kernels into a sparse operator is that of [assembly](assembly.md).
+The contract it demands, analyticity of every residual, is the subject of [the smoothness contract](smoothness-contract.md), and the machinery that assembles the kernels evaluated on complex-stepped inputs into a sparse operator is that of [assembly](assembly.md).

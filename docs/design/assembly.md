@@ -4,7 +4,6 @@ Between the element kernels and the solver sits the *assembly* layer: the machin
 This document describes that layer, because its structure is what makes the "one operator" reuse of the acoustics possible and what the identification de-embedding exploits for a one-factorization inverse.
 It builds on the [kernel architecture](kernel-architecture.md) and the [complex-step derivative](complex-step.qmd), and feeds the globalization of [the solver](solver.md).
 
-The presentation begins with the recovery that precedes every residual evaluation, then proceeds to the fixed split of the rows into algebraic and transport blocks, building on this to the sparse Jacobian filled by complex step, and closes with how the acoustic stamps are layered onto that same Jacobian as a low-rank update.
 
 ## Edge-state recovery precedes the residuals
 
@@ -32,7 +31,7 @@ This is the point at which the *exact derivatives* and *kernels over objects* pr
 The same assembled Jacobian is the base of the acoustic operator, and the unsteady physics is layered onto it rather than re-derived (see [the perturbation network](../theory/perturbation-network.md)).
 Each acoustic block is a stamp on the base Jacobian $\overline{\mathbf{J}}$: the storage block adds finite-volume compliance and inertance through $\mathrm{i}\omega$, the propagation block overwrites duct-continuity rows with phase relations, the source block adds a flame's feedback, and the terminal closures overwrite boundary rows with reflection relations.
 Two of these stamps — the dynamic source and the transfer-matrix element — enter as a *low-rank* modification of the operator, occupying only the few rows and columns their element spans.
-An important consequence is that a low-rank update admits a one-factorization inverse: the known part of the operator is factored once per frequency, and the unknown element is recovered from a measured response by a small least-squares solve on top of that single factorization — the structure the identification of [identification](../theory/identification.md) exploits.
+An important consequence is that a low-rank update admits a one-factorization inverse: the known part of the operator is factored once per frequency, and the unknown element is recovered from a measured response by a small least-squares solve on top of that single factorization: the structure the identification of [identification](../theory/identification.md) exploits.
 This is the payoff of assembling the acoustics as stamps on the mean-flow Jacobian rather than as a separate operator: the mean-flow work is done once, and both the forward acoustics and the inverse identification read it.
 
 With the residual and Jacobian assembled and the acoustic stamps understood as a layer over them, what remains is the globalization that turns Newton's local method into a solver robust from a cold start — the subject of [the solver](solver.md).

@@ -165,7 +165,7 @@ n_{\text{unstable}} \;=\; -\tfrac{1}{2}\,(\text{winding of } D \text{ about the 
 $$
 
 where the factor of one-half accounts for the closed contour including the negative-frequency image $D(-\omega) = \overline{D(\omega)}$, and the least value $\min_\omega|D|$ is the stability margin, vanishing at the onset of instability.
-An important qualification is that this counts unstable modes *relative to* $\mathbf{A}_0$, so it equals the absolute count only when the passive network is itself stable — a premise the driver checks with a rational fit of $D$ — and it is a tally up to the maximum swept frequency (tests: `test_unstable_count_matches_eigenmodes`, `test_entropy_path_is_the_sole_destabilizer`, `test_tabulated_ftf_supported_on_the_real_axis`).
+An important qualification is that this counts unstable modes *relative to* $\mathbf{A}_0$, so it equals the absolute count only when the passive network is itself stable, a condition the driver checks with a rational fit of $D$, and the count is limited to the maximum swept frequency (tests: `test_unstable_count_matches_eigenmodes`, `test_entropy_path_is_the_sole_destabilizer`, `test_tabulated_ftf_supported_on_the_real_axis`).
 
 ## Acoustic energy and passivity
 
@@ -193,7 +193,7 @@ The energy view also furnishes an independent check on the eigensolver's growth 
 ## Forced response
 
 The final analysis drives the network rather than letting it oscillate freely.
-With a forcing prescribed at a driven terminal — an incoming wave of unit or specified amplitude — the response is one sparse solve per frequency, given as:
+With a forcing prescribed at a driven terminal, the response is one sparse solve per frequency, given as:
 
 $$
 \mathbf{A}(\omega)\,\widehat{\mathbf{x}} \;=\; \widehat{\mathbf{b}}(\omega),
@@ -204,4 +204,4 @@ From the solved nodal field one reads the per-edge wave amplitudes, the reflecti
 Because the system is linear, the response scales exactly with the forcing amplitude and superposes over several drives, and it becomes singular precisely at the resonances where $\det\mathbf{A}(\omega) = 0$ — the same modes the eigensolver locates (tests: `test_forced_response_scales_linearly_with_amplitude`, `test_forced_response_obeys_superposition`).
 
 All four analyses read the single operator $\mathbf{A}(\omega)$, and all four presume that every element in it is modeled.
-When one element is *not* — its two-port or its flame response known only through measurement — that response can be recovered from a measured network response by de-embedding, the subject of [identification](identification.md).
+When one element is *not*, e.g. a transfer matrix or a transfer function is unknown, that dynamic response can be recovered from a measured network response by de-embedding, the subject of [identification](identification.md).

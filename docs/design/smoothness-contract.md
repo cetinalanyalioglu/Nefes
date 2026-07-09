@@ -1,15 +1,13 @@
 # The smoothness contract
 
-The complex-step derivative is exact only for residuals that are complex-analytic, so analyticity is not an aspiration but a *contract* every residual must satisfy (see [the complex-step derivative](complex-step.qmd)).
-This document states that contract, describes the library of regularized primitives that let a residual honour it without sacrificing the physics of a switch or a bound, gives the error order the regularization introduces, and explains the roll-call test that prevents any element from evading it.
-The contract is the concrete form of the *smoothness over branching* principle of [the design philosophy](philosophy.md).
-
-The presentation begins with the contract itself, then proceeds to the primitive library that implements it, building on this to the error order the primitives incur, and closes with the per-kernel roll-call that enforces the contract as the element set grows.
+The complex-step derivative is exact only when every residual is built from smooth operations, with no kinks or jumps tied to the flow state, so each element equation must obey a fixed set of rules (see [the complex-step derivative](complex-step.qmd)).
+This document states those rules, introduces the smooth formulas that stand in for hard switches and bounds without changing the intended physics, quotes the approximation error those roundings introduce, and describes the automated check that verifies every element type against them.
+These rules put into practice the *smoothness over branching* principle of [the design philosophy](philosophy.md).
 
 ## The contract
 
-The rule is stated in one line: no residual may contain an `abs`, a `sign`, a `min`, a `max`, or a branch taken on a solution variable.
-Each of these is a non-analytic operation — it has a kink or a jump where its argument changes sign or crosses a threshold — and a residual containing one is not differentiable there, so both Newton's method and the complex-step derivative fail exactly at the state the operation was meant to handle.
+No residual may contain an `abs`, a `sign`, a `min`, a `max`, or a branch taken on a solution variable.
+Each of these is a non-analytic operation, it has a kink or a jump where its argument changes sign or crosses a threshold, and a residual containing one is not differentiable there, so both Newton's method and the complex-step derivative fail exactly at the state the operation was meant to handle.
 The contract does not forbid the *physics* of a switch: a flow reverses, a loss opposes the flow in either direction, a passage chooses between subsonic and choked, and a reacting edge is frozen or burnt.
 It forbids only the *non-analytic realization* of those switches, requiring instead that each be expressed by a smooth function that reproduces the switch away from its transition and rounds its corner within a narrow, controlled band.
 
@@ -38,7 +36,7 @@ An important discipline follows for the choking complementarity: its smoothing m
 
 A contract is only as good as its enforcement, and the smoothness contract is enforced element by element rather than by inspection.
 Every element kernel must register a *probe* — a representative state for that element — in a central table, and a roll-call test fails if any element type in the catalogue has no probe, so a newly added element cannot silently escape the check (test: `test_every_element_kernel_is_swept`).
-For each registered element the per-kernel sweep then verifies that the complex-step derivative agrees with a finite-difference derivative across the regimes where analyticity is most likely to break — forward flow, reverse flow, near-zero flow, and near the choking limit — so that a hidden branch is caught as a disagreement between the two derivatives (test: `test_kernel_complex_step_safe_across_regimes`).
+For each registered element the per-kernel sweep then verifies that the complex-step derivative agrees with a finite-difference derivative across the regimes where analyticity is most likely to break, e.g. forward flow, reverse flow, near-zero flow, and near the choking limit, so that a hidden branch is caught as a disagreement between the two derivatives (test: `test_kernel_complex_step_safe_across_regimes`).
 Together the roll-call and the sweep make the contract self-policing: an element is admitted to the framework only once it is demonstrably smooth across the states the solver will drive it through.
 
 The contract, the primitives, and the roll-call are what make the exact-derivative engine of [the complex-step derivative](complex-step.qmd) trustworthy in practice; the machinery that assembles the seeded kernels into a sparse residual and Jacobian is the subject of [assembly](assembly.md).

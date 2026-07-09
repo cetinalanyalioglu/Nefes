@@ -5,7 +5,7 @@ Four principles govern the design, and each is not a preference but a response t
 This document states the four and the constraint each implies; the remaining design documents develop them in detail.
 
 The principles are best read as a single stance: the solver should *discover* the physical state from an uninformed start, using *exact* information, over residuals that are *smooth* everywhere, evaluated by small *kernels* rather than mediated by objects.
-The presentation takes them in the order in which they constrain the code, from the innermost numerical contract outward to the architectural one.
+The presentation takes them in the order in which they constrain the code, from the innermost numerical choice outward to the architectural one.
 
 ## Smoothness over branching
 

@@ -55,7 +55,7 @@ Because there are far fewer unknowns than in a full matrix, a *single* measureme
 
 The identification runs in one of two modes, distinguished by whether the convected entropy wave is retained, and the choice is not cosmetic.
 The *full* mode carries all three waves $(f, g, h)$ and retains the entropy content, so the recovered response includes the coupling by which composition and temperature fluctuations generate sound.
-The *isentropic* mode pins the entropy amplitude to zero and recovers a purely acoustic two-port, which is the classical flame transfer matrix and the right object when the measurement itself is acoustic.
+The *isentropic* mode pins the entropy (and composition waves) amplitude to zero and recovers a purely acoustic two-port, which is the classical flame transfer matrix and the right object when the measurement itself is acoustic.
 
 An important remark is that the isentropic mode **misses the indirect combustion noise**: the entropy-to-acoustic conversion that occurs when an entropy spot reaches a compact nozzle — the coupling $R_s$ of the [perturbation network](perturbation-network.md) — is invisible to an analysis that has set the entropy wave to zero.
 Accordingly, an identification aimed at the acoustic two-port of a classical flame is run isentropically, while one that must account for entropy-generated (indirect) noise is run in the full mode (tests: `test_identify_acoustic_only_isentropic`, `test_isentropic_analysis_misses_the_indirect_noise`).
@@ -67,9 +67,12 @@ The diagnostic is the per-frequency condition number $\operatorname{cond}(\cdot)
 A large condition number at a frequency flags that the excitations there are too collinear to separate the unknown — for a multi-input flame, that the reference fluctuations of the several terms are nearly parallel, so their gains cannot be resolved independently — and the recovered value at such a frequency is not to be trusted.
 The recovery degrades gracefully rather than failing catastrophically as the conditioning worsens, so the diagnostic is the honest reading of *where* the identification is reliable (tests: `test_identify_noise_degrades_gracefully`, `test_identify_multi_input_ftf`).
 
-Two points of interpretation are worth stating plainly.
-First, when a two-port is identified at a station that also carries an *active* flame, that flame's response is deliberately folded *into* the recovered two-port — the node source is silenced in $\mathbf{A}_0$ — so the identified matrix is the element's full response including any active feedback, not its passive acoustics alone.
-Second, the unknown is declared by a *marker* on the element itself, which stamps as the passive reference until it is resolved; the marker names *what* is unknown, whereas the two edges $a$ and $b$ passed to the identification name *where* the response is measured — the two should not be conflated.
+Two interpretive points deserve to be stated plainly.
+First, transfer-matrix identification can target an interior element that also carries active flame feedback.
+In the reference operator $\mathbf{A}_0$, that node's dynamic source is set acoustically silent and its perturbation acoustics are replaced by an identity transfer matrix, while the mean-flow jump is left unchanged.
+The recovered matrix therefore includes any active feedback folded into the element's linear two-port, not its passive acoustics alone.
+Second, a marker attached to an element declares *what* is unknown; until identification runs, that element is assembled with a passive default (an identity transfer matrix or a silent source).
+The edges $a$ and $b$ supplied to the identification routine declare *where* the measured network response is read out; they need not coincide with the marked element's own faces, and the two choices should not be conflated.
 
 ## From data to the complex plane
 

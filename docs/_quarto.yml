@@ -69,6 +69,7 @@ website:
           - design/assembly.md
           - design/solver.md
           - design/reproducibility.md
+          - design/ui-io.md
       - section: "Validation"
         contents:
           - validation/validation-map.md

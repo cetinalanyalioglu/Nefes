@@ -21,6 +21,24 @@ results are emitted as one dataset per mode (``"Mode <i>: <f> Hz"``) carrying th
 per-edge mode shape, with the modal frequency, growth rate, damping ratio and
 residual as dataset metadata.
 
+Animated datasets
+-----------------
+A dataset may carry a ``frames`` axis (:class:`FrameAxis`): a named frame variable
+(e.g. phase or frequency), its unit, and one value per frame.  Every per-frame item
+then holds one row of values per frame (``values[k][i]`` binds frame ``k`` to the
+element of index ``i``); an item with a flat value list inside an animated dataset
+is frame-independent.  Two producers are built in: ``eig_animation=True`` sweeps each
+selected eigenmode's instantaneous shape ``Re{psi e^{i theta}}`` over one phase cycle
+(frame variable *Phase*, degrees), and ``forced_sweep=True`` folds a forced response's
+whole frequency grid into a single dataset (frame variable *Frequency*, Hz) instead of
+one snapshot dataset per frequency.  The UI shows a playback control when such a
+dataset's item is displayed.
+
+A Nyquist stability result (``nyquist=...``) is summarized as an items-free dataset
+carrying the verdict, unstable-mode count, stability margin and onset frequencies as
+metadata: the locus is scalar per frequency, not an element-bound field, so it has no
+values to color the network with.
+
 Layout / identity
 -----------------
 When the network was loaded from a UI file (``network.provenance`` is set and the
@@ -38,7 +56,7 @@ import re
 import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import yaml
@@ -144,6 +162,37 @@ class MetaEntry:
 
 
 @dataclass
+class FrameAxis:
+    """The frame axis of an animated dataset: a named variable with one value per frame.
+
+    Attributes
+    ----------
+    variable : str
+        Display name of the frame variable (e.g. ``"Phase"``, ``"Frequency"``).
+    values : list of float
+        The frame variable's value at each frame, in playback order.
+    unit : str, optional
+        Unit string shown next to the frame value in the UI player.
+    """
+
+    variable: str
+    values: List[float]
+    unit: str = ""
+
+    def to_dict(self) -> dict:
+        out = {"variable": self.variable}
+        if self.unit:
+            out["unit"] = self.unit
+        out["values"] = [float(v) for v in self.values]
+        return out
+
+
+def _is_per_frame(values) -> bool:
+    """Whether an item's ``values`` holds per-frame rows rather than a flat series."""
+    return len(values) > 0 and isinstance(values[0], (list, tuple, np.ndarray))
+
+
+@dataclass
 class DataItem:
     """One result series: a value per element of ``target`` (``node``/``edge``).
 
@@ -153,8 +202,10 @@ class DataItem:
         UI display name.
     target : str
         ``"node"`` or ``"edge"``; selects which elements the values color.
-    values : list of float
-        One value per element, ordered by element index.
+    values : list of float, or list of list of float
+        One value per element, ordered by element index.  Inside an animated
+        dataset (a :class:`DataSet` with a :class:`FrameAxis`) an item may
+        instead hold one such row per frame.
     unit : str, optional
         Unit string shown in the UI legend (metadata only; no conversion).
     phase : bool, optional
@@ -172,7 +223,10 @@ class DataItem:
         out = {"id": item_id, "name": self.name, "target": self.target}
         if self.unit:
             out["unit"] = self.unit
-        out["values"] = [float(v) for v in self.values]
+        if _is_per_frame(self.values):
+            out["values"] = [[float(v) for v in row] for row in self.values]
+        else:
+            out["values"] = [float(v) for v in self.values]
         return out
 
 
@@ -181,7 +235,9 @@ class DataSet:
     """A named group of :class:`DataItem` s, embedded under ``data.datasets``.
 
     Carries optional self-describing metadata (:attr:`description` and an ordered
-    list of :class:`MetaEntry` :attr:`info`) the UI renders read-only.
+    list of :class:`MetaEntry` :attr:`info`) the UI renders read-only.  With a
+    :attr:`frames` axis the dataset is *animated*: each per-frame item holds one
+    row of element values per frame and the UI offers playback over the frames.
     """
 
     name: str
@@ -189,13 +245,40 @@ class DataSet:
     include_in_save: bool = True
     description: str = ""
     info: List[MetaEntry] = field(default_factory=list)
+    frames: Optional[FrameAxis] = None
+
+    def _validate_frames(self):
+        if self.frames is None:
+            for it in self.items:
+                if _is_per_frame(it.values):
+                    raise ValueError(
+                        f"dataset {self.name!r}: item {it.name!r} holds per-frame rows but the dataset "
+                        "carries no frames axis (set DataSet.frames)"
+                    )
+            return
+        n_frames = len(self.frames.values)
+        if n_frames == 0:
+            raise ValueError(f"dataset {self.name!r}: the frames axis is empty")
+        for it in self.items:
+            if not _is_per_frame(it.values):
+                continue  # a flat series inside an animated dataset is frame-independent
+            if len(it.values) != n_frames:
+                raise ValueError(
+                    f"dataset {self.name!r}: item {it.name!r} has {len(it.values)} frame rows "
+                    f"but the frames axis has {n_frames} values"
+                )
+            if len({len(row) for row in it.values}) > 1:
+                raise ValueError(f"dataset {self.name!r}: item {it.name!r} has frame rows of unequal length")
 
     def to_dict(self, ds_id: str) -> dict:
+        self._validate_frames()
         out = {"id": ds_id, "name": self.name, "includeInSave": bool(self.include_in_save)}
         if self.description:
             out["description"] = self.description
         if self.info:
             out["info"] = [e.to_dict() for e in self.info]
+        if self.frames is not None:
+            out["frames"] = self.frames.to_dict()
         out["items"] = [it.to_dict(f"{ds_id}-item-{i}") for i, it in enumerate(self.items)]
         return out
 
@@ -212,9 +295,13 @@ def dump_case(
     forced=None,
     forced_freqs=None,
     forced_fields=("p", "u"),
+    forced_sweep=False,
     eigenmodes=None,
     eig_modes=None,
     eig_fields=("p", "u"),
+    eig_animation=False,
+    eig_frames=36,
+    nyquist=None,
     title=None,
     extra_datasets=None,
     include_in_save=True,
@@ -245,6 +332,10 @@ def dump_case(
         Perturbation quantities per snapshot (default ``("p", "u")``); keys of
         :data:`_FORCED_FIELDS`, plus ``"reflection"``.  Magnitude and phase are
         emitted for each.
+    forced_sweep : bool, optional
+        Emit each forced response as a single *animated* dataset (one frame per
+        frequency, frame variable *Frequency* in Hz) instead of one snapshot
+        dataset per frequency.  Default ``False``.
     eigenmodes : EigenmodeResult, optional
         A stability (eigenmode) result to snapshot.  Each mode is emitted as its own
         ``"Mode <i>: <f> Hz"`` dataset carrying the per-edge mode-shape magnitude and
@@ -256,6 +347,19 @@ def dump_case(
     eig_fields : sequence of str, optional
         Perturbation quantities per mode (default ``("p", "u")``); keys of
         :data:`_FORCED_FIELDS`.  Magnitude and phase are emitted for each.
+    eig_animation : bool, optional
+        Additionally emit each selected mode as an *animated* dataset
+        (``"Mode <i>: <f> Hz animation"``): the instantaneous shape
+        ``Re{psi e^{i theta}}`` per edge, swept over one phase cycle (frame
+        variable *Phase* in degrees).  Default ``False``.
+    eig_frames : int, optional
+        Phase frames per cycle for ``eig_animation`` (default 36; the cycle
+        endpoint is excluded so looped playback is seamless).
+    nyquist : NyquistResponse or list of NyquistResponse, optional
+        Nyquist stability result(s) to summarize as an items-free dataset
+        (verdict, unstable-mode count, margin, onset frequencies as metadata).
+        The locus itself is scalar per frequency -- not an element-bound field --
+        so no values are emitted.
     title : str, optional
         Case title (``meta.title``).  Defaults to the loaded title or
         ``"Nefes case"``.
@@ -282,9 +386,13 @@ def dump_case(
         forced,
         forced_freqs,
         forced_fields,
+        forced_sweep,
         eigenmodes,
         eig_modes,
         eig_fields,
+        eig_animation,
+        eig_frames,
+        nyquist,
         include_in_save,
         mean_flow_name,
     )
@@ -387,9 +495,13 @@ def _build_datasets(
     forced,
     forced_freqs,
     forced_fields,
+    forced_sweep,
     eigenmodes,
     eig_modes,
     eig_fields,
+    eig_animation,
+    eig_frames,
+    nyquist,
     include_in_save,
     mean_flow_name="Mean flow",
 ):
@@ -418,9 +530,18 @@ def _build_datasets(
                 )
             )
     if forced is not None:
-        datasets += _forced_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save)
+        if forced_sweep:
+            datasets += _forced_sweep_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save)
+        else:
+            datasets += _forced_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save)
     if eigenmodes is not None:
         datasets += _eigenmode_datasets(network, eigenmodes, eig_modes, eig_fields, node_data, include_in_save)
+        if eig_animation:
+            datasets += _eigenmode_animation_datasets(
+                network, eigenmodes, eig_modes, eig_fields, eig_frames, node_data, include_in_save
+            )
+    if nyquist is not None:
+        datasets += _nyquist_datasets(nyquist, include_in_save)
     return datasets
 
 
@@ -524,35 +645,175 @@ def _forced_items(fr, j, key, n_edges):
     ]
 
 
-def _eigenmode_datasets(network, result, eig_modes, eig_fields, node_data, include_in_save):
-    """One dataset per eigenmode: per-edge mode shape + the modal scalars as metadata."""
+def _forced_sweep_datasets(network, forced, forced_freqs, forced_fields, node_data, include_in_save):
+    """One animated dataset per forced response: a frame per (selected) frequency."""
+    responses = forced if isinstance(forced, (list, tuple)) else [forced]
     n_edges = len(network._edges)
+    datasets = []
+    for k, fr in enumerate(responses):
+        freqs = np.asarray(fr.freqs, dtype=float)
+        idxs = _select_freq_indices(freqs, forced_freqs)
+        if not idxs:
+            raise ValueError("the forced response carries no frequencies to sweep")
+        frame_freqs = [float(freqs[j]) for j in idxs]
+        items = []
+        for key in forced_fields:
+            # per-frame snapshot items (magnitude + phase per field), folded into frame rows
+            per_frame = [_forced_items(fr, j, key, n_edges) for j in idxs]
+            for c, proto in enumerate(per_frame[0]):
+                rows = [frame[c].values for frame in per_frame]
+                items.append(DataItem(proto.name, proto.target, rows, proto.unit, proto.phase))
+        if node_data:
+            items += _node_items(network, items)
+        info = [
+            MetaEntry("kind", "Analysis", "Forced response sweep"),
+            MetaEntry("n_freqs", "Frequencies", len(frame_freqs)),
+            MetaEntry("f_min", "Band start", frame_freqs[0], unit="Hz"),
+            MetaEntry("f_max", "Band end", frame_freqs[-1], unit="Hz"),
+        ]
+        name = "Frequency sweep" if len(responses) == 1 else f"Frequency sweep {k + 1}"
+        datasets.append(
+            DataSet(
+                name,
+                items,
+                include_in_save,
+                description="Forced response over the swept frequencies; one frame per frequency.",
+                info=info,
+                frames=FrameAxis("Frequency", frame_freqs, "Hz"),
+            )
+        )
+    return datasets
+
+
+def _eigenmode_info(result, i):
+    """The modal scalars of mode ``i`` as dataset metadata entries."""
+    return [
+        MetaEntry("mode", "Mode index", int(i)),
+        MetaEntry("frequency", "Frequency", float(result.freqs[i]), unit="Hz"),
+        MetaEntry("growth_rate", "Growth rate", float(result.growth_rates[i]), unit="1/s"),
+        MetaEntry("damping_ratio", "Damping ratio", float(result.damping_ratios[i])),
+        MetaEntry("unstable", "Unstable", bool(result.unstable[i])),
+        MetaEntry("residual", "Residual", float(result.residuals[i])),
+    ]
+
+
+def _select_modes(result, eig_modes):
     n_modes = int(result.n_modes)
     modes = range(n_modes) if eig_modes is None else [int(m) for m in eig_modes]
-    datasets = []
     for i in modes:
         if not 0 <= i < n_modes:
             raise ValueError(f"eigenmode index {i} out of range [0, {n_modes})")
+    return modes
+
+
+def _eigenmode_datasets(network, result, eig_modes, eig_fields, node_data, include_in_save):
+    """One dataset per eigenmode: per-edge mode shape + the modal scalars as metadata."""
+    n_edges = len(network._edges)
+    datasets = []
+    for i in _select_modes(result, eig_modes):
         items = []
         for key in eig_fields:
             items += _eigenmode_items(result, i, key, n_edges)
         if node_data:
             items += _node_items(network, items)
-        info = [
-            MetaEntry("kind", "Analysis", "Eigenmode"),
-            MetaEntry("mode", "Mode index", int(i)),
-            MetaEntry("frequency", "Frequency", float(result.freqs[i]), unit="Hz"),
-            MetaEntry("growth_rate", "Growth rate", float(result.growth_rates[i]), unit="1/s"),
-            MetaEntry("damping_ratio", "Damping ratio", float(result.damping_ratios[i])),
-            MetaEntry("unstable", "Unstable", bool(result.unstable[i])),
-            MetaEntry("residual", "Residual", float(result.residuals[i])),
-        ]
+        info = [MetaEntry("kind", "Analysis", "Eigenmode")] + _eigenmode_info(result, i)
         datasets.append(
             DataSet(
                 f"Mode {i}: {float(result.freqs[i]):g} Hz",
                 items,
                 include_in_save,
                 description="Eigenmode shape (relative amplitude; eigenvector normalization).",
+                info=info,
+            )
+        )
+    return datasets
+
+
+def _eigenmode_animation_datasets(network, result, eig_modes, eig_fields, eig_frames, node_data, include_in_save):
+    """One animated dataset per eigenmode: the instantaneous shape over one phase cycle.
+
+    Each frame ``k`` holds the per-edge instantaneous physical perturbation
+    ``Re{psi_e e^{i theta_k}}`` at phase ``theta_k = 2 pi k / n_frames`` (the cycle
+    endpoint is excluded so looped playback is seamless).  The amplitude is relative
+    (the eigenvector's arbitrary normalization), matching the snapshot datasets.
+    """
+    n_frames = int(eig_frames)
+    if n_frames < 2:
+        raise ValueError(f"eig_frames must be at least 2, got {eig_frames}")
+    n_edges = len(network._edges)
+    thetas = [360.0 * k / n_frames for k in range(n_frames)]
+    datasets = []
+    for i in _select_modes(result, eig_modes):
+        items = []
+        for key in eig_fields:
+            if key not in _FORCED_FIELDS:
+                raise ValueError(f"unknown eigenmode field {key!r}; choose from {list(_FORCED_FIELDS)}")
+            label, basis, comp, unit = _FORCED_FIELDS[key]
+            shape = result.mode_shape(i, basis)
+            cvals = [complex(shape[e, comp]) for e in range(n_edges)]
+            rows = [[(c * cmath.exp(1j * math.radians(th))).real for c in cvals] for th in thetas]
+            items.append(DataItem(label, "edge", rows, unit))
+        if node_data:
+            items += _node_items(network, items)
+        info = [
+            MetaEntry("kind", "Analysis", "Eigenmode animation"),
+            *_eigenmode_info(result, i),
+            MetaEntry("n_frames", "Phase frames", n_frames),
+        ]
+        datasets.append(
+            DataSet(
+                f"Mode {i}: {float(result.freqs[i]):g} Hz animation",
+                items,
+                include_in_save,
+                description=(
+                    "Instantaneous mode shape Re{psi e^(i theta)} over one phase cycle "
+                    "(relative amplitude; eigenvector normalization)."
+                ),
+                info=info,
+                frames=FrameAxis("Phase", thetas, "deg"),
+            )
+        )
+    return datasets
+
+
+def _nyquist_datasets(nyquist, include_in_save):
+    """Items-free summary dataset(s) for Nyquist stability results.
+
+    The locus ``L(omega)`` / determinant ``D(omega)`` are scalar per frequency, not
+    element-bound fields, so only the stability verdict and its scalars are emitted.
+    """
+    responses = nyquist if isinstance(nyquist, (list, tuple)) else [nyquist]
+    datasets = []
+    for k, ny in enumerate(responses):
+        freqs = np.asarray(ny.freqs, dtype=float)
+        n_unstable = int(ny.n_unstable)
+        onset = ", ".join(f"{c['freq_hz']:g}" for c in ny.crossings()) or "none"
+        info = [
+            MetaEntry("kind", "Analysis", "Nyquist stability"),
+            MetaEntry("stable", "Stable", n_unstable == 0),
+            MetaEntry("n_unstable", "Unstable modes", n_unstable),
+            MetaEntry("margin", "Stability margin min|D|", float(ny.margin)),
+            MetaEntry("f_max", "Swept band end", float(freqs.max()) if freqs.size else 0.0, unit="Hz"),
+            MetaEntry("closed", "Band edge quiet", bool(ny.closed)),
+            MetaEntry("rank", "Source rank", int(ny.rank)),
+            MetaEntry("isentropic", "Acoustic-only", bool(ny.isentropic)),
+            MetaEntry(
+                "crossings",
+                "Onset frequencies",
+                onset,
+                unit="Hz" if onset != "none" else "",
+                description="Real frequencies where the locus skims the critical point (|D| dips).",
+            ),
+        ]
+        if ny.source_labels:
+            info.append(MetaEntry("sources", "Sources", ", ".join(ny.source_labels)))
+        name = "Nyquist stability" if len(responses) == 1 else f"Nyquist stability {k + 1}"
+        datasets.append(
+            DataSet(
+                name,
+                [],
+                include_in_save,
+                description="Open-loop (Nyquist) stability verdict over the swept real-frequency band.",
                 info=info,
             )
         )
@@ -572,15 +833,23 @@ def _eigenmode_items(result, i, key, n_edges):
 
 
 def _node_items(network, items):
-    """Reduce each non-phase edge item onto the nodes (mean over incident edges)."""
+    """Reduce each non-phase edge item onto the nodes (mean over incident edges).
+
+    Per-frame items are reduced frame by frame, yielding a per-frame node item.
+    """
     incident = _incident_edges(network)
+
+    def reduce_row(row):
+        return [sum(row[e] for e in edges) / len(edges) if edges else float("nan") for edges in incident]
+
     out = []
     for it in items:
         if it.target != "edge" or it.phase:
             continue
-        values = []
-        for edges in incident:
-            values.append(sum(it.values[e] for e in edges) / len(edges) if edges else float("nan"))
+        if _is_per_frame(it.values):
+            values = [reduce_row(row) for row in it.values]
+        else:
+            values = reduce_row(it.values)
         out.append(DataItem(it.name, "node", values, it.unit))
     return out
 

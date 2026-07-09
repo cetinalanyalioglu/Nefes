@@ -457,3 +457,163 @@ def test_solution_to_yaml_appends_named_datasets(tmp_path):
     # A repeated dataset name is rejected rather than silently overwritten.
     with pytest.raises(ValueError, match="already exists"):
         sol.to_yaml(p, dataset="Operating point A")
+
+
+# --------------------------------------------------------------------------
+# 5. Animated datasets (frames axis) and the Nyquist summary.
+# --------------------------------------------------------------------------
+def _forced_net():
+    net = Network(CFG, p_ref=101325.0, T_ref=300.0, mdot_ref=5.0)
+    net.add(cat.total_pressure_inlet(104000.0, 300.0, perturbation_bc=PerturbationBC.anechoic(driven=("acoustic",))))
+    net.add(cat.duct(0.5))
+    net.add(cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.open_end()))
+    net.connect(0, 1, 0.05)
+    net.connect(1, 2, 0.05)
+    sol = net.solve()
+    assert sol.converged
+    return net, sol
+
+
+def test_forced_sweep_animated_dataset():
+    net, sol = _forced_net()
+    freqs = np.array([100.0, 250.0, 500.0])
+    fr = forced_response(sol.problem, sol.x, freqs)
+    doc = yaml.safe_load(dump_case(net, forced=fr, forced_sweep=True, forced_fields=("p", "u")))
+    (ds,) = doc["data"]["datasets"]
+    assert ds["name"] == "Frequency sweep"
+    assert ds["frames"] == {"variable": "Frequency", "unit": "Hz", "values": freqs.tolist()}
+    n_edges = len(net._edges)
+    item_names = [it["name"] for it in ds["items"]]
+    assert item_names == ["Pressure amplitude", "Pressure phase", "Velocity amplitude", "Velocity phase"]
+    for it in ds["items"]:
+        assert len(it["values"]) == len(freqs)
+        assert all(len(row) == n_edges for row in it["values"])
+    # Frame rows reproduce the per-frequency snapshot values.
+    snap_doc = yaml.safe_load(dump_case(net, forced=fr, forced_freqs=[250.0]))
+    snap = next(d for d in snap_doc["data"]["datasets"] if d["name"] == "250 Hz")
+    for name in item_names:
+        sweep_row = next(it for it in ds["items"] if it["name"] == name)["values"][1]
+        snap_vals = next(it for it in snap["items"] if it["name"] == name)["values"]
+        assert np.allclose(sweep_row, snap_vals)
+    info = _info_map(ds)
+    assert info["kind"]["value"] == "Forced response sweep"
+    assert info["n_freqs"]["value"] == 3
+    assert info["f_min"]["value"] == 100.0 and info["f_max"]["value"] == 500.0
+
+
+def test_forced_sweep_frequency_subset():
+    net, sol = _forced_net()
+    fr = forced_response(sol.problem, sol.x, np.array([100.0, 250.0, 500.0]))
+    doc = yaml.safe_load(dump_case(net, forced=fr, forced_sweep=True, forced_freqs=[100.0, 500.0]))
+    (ds,) = doc["data"]["datasets"]
+    assert ds["frames"]["values"] == [100.0, 500.0]
+    assert all(len(it["values"]) == 2 for it in ds["items"])
+
+
+def test_eigenmode_animation_dataset():
+    net, sol, res = _resonator()
+    doc = yaml.safe_load(
+        dump_case(net, eigenmodes=res, eig_modes=[0], eig_fields=("p",), eig_animation=True, eig_frames=8)
+    )
+    names = [d["name"] for d in doc["data"]["datasets"]]
+    f0 = float(res.freqs[0])
+    assert names == [f"Mode 0: {f0:g} Hz", f"Mode 0: {f0:g} Hz animation"]
+    anim = doc["data"]["datasets"][1]
+    assert anim["frames"]["variable"] == "Phase"
+    assert anim["frames"]["unit"] == "deg"
+    assert anim["frames"]["values"] == [45.0 * k for k in range(8)]  # endpoint excluded
+    (item,) = anim["items"]
+    assert item["name"] == "Pressure"
+    n_edges = len(net._edges)
+    assert len(item["values"]) == 8
+    assert all(len(row) == n_edges for row in item["values"])
+    # Each frame is the instantaneous field Re{psi e^(i theta)}.
+    shape = res.mode_shape(0, "network")
+    for k, th in enumerate(anim["frames"]["values"]):
+        expected = [(complex(shape[e, 1]) * np.exp(1j * np.radians(th))).real for e in range(n_edges)]
+        assert np.allclose(item["values"][k], expected)
+    info = _info_map(anim)
+    assert info["kind"]["value"] == "Eigenmode animation"
+    assert info["n_frames"]["value"] == 8
+    assert info["frequency"]["value"] == pytest.approx(f0, rel=1e-6)
+
+
+def test_eigenmode_animation_rejects_degenerate_frame_count():
+    net, sol, res = _resonator()
+    with pytest.raises(ValueError, match="at least 2"):
+        dump_case(net, eigenmodes=res, eig_animation=True, eig_frames=1)
+
+
+def test_animated_node_reduction_is_per_frame():
+    net, sol, res = _resonator()
+    doc = yaml.safe_load(
+        dump_case(
+            net, eigenmodes=res, eig_modes=[0], eig_fields=("p",), eig_animation=True, eig_frames=4, node_data=True
+        )
+    )
+    anim = doc["data"]["datasets"][1]
+    edge_item = next(it for it in anim["items"] if it["target"] == "edge")
+    node_item = next(it for it in anim["items"] if it["target"] == "node")
+    assert len(node_item["values"]) == 4
+    # Node 1 of the resonator chain touches both edges: its value is their mean, frame by frame.
+    for k in range(4):
+        row = edge_item["values"][k]
+        assert node_item["values"][k][1] == pytest.approx((row[0] + row[1]) / 2.0)
+
+
+def test_animated_dataset_frame_mismatch_rejected():
+    net = _nozzle_in_python()
+    from nefes.io import FrameAxis
+
+    n_edges = len(net._edges)
+    bad = DataSet(
+        "Bad",
+        [DataItem("X", "edge", [[0.0] * n_edges, [1.0] * n_edges])],
+        frames=FrameAxis("Phase", [0.0, 120.0, 240.0], "deg"),
+    )
+    with pytest.raises(ValueError, match="frame rows"):
+        dump_case(net, extra_datasets=[bad])
+    # Per-frame rows without a frames axis are likewise rejected.
+    orphan = DataSet("Orphan", [DataItem("X", "edge", [[0.0] * n_edges])])
+    with pytest.raises(ValueError, match="no frames axis"):
+        dump_case(net, extra_datasets=[orphan])
+
+
+def test_animated_custom_dataset_roundtrips():
+    net = _nozzle_in_python()
+    from nefes.io import FrameAxis
+
+    n_edges = len(net._edges)
+    rows = [[float(k + e) for e in range(n_edges)] for k in range(3)]
+    ds = DataSet(
+        "Sweep",
+        [DataItem("X", "edge", rows, "-")],
+        frames=FrameAxis("Parameter", [0.1, 0.2, 0.3]),
+    )
+    doc = yaml.safe_load(dump_case(net, extra_datasets=[ds]))
+    out = next(d for d in doc["data"]["datasets"] if d["name"] == "Sweep")
+    assert out["frames"] == {"variable": "Parameter", "values": [0.1, 0.2, 0.3]}  # empty unit omitted
+    assert out["items"][0]["values"] == rows
+
+
+def test_nyquist_summary_dataset():
+    from nefes.perturbation import NyquistResponse
+
+    net = _nozzle_in_python()
+    freqs = np.linspace(0.0, 500.0, 64)
+    # A quiet, non-encircling determinant locus: stable, closed band edge, no crossings.
+    D = 1.0 + 0.05 * np.exp(1j * np.linspace(0.0, np.pi, freqs.size))
+    D[-1] = 1.0
+    ny = NyquistResponse(freqs=freqs, L=1.0 - D, D=D, rank=1, source_labels=("flame",))
+    doc = yaml.safe_load(dump_case(net, nyquist=ny))
+    (ds,) = doc["data"]["datasets"]
+    assert ds["name"] == "Nyquist stability"
+    assert ds["items"] == []
+    info = _info_map(ds)
+    assert info["kind"]["value"] == "Nyquist stability"
+    assert info["stable"]["value"] is True
+    assert info["n_unstable"]["value"] == 0
+    assert info["margin"]["value"] == pytest.approx(float(np.min(np.abs(D))))
+    assert info["f_max"]["value"] == 500.0 and info["f_max"]["unit"] == "Hz"
+    assert info["crossings"]["value"] == "none"
+    assert info["sources"]["value"] == "flame"

@@ -1,6 +1,8 @@
 # Nefes documentation
 
-Nefes models a compressible fluid system as a directed graph and solves for its steady mean flow, and for the linear acoustic (pulsation and thermoacoustic) behaviour around that flow, without resolving the full three-dimensional field.
+Nefes models a compressible fluid system as a directed graph and solves for its steady mean flow, and for the linear perturbations (acoustics, entropy and scalar perturbations) behaviour around that flow, without resolving the full three-dimensional field.
+Throughout the documentation we will casually refer to the whole set of these linearized perturbations as *acoustics*, and the associated network approach as *acoustic network*.
+Depending on the context, the reader should be aware that the set of perturbation variables may include entropy waves and scalar (composition) waves in addition to the regular upstream and downstream acoustic waves.
 This tree is the authoritative documentation: the physics and mathematics, the numerical and architectural philosophy, and the verification and validation evidence that backs every claim.
 
 The pages are Markdown with `$…$` math, organized into three tracks plus a supporting layer.
@@ -38,9 +40,8 @@ Why the code is shaped the way it is (concepts and contracts, not the API, which
 
 ## Reference
 
+- [API reference](reference/api/index.qmd) - referene for the Python API.
 - [Atomic elements](reference/atomic-elements.md) — the irreducible network elements (boundaries, area changes, losses, transport, reacting elements, manifolds), each with its residual and theory.
 - [Composite elements](reference/composite-elements.md) — convenience elements that expand to a graph of atomics at build time (orifice, lossy nozzle, sudden contraction, Helmholtz resonator, Fanno pipe, tapered duct).
 - `reference/modeling-guide.md` — mapping real components to network elements.
 - `reference/examples.md` — annotated index of the runnable notebooks under [`examples/`](../examples/).
-
-These pages are the authoritative theory spec and re-verification of the shipped tool.

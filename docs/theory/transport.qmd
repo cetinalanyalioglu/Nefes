@@ -43,7 +43,7 @@ H_P \;=\; \frac{\sum_e \dot m^{\text{in}}_{P,e}\,h_{t,e}}{\sum_e \dot m^{\text{i
 $$
 
 where $\dot m^{\text{in}}_{P,e} = -\sigma_{P,e}\dot m_e$ is the mass entering $P$ through edge $e$.
-It can be interpreted as the *perfect-mixing* statement of a lumped element: having no resolved interior, the element blends its incoming streams into one mixed state and offers that single state to every outlet — all outflow ports of one element therefore carry the same total enthalpy.
+**It can be interpreted as the *perfect-mixing* statement of a lumped element:** having no resolved interior, the element blends its incoming streams into one mixed state and offers that single state to every outlet — all outflow ports of one element therefore carry the same total enthalpy.
 How the mass then *splits* between several outlets is set by the pressure relations, not by energy; the thermodynamic state of the mixed stream is single-valued.
 
 **Worked example (a tee).**
@@ -66,7 +66,7 @@ w_e = \operatorname{spos}\!\big(\dot m^{\text{in}}_{P,e};\,\varepsilon\big) = \t
 $$
 
 where $w_e$ is the smooth donor weight of edge $e$, $\operatorname{spos}(\cdot;\varepsilon)$ is the regularized positive part, and $\varepsilon$ is the smoothing width in mass-flow units.
-Because $w_e \ge \varepsilon/2 > 0$, the mixture is well defined for any flow state, degrading gracefully to a plain average at complete stagnation, while at a converged state the weight of an *outflow* port decays like $\varepsilon^2/(4\,|\dot m_e|)$ — a quadratically small contamination.
+Because $w_e \ge \varepsilon/2 > 0$, the mixture is well defined for any flow state, degrading gracefully to a plain average at complete stagnation, while at a converged state the weight of an *outflow* port decays like $\varepsilon^2/(4\,|\dot m_e|)$: a quadratically small contamination.
 
 Boundary elements override this donor with their specification rather than mixing incoming streams: an inlet offers its prescribed $c_p T_t^{\text{spec}}$, and a pressure outlet offers $c_p T_t^{\text{backflow}}$, the total enthalpy a re-entering stream would carry — the same convention adopted at pressure outlets in field solvers.
 

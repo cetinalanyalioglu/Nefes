@@ -10,7 +10,7 @@ The presentation begins with the graph model and the division of labour between 
 
 This document inherits the standing assumptions of the [overview](overview.md); the two that are specific to the framework, and are examined in the sections that follow, are stated here:
 
-1. **Port quantities are adequately described by their cross-sectional averages.** Each edge carries a single representative state standing for the average over its port; this is exact for a uniform profile and is corrected, where it matters, by a profile-shape factor.
+1. **Port quantities are adequately described by their cross-sectional averages.** Each edge carries a single representative state standing for the average over its port; this is exact for a uniform profile can be corrected, where it matters, by a profile-shape factor.
 2. **A thermodynamic closure supplies the state relations.** The framework requires a closure that returns the thermodynamic state, and its derivatives, from the carried variables; it is agnostic to whether that closure is a calorically perfect gas or a chemical-equilibrium mixture.
 
 ## The network as a directed graph

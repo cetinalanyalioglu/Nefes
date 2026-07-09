@@ -25,7 +25,7 @@ Small disturbances in a subsonic stream travel along three families of character
 Boundary-condition theory then requires an element to supply exactly as many conditions as there are wave families *leaving it* through its ports, which is given as:
 
 $$
-n_{\text{eq}}(P) = \underbrace{n}_{\text{one outgoing pressure wave per port}} + \underbrace{n_{\text{out}}(P)}_{\text{one convected wave per outflow port}},
+n_{\text{eq}}(P) = \underbrace{n}_{\text{one outgoing acoustic wave per port}} + \underbrace{n_{\text{out}}(P)}_{\text{one convected wave per outflow port}},
 $$
 
 where $P$ is an element, $n$ is its number of ports, and $n_{\text{out}}(P)$ is the number of its ports through which the flow leaves.
@@ -75,7 +75,7 @@ The transported quantities — the total enthalpy and every mixture fraction —
 ## Direction discovery and sparsity
 
 The payoff of the fixed split is that the equation system has a shape independent of the solution.
-Because the convected conditions live on the edges and select their upstream side by a smooth weight rather than a branch, the solver may reverse the flow on any edge, or discover it from an exactly quiescent start, without the residual vector or the Jacobian changing dimension — the direction is an output of the solve, not an input to the assembly (see [well-posedness](well-posedness.md)).
+Because the convected conditions live on the edges and select their upstream side by a smooth weight rather than a branch, **the solver may reverse the flow on any edge, or discover it from an exactly quiescent start**, without the residual vector or the Jacobian changing dimension — the direction is an output of the solve, not an input to the assembly (see [well-posedness](well-posedness.md)).
 
 The same incidence that fixes the count also fixes the sparsity of the Jacobian.
 An element row depends on the state of every edge incident to that element, and an edge transport row depends on its own edge and on every edge that shares one of its two endpoint elements, because the donated total enthalpy at an element is a mass-weighted mix over the streams meeting there (see [transport](transport.qmd)).

@@ -192,6 +192,41 @@ def test_kernel_drops_absent_element():
         assert cs[k].imag / eps == pytest.approx((fp[k] - fm[k]) / (2 * dh), rel=1e-5, abs=1e-10)
 
 
+def test_kernel_cold_near_inert_mixture_stays_finite():
+    """Cold, near-inert recovery (unburnt ~400 K air through a rich carbon-bearing slate).
+
+    A reacting network gates each edge between a frozen and an HP-equilibrium leg, and the
+    marker blend evaluates *both* on every edge -- including cold unburnt air edges where the
+    equilibrium weight is zero.  Over a rich product slate most carbon/hydrogen species have a
+    vanishing equilibrium abundance at ~400 K, so their moles underflow to exactly zero; the
+    ``n_j ln(n_j / n_tot)`` terms must stay finite there (an unfloored ``log(0) = -inf`` gives
+    ``0 * -inf = NaN``, which poisons the reduced Newton matrix and aborts the whole recovery).
+    The equilibrium of cold air is essentially frozen air, so the recovered state must match it.
+    """
+    from nefes.thermo import ThermoInp
+    from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+
+    if not os.path.isfile(THERMO_INP):
+        pytest.skip("thermo.inp not present")
+    db = ThermoInp(THERMO_INP)
+    # CEA-style product slate over the jet-fuel/air element pool (as the auto slate builds it).
+    lib = db.library(db.candidate_species({"C", "H", "O", "N", "Ar"}, gas_only=True, exclude_ions=True))
+
+    # Standard dry air; the trace CO2 seeds carbon, activating the many hydrocarbon products that
+    # sit at ~0 mole fraction at 400 K -- the underflow that exercises the log floor.
+    Y = species_mass_fractions(lib, {"N2": 78.08, "O2": 20.95, "Ar": 0.93, "CO2": 0.04}, "mole")
+    Z = elemental_Z(lib, Y)
+    p = 3.1e5
+    h = enthalpy_mass(lib, Y, 400.0)
+
+    cfg = equilibrium(lib)
+    T, rho, c, W = eq_kernel_state_from_Z(cfg.tf, cfg.ti, np.ascontiguousarray(Z), h, p)
+
+    assert np.isfinite(T) and np.isfinite(rho) and np.isfinite(c) and np.isfinite(W)
+    assert float(T) == pytest.approx(400.0, abs=1.0)  # cold air barely reacts
+    assert float(rho) == pytest.approx(p / (287.05 * 400.0), rel=5e-3)  # ideal-gas air density
+
+
 # ---------------------------------------------------------------------------
 # Frozen (unburnt) closure: forward-blend reconstruction from feed-stream xi
 # ---------------------------------------------------------------------------

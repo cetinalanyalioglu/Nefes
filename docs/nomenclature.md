@@ -104,6 +104,7 @@ A related remark on numeric subscripts: they denote **port indices** ($p_0$, $p_
 | **edge** | a port cross-section shared by two elements (or an element and the exterior); owns the state vector |
 | **residual** | how far an equation is from being satisfied at the current guess; all zeros means solved |
 | **Jacobian** | the matrix of sensitivities $\partial R_i/\partial x_j$ |
+| **seeding** | tagging one unknown with an imaginary perturbation, $x \leftarrow x + \mathrm{i}h_{\text{cs}}$ |
 | **jump condition** | an algebraic relation between the states on the two sides of a compact element (one taken in the zero-volume limit) |
 | **transport (edge) equation** | the donor/upwind relation that carries total enthalpy (and any scalar) along an edge |
 | **choking** | mass-flow saturation when the narrowest section reaches $M = 1$ |

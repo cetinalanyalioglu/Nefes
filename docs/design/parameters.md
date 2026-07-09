@@ -1,6 +1,6 @@
 # Parameter schema and the modification API
 
-This document records the implementation contract behind the named-parameter machinery: where parameter truth lives, how writes are validated, and why the design is shaped for nesting (composites today, subnetworks later).
+This document records the implementation contract behind the named-parameter machinery: where parameter truth lives, how writes are validated, and why the design is shaped for nesting (composite elements today, subnetworks later).
 The user-facing guide is [reference/parameters](../reference/parameters.md).
 
 ## The problem being designed out
@@ -52,16 +52,18 @@ Each fact has exactly one authoritative home.
 - **The gas model is out of scope.**
   Reconfiguring the thermochemistry changes `n_solve` and the species pool; it is a model re-specification behind the explicit construction path, not a value write.
 
-## Deferred steps
+## Planned later
 
-Two steps of the original plan are intentionally not in this change and are tracked in `TODO.md`:
+Two items from the original design are deliberately left for a future release and are listed in `TODO.md`:
 
-- **Canonical-store flip.**
-  Making the named-parameter dict the stored truth on every spec and `fparams` a derived, invalidatable cache.
-  It is the robustness payoff for deep nesting, guarded by a projection round-trip invariant (dict to `fparams` to dict is identity per kind) plus the complex-step safety sweep, and becomes necessary when subnetworks land.
-- **Subnetworks.**
-  The recursive node type (named dict plus children) with hierarchical addressing (`can[3].injector.orifice.throat_area`) and template/instance overlays.
-  The address grammar and the schema registry here were shaped so that this is an extension, not a rewrite.
+- **Named parameters as the primary record.**
+  Today, values are stored in the packed float lists and named fields already on each element; the schema only adds names on top.
+  The planned change is to store the named values as the authoritative record on every element and rebuild the packed lists from them whenever they change.
+  That arrangement is what deep nesting needs: converting names to packed values and back must recover the same numbers for each element type, and the usual derivative safety checks must still pass.
+  It becomes essential once nested network blocks are supported.
+- **Nested network blocks.**
+  A network element that contains other elements, addressed by a path such as `can[3].injector.orifice.throat_area`, with a base layout that can be copied and locally overridden.
+  The naming rules and parameter catalogue introduced here were chosen so that this can be added later without redesigning the present machinery.
 
 ## Testing
 

@@ -10,8 +10,15 @@ dependencies:
   - pytest
   - flake8
   - black
-  # notebook support + plotting (the `jupyter` extra)
+  # visualization + notebook stack (the `viz` and `jupyter` extras)
+  - plotly
   - jupyterlab
   - notebook
   - ipykernel
-  - plotly
+  - nbformat
+  - nbclient
+  # documentation site (the `docs` extra); the Quarto CLI itself is external (https://quarto.org)
+  - griffe>=1.5,<2
+  - pip
+  - pip:
+      - quartodoc>=0.11

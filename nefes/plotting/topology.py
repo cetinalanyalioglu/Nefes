@@ -10,8 +10,7 @@ to confirm the connectivity, element indices and edge directions before solving.
 """
 
 import numpy as np
-import plotly.graph_objects as go
-from plotly.colors import sample_colorscale
+from ._deps import go, sample_colorscale
 
 from .theme import NEFES_TEMPLATE_NAME
 from ..shell.network import _EDGE_FIELDS

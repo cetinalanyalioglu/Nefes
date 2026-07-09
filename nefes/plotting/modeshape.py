@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 import numpy as np
-import plotly.graph_objects as go
+from ._deps import go
 
 from .theme import NEFES_TEMPLATE_NAME, COLORWAY
 from .labels import mathify

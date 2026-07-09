@@ -14,8 +14,7 @@ object (anything with ``F(freqs) -> complex``, e.g.
 from itertools import cycle
 
 import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+from ._deps import go, make_subplots
 
 from .theme import NEFES_TEMPLATE_NAME, COLORWAY
 from .labels import tex

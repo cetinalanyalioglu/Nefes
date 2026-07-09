@@ -1,12 +1,15 @@
 """A modern, restrained Plotly theme for Nefes figures.
 
-Importing this module registers the ``"nefes"`` template with Plotly, so
+When Plotly is installed, importing this module registers the ``"nefes"`` template so
 ``template="nefes"`` works right away; the process-wide default is left untouched
-until :func:`use_nefes_theme` is called.
+until :func:`use_nefes_theme` is called.  When Plotly is absent the import still succeeds
+and registration is deferred to the first :func:`use_nefes_theme` / :func:`nefes_template`
+call, which raises a message pointing at the ``viz`` extra.
 """
 
-import plotly.graph_objects as go
-import plotly.io as pio
+from __future__ import annotations
+
+from ._deps import go, pio
 
 NEFES_TEMPLATE_NAME = "nefes"
 
@@ -111,5 +114,9 @@ def use_nefes_theme() -> str:
 
 
 # Register on import so `template="nefes"` works without an explicit call; only the
-# default is left untouched until use_nefes_theme() is called.
-pio.templates[NEFES_TEMPLATE_NAME] = nefes_template()
+# default is left untouched until use_nefes_theme() is called. Guarded so the module
+# still imports without Plotly, in which case registration waits for the first call.
+try:
+    pio.templates[NEFES_TEMPLATE_NAME] = nefes_template()
+except ModuleNotFoundError:
+    pass

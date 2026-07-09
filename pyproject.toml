@@ -18,12 +18,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "flake8", "black"]
-jupyter = ["jupyterlab", "notebook", "ipykernel", "nbformat>=4.2.0", "plotly>=5.0"]
-# Documentation site: quartodoc renders the API pages from docstrings and the
-# example gallery executes notebooks, so it pulls the notebook stack too.
-# The Quarto CLI itself is external and installed separately (https://quarto.org).
-docs = ["nefes[jupyter]", "quartodoc>=0.11", "griffe>=1.5,<2", "nbclient"]
+# Visualization: the nefes.plotting subpackage and the perturbation viewers render figures with
+# Plotly. The core solver does not, so Plotly is kept out of the base dependencies.
+viz = ["plotly>=5.0"]
+# Notebook stack: run and render the example gallery (pulls in Plotly through the viz extra).
+jupyter = ["nefes[viz]", "jupyterlab", "notebook", "ipykernel", "nbformat>=4.2.0", "nbclient"]
+# Test suite: pytest plus everything the plotting and notebook-execution tests import.
+test = ["nefes[jupyter]", "pytest"]
+# Developer tooling: the full test suite plus the formatter and linter.
+dev = ["nefes[test]", "flake8", "black"]
+# Documentation site: quartodoc renders the API pages from docstrings and the example gallery
+# executes notebooks, so it pulls the notebook stack too. The Quarto CLI itself is external and
+# installed separately (https://quarto.org).
+docs = ["nefes[jupyter]", "quartodoc>=0.11", "griffe>=1.5,<2"]
 
 [tool.setuptools.packages.find]
 include = ["nefes*"]

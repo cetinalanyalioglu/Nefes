@@ -18,6 +18,10 @@ and 3x3 full perturbation networks)::
 Labels are MathJax (``$...$``) by default.  Where MathJax does not render (a plain
 kernel, a static export), call :func:`use_latex(False) <nefes.plotting.use_latex>` to
 switch every Nefes figure to a Unicode plain-text fallback.
+
+This subpackage renders with Plotly, which the core solver does not require and which
+ships in the ``viz`` extra (``pip install nefes[viz]``).  Importing ``nefes.plotting``
+succeeds without Plotly; the missing-dependency error is deferred until a figure is built.
 """
 
 from .theme import COLORWAY, FONT_FAMILY, NEFES_TEMPLATE_NAME, nefes_template, use_nefes_theme

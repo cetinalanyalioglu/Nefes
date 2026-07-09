@@ -672,6 +672,35 @@ class Solution:
     problem: CompiledProblem
     result: object  # SolveResult
 
+    @classmethod
+    def from_yaml(cls, path: str, method: str = "warm", dataset: str = "Mean flow", **solve_kw) -> "Solution":
+        """Restore a solution embedded in a saved UI/YAML case, skipping a cold re-solve.
+
+        The inverse of :meth:`to_yaml`.  Reads the network and rebuilds the solver state from the
+        saved datasets; ``method`` toggles how the stored state is trusted -- ``"warm"`` (default)
+        verifies it with a single ``kappa = 0`` solve (returns at iteration ``0`` with no Jacobian
+        when the state is faithful), ``"deserialize"`` returns it verbatim with no solve.  Thin
+        wrapper over :func:`nefes.io.load_solution`; see it for the full parameter set.
+
+        Parameters
+        ----------
+        path : str
+            Path to a ``.yaml`` case carrying an embedded solution.
+        method : {"warm", "deserialize"}, optional
+            Restore strategy (default ``"warm"``).
+        dataset : str, optional
+            Name of the mean-flow dataset to restore (default ``"Mean flow"``).
+        **solve_kw
+            Forwarded to :meth:`Network.solve` when ``method="warm"``.
+
+        Returns
+        -------
+        Solution
+        """
+        from ..io import load_solution
+
+        return load_solution(path, method=method, dataset=dataset, **solve_kw)
+
     def __repr__(self) -> str:
         """Return a string representation of the solution."""
         return f"Solution(converged={self.converged}, iterations={self.iterations}, residual_norm={self.residual_norm})"

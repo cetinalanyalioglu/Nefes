@@ -727,3 +727,178 @@ def case_from_dict(doc: dict, case_dir: str = None, source: str = "<dict>"):
         edge_ids=[e.get("id", f"edge_{i + 1}") for i, e in enumerate(edges_sorted)],
     )
     return net
+
+
+# --------------------------------------------------------------------------- #
+# Restoring a saved solution
+# --------------------------------------------------------------------------- #
+def _dataset_items(doc: dict, name: str):
+    """Return a saved dataset's series as ``{item_name: values}`` (``None`` if the dataset is absent)."""
+    for ds in (doc.get("data") or {}).get("datasets") or []:
+        if ds.get("name") == name:
+            return {it.get("name"): it.get("values") for it in (ds.get("items") or [])}
+    return None
+
+
+def _dataset_meta(doc: dict, name: str, key: str):
+    """Return a saved dataset's ``info`` metadata value for ``key`` (``None`` if absent)."""
+    for ds in (doc.get("data") or {}).get("datasets") or []:
+        if ds.get("name") == name:
+            for entry in ds.get("info") or []:
+                if entry.get("key") == key:
+                    return entry.get("value")
+    return None
+
+
+def _saved_state(doc: dict, prob, dataset: str):
+    """Rebuild the solver state ``x`` from a saved mean-flow dataset.
+
+    The solved unknowns per edge are ``[mdot, p, h_t, xi_0 .. xi_{n_elem-1}, marker]``; every one
+    is stored by :func:`nefes.io.yaml_out.save_case` as an edge series -- ``mdot``/``p``/``h_t``
+    in the ``dataset`` (default ``"Mean flow"``) and the transported mixture fractions
+    (``xi:<stream>``) and burnt marker (``burnt``) in its ``"<dataset> chemistry"`` sibling.  The
+    mixture fractions are matched to their rows by *name* (``prob.scalar_names``), so a reload is
+    robust to any reordering.
+
+    Parameters
+    ----------
+    doc : dict
+        The parsed case document.
+    prob : CompiledProblem
+        The freshly compiled problem the state is rebuilt for (fixes the row layout and edge count).
+    dataset : str
+        Name of the mean-flow dataset to restore.
+
+    Returns
+    -------
+    x : ndarray
+        The reconstructed state, shape ``(n_solve, n_edges)``.
+    converged : bool
+        The ``converged`` flag stored alongside the dataset (``False`` when not recorded).
+
+    Raises
+    ------
+    ValueError
+        When the requested dataset is absent, a needed field is missing, or an edge series does
+        not match the network's edge count (the file was saved for a different network).
+    """
+    import numpy as np
+
+    from .yaml_out import _FIELD_META
+
+    mean = _dataset_items(doc, dataset)
+    if mean is None:
+        available = [ds.get("name") for ds in (doc.get("data") or {}).get("datasets") or []]
+        raise ValueError(
+            f"no saved dataset named {dataset!r} to restore (found {available or 'none'}); "
+            "write one first with Solution.to_yaml / nefes.io.save_solution"
+        )
+    E = int(prob.n_edges)
+
+    def col(items, label, where):
+        vals = items.get(label)
+        if vals is None:
+            raise ValueError(f"the saved {where!r} dataset has no {label!r} series; cannot rebuild the state")
+        arr = np.asarray(vals, dtype=np.float64)
+        if arr.shape != (E,):
+            raise ValueError(
+                f"saved {label!r} carries {arr.size} value(s) but the network has {E} edge(s); "
+                "the file was saved for a different network"
+            )
+        return arr
+
+    x = np.zeros((int(prob.n_solve), E))
+    x[0] = col(mean, _FIELD_META["mdot"][0], dataset)
+    x[1] = col(mean, _FIELD_META["p"][0], dataset)
+    x[2] = col(mean, _FIELD_META["h_t"][0], dataset)
+
+    if prob.n_solve > 3:  # transported composition scalars live in the chemistry sibling
+        chem_name = f"{dataset} chemistry"
+        chem = _dataset_items(doc, chem_name)
+        if chem is None:
+            raise ValueError(
+                f"the network transports {int(prob.n_solve) - 3} composition scalar(s) but the file has no "
+                f"{chem_name!r} dataset; cannot rebuild the state"
+            )
+        for s, name in enumerate(prob.scalar_names):
+            x[3 + s] = col(chem, f"xi:{name}", chem_name)
+        mr = int(getattr(prob, "marker_row", -1))
+        if mr >= 0:
+            x[mr] = col(chem, "burnt", chem_name)
+
+    converged = _dataset_meta(doc, dataset, "converged")
+    return x, bool(converged) if converged is not None else False
+
+
+def load_solution(path: str, method: str = "warm", dataset: str = "Mean flow", **solve_kw):
+    """Load a network *and* a saved solution from a UI/YAML case, without a cold re-solve.
+
+    Reads the network topology (as :func:`load_case`) and rebuilds the solver state from the
+    solution datasets :func:`nefes.io.save_case` embeds.  The ``method`` toggle picks how much
+    the loaded state is trusted:
+
+    * ``"warm"`` (default) -- feed the stored state as the initial guess to a single ``kappa = 0``
+      solve.  A faithfully-saved solution is already below tolerance, so the stage's convergence
+      check returns at iteration ``0`` *before* assembling any Jacobian (the cost is one residual
+      evaluation, not the full solve); a stale state simply keeps solving from the excellent start.
+      The returned solution is therefore guaranteed consistent with the current network.
+    * ``"deserialize"`` -- wrap the stored state verbatim in a :class:`~nefes.shell.network.Solution`
+      with no solve at all (zero cost).  This trusts the file blindly: if the network was edited
+      after saving, the state may not satisfy its residual, and ``residual_norm`` is reported as
+      ``NaN`` (not evaluated).
+
+    Parameters
+    ----------
+    path : str
+        Path to a ``.yaml`` case carrying an embedded solution.
+    method : {"warm", "deserialize"}, optional
+        Restore strategy (default ``"warm"``).
+    dataset : str, optional
+        Name of the mean-flow dataset to restore (default ``"Mean flow"``); its chemistry sibling
+        ``"<dataset> chemistry"`` supplies the transported scalars.
+    **solve_kw
+        Forwarded to :meth:`Network.solve` for ``method="warm"`` (e.g. ``tol``, ``verbose``, or an
+        explicit ``kappa_stages`` to override the single ``kappa = 0`` stage).  Rejected for
+        ``method="deserialize"``, which does not solve.
+
+    Returns
+    -------
+    Solution
+        The restored mean-flow solution.
+
+    See Also
+    --------
+    load_case : Load only the network topology (no solution).
+    nefes.io.save_solution : Write a network and solution to a case file.
+    """
+    with open(path, "r") as fh:
+        doc = yaml.safe_load(fh)
+    net = case_from_dict(doc, case_dir=os.path.dirname(os.path.abspath(path)), source=path)
+    return _restore_solution(net, doc, method, dataset, solve_kw)
+
+
+def _restore_solution(net, doc: dict, method: str, dataset: str, solve_kw: dict):
+    """Rebuild a :class:`~nefes.shell.network.Solution` on ``net`` from the saved ``doc`` datasets."""
+    from ..shell.network import Solution
+    from ..solver.control import SolveResult
+
+    prob = net.compile()
+    x0, saved_converged = _saved_state(doc, prob, dataset)
+
+    if method == "warm":
+        # A faithfully-saved state is below tol, so a single kappa=0 stage returns at iteration 0
+        # (the pre-Jacobian convergence check) -- a cheap verification, not a re-solve; a stale
+        # state keeps solving from the excellent start.  The caller may override kappa_stages.
+        kw = dict(solve_kw)
+        kw.setdefault("kappa_stages", (0.0,))
+        return net.solve(x0=x0, **kw)
+    if method == "deserialize":
+        if solve_kw:
+            raise TypeError(f"method='deserialize' does not solve, so it takes no solve kwargs; got {sorted(solve_kw)}")
+        # Trust the file: the stored state is returned unchecked (residual not evaluated).
+        res = SolveResult(x=x0, converged=saved_converged, iterations=0, residual_norm=float("nan"))
+        return Solution(net, prob, res)
+    raise ValueError(
+        f"unknown method {method!r}; choose 'warm' (verify by a single kappa=0 solve, the default) "
+        "or 'deserialize' (return the stored state unchecked)"
+    )

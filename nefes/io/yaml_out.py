@@ -437,7 +437,10 @@ def _chemistry_items(network, solution):
     n_elem = int(prob.n_elem)
     if n_elem == 0:
         return []
-    n_edges = len(network._edges)
+    # Every compiled edge, matching the mean-flow dataset: the composite *internal* edges append
+    # at the tail (no UI edge maps to them, so the UI simply ignores those trailing values), and
+    # including them lets a saved solution be reloaded as the full solver state (see load_solution).
+    n_edges = int(prob.n_edges)
     items = []
     # transported feed-stream mixture fractions (always present when composition is carried)
     for name in prob.scalar_names:

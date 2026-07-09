@@ -158,6 +158,7 @@ quartodoc:
       desc: "Load and save cases and solutions."
       contents:
         - io.load_case
+        - io.load_solution
         - io.load_connectivity
         - io.case_from_dict
         - io.save_case

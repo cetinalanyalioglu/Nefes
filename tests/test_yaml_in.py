@@ -484,3 +484,165 @@ def test_format_residuals_reports_nonphysical_edges(tmp_path):
     x[0, :] = 1.0e9  # absurd mass flow: the KE static-state bracket fails on recovery
     text = format_residuals(net.compile(), x)
     assert "non-physical" in text and "edge" in text
+
+
+# --------------------------------------------------------------------------- #
+# Restoring a saved solution (load_solution): warm-start verify vs deserialize
+# --------------------------------------------------------------------------- #
+def _perfect_gas_series(tmp_path, name="pg_series.yaml"):
+    """air inlet -> duct -> pressure outlet, perfect gas (no transported scalars)."""
+    g = {
+        "thermoModel": "perfect_gas",
+        "gasConstant": 287.0,
+        "heatCapacityRatio": 1.4,
+        "referencePressure": 101325.0,
+        "referenceTemperature": 300.0,
+        "referenceMassFlow": 1.0,
+    }
+    nodes = [
+        _node("in", "MassFlowInlet", 0, label="air", massFlowRate=1.0, totalTemperature=300.0),
+        _node("d", "Duct", 1, label="duct", length=0.0),
+        _node("out", "PressureOutlet", 2, label="out", pressure=100000.0, backflowTotalTemperature=300.0),
+    ]
+    edges = [_edge("e1", "in", "d", 0, 0, 0, 0.05), _edge("e2", "d", "out", 1, 0, 1, 0.05)]
+    return _dump(tmp_path, name, g, nodes, edges)
+
+
+def _save_solved(tmp_path, case_path, out_name):
+    """Solve a case, embed the solution, and return ``(network, solution, saved_path)``."""
+    net = load_case(case_path)
+    sol = net.solve()
+    assert sol.converged
+    out = str(tmp_path / out_name)
+    save_case(net, out, solution=sol)
+    return net, sol, out
+
+
+def test_load_solution_warm_returns_at_zero_iterations(tmp_path):
+    """The default ``method="warm"`` reload verifies the stored state with a single kappa=0 stage.
+
+    A faithfully-saved solution is already below tolerance, so the stage's convergence check
+    returns at iteration 0 -- no Jacobian assembled -- and the recovered state matches the
+    original to full precision (the YAML round-trips floats exactly)."""
+    import numpy as np
+
+    from nefes.io import load_solution
+
+    _net, sol, out = _save_solved(tmp_path, _series_reacting(tmp_path, name="warm.yaml"), "warm_solved.yaml")
+    restored = load_solution(out)  # method="warm" is the default
+    assert restored.converged
+    assert restored.iterations == 0  # converged on the initial residual, no Newton step
+    assert restored.residual_norm < 1e-9
+    np.testing.assert_allclose(restored.x, sol.x, rtol=0, atol=1e-12)
+
+
+def test_load_solution_deserialize_returns_stored_state(tmp_path):
+    """``method="deserialize"`` returns the stored state verbatim, with no solve.
+
+    The state is bit-identical to what was saved and ``residual_norm`` is ``NaN`` (never
+    evaluated), flagging that the reload trusted the file rather than verifying it."""
+    import math
+
+    import numpy as np
+
+    from nefes.io import load_solution
+
+    _net, sol, out = _save_solved(tmp_path, _series_reacting(tmp_path, name="des.yaml"), "des_solved.yaml")
+    restored = load_solution(out, method="deserialize")
+    assert restored.iterations == 0
+    assert math.isnan(restored.residual_norm)  # not evaluated -- the file is trusted
+    assert np.array_equal(restored.x, sol.x)  # exact, not merely close
+
+
+def test_load_solution_with_composite_saves_internal_edges(tmp_path):
+    """A composite reload is exact only if the composite *internal* edges were saved too.
+
+    A composite expands into extra internal edges that the solver state carries but no UI edge
+    maps to; the saved datasets must span the compiled edges, not just the user edges, or the
+    reload cannot fill the internal-edge state and the warm verify would need a Newton step.
+    This solves a composite-bearing reacting case and asserts the warm reload still lands at
+    iteration 0 (proof the full state, internals included, round-tripped)."""
+    import numpy as np
+
+    from nefes.io import load_solution
+
+    net, sol, out = _save_solved(tmp_path, _series_reacting_taper(tmp_path, name="comp.yaml"), "comp_solved.yaml")
+    prob = net.compile()
+    assert prob.n_edges > len(net._edges)  # the taper added internal edges
+
+    doc = yaml.safe_load(open(out))
+    chem = next(ds for ds in doc["data"]["datasets"] if ds["name"].endswith("chemistry"))
+    assert all(len(it["values"]) == prob.n_edges for it in chem["items"])  # spans the internal edges
+
+    restored = load_solution(out)
+    assert restored.converged and restored.iterations == 0
+    np.testing.assert_allclose(restored.x, sol.x, rtol=0, atol=1e-12)
+
+
+def test_load_solution_perfect_gas_no_chemistry(tmp_path):
+    """A perfect gas carries no scalars (``n_solve == 3``), so the reload needs no chemistry
+    dataset: only mdot/p/h_t are restored and the warm verify still lands at iteration 0."""
+    import numpy as np
+
+    from nefes.io import load_solution
+
+    _net, sol, out = _save_solved(tmp_path, _perfect_gas_series(tmp_path), "pg_solved.yaml")
+    restored = load_solution(out, method="deserialize")
+    assert np.array_equal(restored.x, sol.x)
+    restored_warm = load_solution(out)
+    assert restored_warm.converged and restored_warm.iterations == 0
+
+
+def test_solution_from_yaml_delegates(tmp_path):
+    """``Solution.from_yaml`` is the method form of :func:`load_solution` and honors the toggle."""
+    import numpy as np
+
+    from nefes import Solution
+
+    _net, sol, out = _save_solved(tmp_path, _series_reacting(tmp_path, name="fromyaml.yaml"), "fromyaml_solved.yaml")
+    restored = Solution.from_yaml(out, method="deserialize")
+    assert np.array_equal(restored.x, sol.x)
+
+
+def test_load_solution_without_saved_solution_raises(tmp_path):
+    """Restoring a case that carries no solution reports the missing dataset clearly."""
+    from nefes.io import load_solution
+
+    net = load_case(_series_reacting(tmp_path, name="nosol.yaml"))
+    out = str(tmp_path / "nosol_out.yaml")
+    net.to_yaml(out)  # topology only, no solution embedded
+    with pytest.raises(ValueError, match="no saved dataset named 'Mean flow'"):
+        load_solution(out)
+
+
+def test_load_solution_deserialize_rejects_solve_kwargs(tmp_path):
+    """``method="deserialize"`` does not solve, so forwarding solve kwargs is an error."""
+    from nefes.io import load_solution
+
+    _net, _sol, out = _save_solved(tmp_path, _series_reacting(tmp_path, name="deskw.yaml"), "deskw_solved.yaml")
+    with pytest.raises(TypeError, match="does not solve"):
+        load_solution(out, method="deserialize", tol=1e-8)
+
+
+def test_load_solution_unknown_method_raises(tmp_path):
+    """An unrecognized ``method`` names both valid choices in the error."""
+    from nefes.io import load_solution
+
+    _net, _sol, out = _save_solved(tmp_path, _series_reacting(tmp_path, name="badm.yaml"), "badm_solved.yaml")
+    with pytest.raises(ValueError, match="unknown method 'bogus'"):
+        load_solution(out, method="bogus")
+
+
+def test_load_solution_edge_count_mismatch_raises(tmp_path):
+    """A saved series whose length disagrees with the network's edge count is rejected (the file
+    was saved for a different network), rather than silently reshaped."""
+    from nefes.io import load_solution
+
+    _net, _sol, out = _save_solved(tmp_path, _series_reacting(tmp_path, name="mism.yaml"), "mism_solved.yaml")
+    doc = yaml.safe_load(open(out))
+    mean = next(ds for ds in doc["data"]["datasets"] if ds["name"] == "Mean flow")
+    mean["items"][0]["values"].append(0.0)  # one extra edge value than the network has
+    bad = str(tmp_path / "mism_bad.yaml")
+    open(bad, "w").write(yaml.safe_dump(doc))
+    with pytest.raises(ValueError, match="different network"):
+        load_solution(bad)

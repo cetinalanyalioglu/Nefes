@@ -459,3 +459,28 @@ def test_parse_species_list_and_string():
     assert _parse_species("H2, O2, N2") == ["H2", "O2", "N2"]  # legacy comma/space string
     assert _parse_species("auto") == ["auto"]
     assert _parse_species(None) is None
+
+
+def test_reacting_residual_columns_named_z_and_marker(tmp_path):
+    """A reacting network labels its residual columns ``z1, z2, ...`` for the mixture fractions
+    and ``marker`` for the burnt marker, rather than the (poorly named) feed-stream labels."""
+    from nefes.solver import residual_groups
+
+    net = load_case(_series_reacting(tmp_path, name="rt_cols.yaml"))
+    labels, _ids = residual_groups(net.compile())
+    assert labels[:3] == ["mass", "pressure", "energy"]
+    assert "marker" in labels  # the burnt marker is named, not "scalar#k"
+    assert all(lab.startswith("z") for lab in labels[3:] if lab != "marker")  # mixture fractions z1..
+
+
+def test_format_residuals_reports_nonphysical_edges(tmp_path):
+    """A non-physical state produces a readable per-edge diagnostic, not a raw ``LinAlgError``
+    from deep in the recovery -- the failed-solve report must not itself crash."""
+    from nefes.solver import format_residuals
+
+    net = load_case(_series_reacting(tmp_path, name="rt_nonphys.yaml"))
+    sol = net.solve()
+    x = sol.x.copy()
+    x[0, :] = 1.0e9  # absurd mass flow: the KE static-state bracket fails on recovery
+    text = format_residuals(net.compile(), x)
+    assert "non-physical" in text and "edge" in text

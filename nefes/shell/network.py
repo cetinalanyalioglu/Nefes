@@ -237,24 +237,306 @@ class Network:
             raise ValueError(f"multiple edges from element {tail} to element {head}: {matches}")
         return matches[0]
 
-    def set_dynamic_source(self, node: int, source) -> int:
+    def set_dynamic_source(self, node, source) -> int:
         """Attach (or replace) the dynamic-source descriptor on an *already-added* element.
+
+        A named convenience over the generic :meth:`set` (``set(node, dynamic_source=...)``),
+        so the write is validated against the element's parameter schema.
 
         Parameters
         ----------
-        node : int
-            Element index (as returned by :meth:`add`) to carry the source.
+        node : int or str
+            Element index (as returned by :meth:`add`) or display name.
         source : DynamicSource or None
             The descriptor (e.g. from :func:`nefes.elements.dynamic_source.n_tau_flame`); ``None`` clears it.
 
         Returns
         -------
         int
-            The same ``node``, for chaining.
+            The element's node index, for chaining.
         """
-        self._elements[node].dynamic_source = source
-        self._invalidate()
-        return node
+        return self.set(node, dynamic_source=source)
+
+    def set_perturbation_bc(self, node, bc) -> int:
+        """Attach (or replace) the acoustic termination on an *already-added* boundary element.
+
+        A named convenience over the generic :meth:`set` (``set(node, perturbation_bc=...)``),
+        so the write is validated against the element's parameter schema.  Only the
+        single-port boundary terminations (inlets, outlets, wall) carry a perturbation BC.
+
+        Parameters
+        ----------
+        node : int or str
+            Element index (as returned by :meth:`add`) or display name.
+        bc : PerturbationBC or None
+            The termination (e.g. ``PerturbationBC.open_end()``); ``None`` restores the
+            inherited linearized boundary row.
+
+        Returns
+        -------
+        int
+            The element's node index, for chaining.
+        """
+        return self.set(node, perturbation_bc=bc)
+
+    # -- parameter access ---------------------------------------------------------------------------------------------
+
+    def element_index(self, key) -> int:
+        """Resolve an element reference (node index or unique display name) to its node index.
+
+        Parameters
+        ----------
+        key : int or str
+            Node index (as returned by :meth:`add`), or the element's display name.
+
+        Returns
+        -------
+        int
+
+        Raises
+        ------
+        KeyError
+            Unknown name (with near-match suggestions) or index out of range.
+        """
+        from .params import element_index
+
+        return element_index(self, key)
+
+    def element(self, key) -> ElementSpec:
+        """The element spec behind a node index or display name.
+
+        Parameters
+        ----------
+        key : int or str
+            Node index or the element's display name.
+
+        Returns
+        -------
+        ElementSpec or CompositeElementSpec
+
+        Examples
+        --------
+        >>> net.element("inlet").fparams
+        [0.3, 700.0]
+
+        See Also
+        --------
+        get : read a single named parameter instead of the raw spec.
+        """
+        return self._elements[self.element_index(key)]
+
+    def parameters(self, advanced: bool = False):
+        """The inventory of every addressable parameter: address, value, unit, bounds.
+
+        The read-only companion of :meth:`get` / :meth:`set`: one row per named element
+        parameter (in node order), per edge area, and per network-level reference.  The
+        returned :class:`~nefes.shell.params.ParameterInventory` is a list of
+        :class:`~nefes.shell.params.ParameterInfo` rows with dict-style access by address
+        and table reprs.
+
+        Parameters
+        ----------
+        advanced : bool, optional
+            Include the advanced knobs (smoothing ``eps``, ``ref_port``, the solver seed
+            references) usually left alone (default ``False``).
+
+        Returns
+        -------
+        ParameterInventory
+
+        Examples
+        --------
+        >>> net.parameters()["inlet.mdot"].value
+        0.3
+
+        See Also
+        --------
+        get, set, update, with_params
+        """
+        from .params import inventory
+
+        return inventory(self, advanced=advanced)
+
+    def get(self, address: str):
+        """Read one parameter by its dotted address.
+
+        Addresses are ``"element.param"`` / ``"edge.area"`` strings (elements and edges by
+        display name) plus the bare network references (``"p_ref"``, ``"T_ref"``).  An
+        unknown address raises with near-match suggestions.  ``"element.area"`` reads the
+        shared incident-edge area of a single-port or constant-area element.
+
+        Parameters
+        ----------
+        address : str
+            The dotted address, e.g. ``"inlet.mdot"``, ``"orifice.throat_area"``, ``"e3.area"``.
+
+        Returns
+        -------
+        object
+            The current value (a float for numeric parameters).
+
+        Examples
+        --------
+        >>> net.get("inlet.mdot")
+        0.3
+        >>> net.get("e0.area")
+        0.01
+
+        See Also
+        --------
+        parameters : the full inventory of addressable parameters.
+        """
+        from .params import get_param
+
+        return get_param(self, address)
+
+    def set(self, element, **params) -> int:
+        """Set named parameters on one element, in place, with fail-closed validation.
+
+        Every value is validated against the element's declared schema (units, bounds,
+        types) before anything is written -- an out-of-range value raises a named error,
+        exactly as the element's factory would.  A composite element is rebuilt through
+        its factory (its internals re-derived consistently), never patched.  ``area=`` on
+        a single-port or constant-area element fans out to all its incident edges.  The
+        compiled-problem cache is invalidated; topology is never touched, so a previous
+        solution remains a valid warm start (``solve(x0=prev.x)``).
+
+        Parameters
+        ----------
+        element : int or str
+            Element node index or display name.
+        **params
+            ``name=value`` pairs from the element's parameter set (see :meth:`parameters`).
+
+        Returns
+        -------
+        int
+            The element's node index, for chaining.
+
+        Examples
+        --------
+        >>> net.set("inlet", mdot=0.5, Tt=720.0)
+        0
+        >>> net.set("orifice", throat_area=1.2e-3)
+        3
+
+        See Also
+        --------
+        update : batch writes by dotted address.
+        with_params : the functional (copying) variant recommended for parameter studies.
+        """
+        from .params import set_params
+
+        return set_params(self, element, params)
+
+    def update(self, mapping: dict) -> "Network":
+        """Apply a batch of dotted-address parameter writes, in place.
+
+        Every address is resolved before anything is written, so a mistyped address
+        leaves the network untouched; values are then validated per element.  Element
+        writes are grouped so a composite is rebuilt once with all its updates merged.
+
+        Parameters
+        ----------
+        mapping : dict
+            ``{address: value}``, e.g. ``{"orifice.throat_area": 1.2e-3, "e3.area": 0.01}``.
+
+        Returns
+        -------
+        Network
+            ``self``, for chaining (``net.update({...}).solve()``).
+
+        See Also
+        --------
+        set : the single-element form.
+        with_params : the functional (copying) variant recommended for parameter studies.
+        """
+        from .params import update_params
+
+        update_params(self, mapping)
+        return self
+
+    def copy(self) -> "Network":
+        """A deep copy of this network's specification (elements, edges, references).
+
+        Edge order, port pins and names are preserved by construction, so the copy
+        compiles to the same problem layout and a warm start from this network's solution
+        stays valid.  The gas model is shared (an immutable configuration); the
+        compiled-problem cache is not copied.
+
+        Returns
+        -------
+        Network
+        """
+        from .params import copy_network
+
+        return copy_network(self)
+
+    def with_params(self, mapping: dict) -> "Network":
+        """A modified deep copy: this network with the given parameter writes applied.
+
+        The recommended idiom for parameter studies -- the loaded base stays pristine, no
+        state accumulates across sweep points, and each point is safe to solve
+        independently.  Addressing and validation are those of :meth:`update`.
+
+        Parameters
+        ----------
+        mapping : dict
+            ``{address: value}`` writes applied to the copy.
+
+        Returns
+        -------
+        Network
+            The modified copy; ``self`` is untouched.
+
+        Examples
+        --------
+        >>> base = nefes.load_case("combustor.yaml")
+        >>> prev = None
+        >>> for mdot in np.linspace(0.3, 0.7, 20):
+        ...     sol = base.with_params({"inlet.mdot": mdot}).solve(x0=prev.x if prev else None)
+        ...     prev = sol
+
+        See Also
+        --------
+        nefes.parameter_study : the warm-start-chained sweep driver built on this.
+        builder : a one-parameter ``build(p)`` closure for the continuation drivers.
+        """
+        return self.copy().update(mapping)
+
+    def builder(self, address: str, **fixed):
+        """A one-parameter ``build(p)`` closure over :meth:`with_params`.
+
+        The ``build`` contract the continuation drivers take
+        (:func:`~nefes.perturbation.stability.trajectory.eigenvalue_trajectory`,
+        :func:`~nefes.perturbation.response.nyquist.nyquist`): ``build(p)`` returns a
+        fresh network with ``address`` set to ``p``, leaving this base pristine.
+
+        Parameters
+        ----------
+        address : str
+            The swept parameter's dotted address (e.g. ``"flame.Qdot"``).
+        **fixed
+            Additional ``{address: value}`` writes applied at every point (keyword form;
+            dotted addresses with characters invalid in a keyword can be passed by
+            building the closure manually with :meth:`with_params`).
+
+        Returns
+        -------
+        callable
+            ``build(p) -> Network``.
+
+        Examples
+        --------
+        >>> traj = eigenvalue_trajectory(net.builder("flame.Qdot"), np.linspace(1e3, 5e3, 21),
+        ...                              freq_band=(50.0, 400.0), param_name="Qdot")
+        """
+        fixed = dict(fixed)
+
+        def build(p):
+            return self.with_params({address: p, **fixed})
+
+        return build
 
     def _seed_h(self) -> float:
         """Seed enthalpy scale threaded into the compiled ``var_scale`` (an explicit override or auto).
@@ -322,8 +604,8 @@ class Network:
         Most callers never need the compiled object directly -- :meth:`solve` and the
         :class:`Solution` it returns cover the common path -- but it is here for the lower-level
         routines that take a ``CompiledProblem``.  The cache is dropped whenever the network is
-        mutated (:meth:`add` / :meth:`connect` / :meth:`set_dynamic_source`), so it always
-        reflects the live topology.
+        mutated (:meth:`add` / :meth:`connect` / :meth:`set` / :meth:`update`), so it always
+        reflects the live state.
         """
         if self._compiled is None:
             self._compiled = self._build()

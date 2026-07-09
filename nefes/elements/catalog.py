@@ -416,7 +416,7 @@ def transfer_matrix_element(tm=None, name="tm"):
 
     In the UI this is the ``TransferMatrix`` node.  The descriptor itself is a Python
     object with no YAML form, so it does not round-trip: attach it after loading
-    (``spec.transfer_matrix = ...``).
+    (``net.set(node, transfer_matrix=...)``).
 
     Parameters
     ----------
@@ -426,7 +426,7 @@ def transfer_matrix_element(tm=None, name="tm"):
         layer.  Pass an :class:`~nefes.perturbation.identify.UnknownTransferMatrix` marker
         to leave it to be identified from a measured network response.  ``None`` (default)
         leaves the element acoustically an isentropic area change until a descriptor is
-        attached (``spec.transfer_matrix = ...``).
+        attached (``net.set(node, transfer_matrix=...)``).
     name : str, optional
         Element label.
 

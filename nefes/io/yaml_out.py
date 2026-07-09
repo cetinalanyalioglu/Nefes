@@ -1155,7 +1155,7 @@ def _spec_to_ui(spec):
         if spec.transfer_matrix is not None:
             warnings.warn(
                 f"transfer-matrix element {spec.name!r}: the attached descriptor is not serializable "
-                "to the UI format; re-attach it (spec.transfer_matrix = ...) after loading",
+                "to the UI format; re-attach it after loading (net.set(node, transfer_matrix=...))",
                 stacklevel=6,
             )
         return "TransferMatrix", {}

@@ -2,6 +2,8 @@
 
 from .network import Network, Solution
 from .build import build_problem, build_problem_from_connectivity, validate_network, finalize_thermo
+from .study import parameter_study, StudyResult
+from .params import ParameterInfo, ParameterInventory
 
 __all__ = [
     "Network",
@@ -10,4 +12,8 @@ __all__ = [
     "build_problem_from_connectivity",
     "validate_network",
     "finalize_thermo",
+    "parameter_study",
+    "StudyResult",
+    "ParameterInfo",
+    "ParameterInventory",
 ]

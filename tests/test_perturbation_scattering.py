@@ -14,7 +14,7 @@ import pytest
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem, build_problem_from_connectivity
 from nefes.graph.connectivity import build_connectivity
-from nefes.elements.ids import ACOUSTIC_DUCT, ACOUSTIC_DEFAULT, ACOUSTIC_FLAME
+from nefes.elements.ids import STAMP_DUCT, STAMP_DEFAULT, STAMP_FLAME
 from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
@@ -563,27 +563,27 @@ def test_storage_block_zero_and_shape():
     assert blocks.M.nnz == 0  # no finite-volume element in this network
 
 
-def test_acoustic_id_provisions():
-    assert cat.duct(1.0).acoustic_id == ACOUSTIC_DUCT
-    assert cat.isentropic_area_change().acoustic_id == ACOUSTIC_DEFAULT
-    assert cat.total_pressure_inlet(1e5, 300.0).acoustic_id == ACOUSTIC_DEFAULT
+def test_acoustic_stamp_provisions():
+    assert cat.duct(1.0).acoustic_stamp == STAMP_DUCT
+    assert cat.isentropic_area_change().acoustic_stamp == STAMP_DEFAULT
+    assert cat.total_pressure_inlet(1e5, 300.0).acoustic_stamp == STAMP_DEFAULT
 
 
-def test_source_face_keys_off_the_descriptor_not_the_acoustic_id():
-    """The S(omega) face is driven by an attached DynamicSource, not by ``acoustic_id``.
+def test_source_block_keys_off_the_descriptor_not_the_acoustic_stamp():
+    """The S(omega) block is driven by an attached DynamicSource, not by ``acoustic_stamp``.
 
-    A network with no dynamic-source descriptor has an inert source face (no stamps,
-    assembly succeeds); merely tagging an element ``ACOUSTIC_FLAME`` does nothing.  The
+    A network with no dynamic-source descriptor has an inert source block (no stamps,
+    assembly succeeds); merely tagging an element ``STAMP_FLAME`` does nothing.  The
     active-source behaviour is exercised in ``test_dynamic_source`` /
     ``test_rijke_stability``.
     """
     net = [cat.total_pressure_inlet(110000.0, 300.0), cat.duct(1.0), cat.pressure_outlet(101325.0, 300.0)]
-    net[1].acoustic_id = ACOUSTIC_FLAME  # a bare tag, with no DynamicSource attached
+    net[1].acoustic_stamp = STAMP_FLAME  # a bare tag, with no DynamicSource attached
     prob = build_problem(CFG, net, [(0, 1, 0.05), (1, 2, 0.05)], 10.0, 101325.0, CP * 300.0)
     res = solve(prob)
-    assert res.converged  # acoustic_id never touches the mean-flow residual
+    assert res.converged  # acoustic_stamp never touches the mean-flow residual
     blocks = build_acoustic_blocks(prob, res.x)
-    assert not blocks.has_sources  # no descriptor -> inert source face
+    assert not blocks.has_sources  # no descriptor -> inert source block
     assemble_acoustic(100.0, blocks)  # assembles without error
 
 

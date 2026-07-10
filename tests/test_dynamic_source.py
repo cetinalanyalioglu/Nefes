@@ -1,4 +1,4 @@
-"""The dynamic source face ``S(omega)`` of the perturbation operator.
+"""The dynamic source block ``S(omega)`` of the perturbation operator.
 
 A mass source or a flame may carry a frequency-domain feedback: its injected mass /
 heat release fluctuates with the unsteady flow elsewhere (a flame transfer function).

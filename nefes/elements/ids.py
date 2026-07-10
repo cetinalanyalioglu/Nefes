@@ -27,13 +27,13 @@ FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (
 PIPE = 20  # 2-port length-bearing pipe: Darcy-Weisbach friction (Pt drop K = f*L/D) + the duct acoustic phase
 TRANSFER_MATRIX = 21  # 2-port element: mean flow == isentropic area change; perturbation uses a user transfer matrix
 
-# Acoustic-face ids: the acoustic stamp an element uses in place of its default
-# CSD face.  The dynamic-source S is carried on the element's DynamicSource
+# Acoustic-stamp ids: the perturbation stamp an element uses in place of its default
+# CSD linearization.  The dynamic-source S is carried on the element's DynamicSource
 # descriptor, not this tag.
-ACOUSTIC_DEFAULT = 0  # contributes only through J_alg (the CSD linearization)
-ACOUSTIC_DUCT = 1  # phase-propagation stamp P(omega)
-ACOUSTIC_VOLUME = 2  # finite-volume storage stamp M (the cavity compliance)
-ACOUSTIC_FLAME = 3  # heat-release source stamp S(omega) (reserved)
+STAMP_DEFAULT = 0  # contributes only through J_alg (the CSD linearization)
+STAMP_DUCT = 1  # phase-propagation block P(omega)
+STAMP_VOLUME = 2  # finite-volume storage block M (the cavity compliance)
+STAMP_FLAME = 3  # heat-release source block S(omega) (reserved)
 
 # Equation-kind tags (for residual-row scaling); mirror prototype KIND_*.
 KIND_MASS = 0
@@ -176,7 +176,7 @@ def port_kinds(rid, deg):
 
 # Whether an element permits an area change across it (its incident edges may carry
 # different areas).  Most elements are indifferent to area change; the exceptions are the ones
-# whose mean face assumes equal-area continuity -- the constant-area duct / pipe and
+# whose mean residual is equal-area continuity -- the constant-area duct / pipe and
 # the compact flames / mass source.  Elements absent from this map default to ``True``
 # (unconstrained); add an entry when a new element type needs the equal-area rule.
 ALLOWS_AREA_CHANGE = {

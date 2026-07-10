@@ -537,7 +537,7 @@ def build_problem_from_connectivity(
 
     degrees = [conn.degree(n) for n in range(n_nodes)]
     node_rid = np.array([el.residual_id for el in elements], dtype=np.int64)
-    node_acoustic_id = np.array([el.acoustic_id for el in elements], dtype=np.int64)
+    node_acoustic_stamp = np.array([el.acoustic_stamp for el in elements], dtype=np.int64)
 
     # Marker-gated reacting closure (the default/auto reacting path): a reacting network with at
     # least one equilibrium flame and no explicit per-edge override runs EQ_MARKER on every edge
@@ -660,7 +660,7 @@ def build_problem_from_connectivity(
         tail_node=conn.tail_node,
         head_node=conn.head_node,
         node_rid=node_rid,
-        node_acoustic_id=node_acoustic_id,
+        node_acoustic_stamp=node_acoustic_stamp,
         npar_f=npar_f,
         npar_fptr=npar_fptr,
         node_row_ptr=pat.node_row_ptr,

@@ -108,6 +108,7 @@ $$
 
 where $\zeta$ is the damping ratio: below $1/\sqrt{2}$ the gain peaks near $f_c$, and the phase swings through a further half turn on top of the pure lag.
 Both poles again lie in the upper half-plane, at $f = f_c\big(\mathrm{i}\zeta \pm \sqrt{1 - \zeta^2}\big)$, so the model stays analytically continuable for the eigenproblem as long as the search region does not reach up to the nearer of them (tests: `test_lowpass2_matches_the_delayed_second_order_filter`, `test_lowpass2_is_analytic_below_its_poles`, `test_lowpass2_overshoots_where_the_first_order_form_cannot`).
+This is the form OSCILOS prescribes for the flame of the [EM2C combustor benchmark](../validation/benchmarks.md) [@li_oscilos_2017].
 
 ```{python}
 #|label: setup

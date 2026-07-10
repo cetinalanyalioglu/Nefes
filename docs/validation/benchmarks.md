@@ -22,6 +22,24 @@ With no unsteady heat release the tube is a passive resonator and the computed m
 
 The reacting counterpart, with an equilibrium flame in place of the prescribed heat source, ignites and matches the same analytic construction, confirming that the reacting closure and the acoustic source compose correctly (tests: `test_reacting_flame_ignites_and_matches_analytic`, `test_reacting_n_tau_flame_matches_analytic_instability`).
 
+## EM2C combustor, cross-checked against OSCILOS
+
+Where the Rijke tube compares Nefes against an analytic dispersion relation, this case compares it against an independent code on a published laboratory configuration: the stable setting of the EM2C swirl-stabilized combustor of [@palies_2011], as it is set up in Sec. 5.4.1 of the OSCILOS technical report [@li_oscilos_2017], where the combustor is reduced to a plenum, an injection unit, and a chamber with a compact flame at the chamber inlet.
+This case was chosen because it is stated entirely in text: lengths, radii, the mean velocity at the injector exit, the reactant and burnt-gas temperatures, the two reflection coefficients, and a closed-form second-order low-pass flame transfer function [@dowling_1997] of the kind [dynamic sources](../theory/dynamic-sources.qmd) supplies, so no quantity has to be read off a figure.
+OSCILOS reports the dominant mode at $152.6\;\mathrm{Hz}$ with growth rate $-19.1\;\mathrm{s^{-1}}$.
+
+Nefes solves the mean flow on the network from the mass flow and the heat power alone, rather than marching the sections as the reference does, and evaluates the perturbation operator at that converged state.
+The dominant mode comes out at $153.4\;\mathrm{Hz}$ and $-19.0\;\mathrm{s^{-1}}$, agreeing to $0.5\,\%$ in frequency and $0.7\,\%$ in growth rate and landing on the same, stable, side of the axis (tests: `test_mean_flow_matches_the_reported_operating_point`, `test_dominant_mode_matches_oscilos`).
+The residual is bounded by an ambiguity in the reference itself, whose cold-tube case states $300\;\mathrm{K}$ while quoting the sound speed of air at $293.15\;\mathrm{K}$; running this case at both temperatures brackets the published pair (test: `test_inlet_temperature_ambiguity_brackets_the_published_mode`).
+
+Two by-products of the same run are checked alongside the eigenvalue.
+The abrupt area increase at the chamber inlet, not the flame, supplies most of the damping: replacing it with a lossless area change leaves an essentially neutral passive network (test: `test_the_dump_plane_carries_the_passive_damping`), and the flame is both resistive and reactive, adding damping while pulling the modal frequency up by ten hertz (test: `test_the_flame_pulls_the_frequency_up_and_adds_damping`).
+The entropy wave the flame sheds leaves through the pressure-release outlet without being converted back into sound, so the full operator and its isentropic reduction share the eigenvalue (test: `test_the_entropy_wave_is_a_spectator_at_an_open_end`); this is the negative control matching the indirect-noise benchmark below, where a choked outlet makes the same wave decisive.
+
+The comparison is like-for-like only once two conventions of [@li_oscilos_2017] are matched: its calorically perfect gas with $\gamma = 1.4$ held on both sides of the flame, and its treatment of the flame plane as a Borda–Carnot expansion followed by constant-area heat addition.
+Both are stated in its source, and nothing else about the Nefes model is fitted to it.
+The example notebook `examples/thermoacoustics/em2c_combustor.ipynb` walks the case through.
+
 ## Indirect combustion noise
 
 The entropy-coupling machinery is benchmarked against indirect noise: an entropy fluctuation generated at a flame is convected downstream and converted to sound at a compact nozzle, the mechanism by which combustion generates noise without a direct acoustic source.

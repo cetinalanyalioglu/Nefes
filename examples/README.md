@@ -138,6 +138,13 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
   **transfer matrix**, and the flame — buried inside the branches — is de-embedded with
   `nefes.perturbation.identify` as a transfer matrix and as a velocity `n-τ` FTF, with the
   de-embedding **conditioning** as the identifiability diagnostic.
+- **`em2c_combustor.ipynb`** — a **cross-code check against OSCILOS** on a published case: the
+  stable configuration of the EM2C swirl combustor (plenum → injection unit → chamber, compact
+  flame with a second-order low-pass FTF). Nefes solves the mean flow on the network and pins the
+  dominant mode at `153.4 Hz / -19.0 1/s` against the reported `152.6 Hz / -19.1 1/s`. Also
+  separates the damping (the **dump plane**, not the flame, is the main sink), shows the shed
+  **entropy wave is a spectator** at a pressure-release outlet, and maps the flame-lag stability
+  band the operating point sits below.
 
 ## `validation/`
 

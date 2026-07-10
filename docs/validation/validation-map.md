@@ -47,6 +47,8 @@ The test names are the routines in the codebase and can be run as written.
 | The characteristic maps are exact and invertible | linearized state definitions | `test_characteristic_maps_are_inverse`, `test_characteristic_amplitude_relations` |
 | Transfer and scattering matrices round-trip, and across flavors | closed-form conversions | `test_transfer_scattering_round_trip`, `test_flavor_round_trip` |
 | An $n$–$\tau$ flame drives a self-excited instability | analytic dispersion root | `test_n_tau_flame_drives_self_excited_instability` |
+| The modal frequency and growth rate of a published combustor are reproduced | OSCILOS [@li_oscilos_2017] on the EM2C combustor [@palies_2011] | `test_dominant_mode_matches_oscilos`, `test_mean_flow_matches_the_reported_operating_point` |
+| A shed entropy wave is inert at a pressure-release outlet | no entropy-to-acoustic conversion without acceleration | `test_the_entropy_wave_is_a_spectator_at_an_open_end` |
 | The eigensolver's mode count is certified complete | argument-principle winding | `test_eigenmodes_certified_count_matches` |
 | An eigenvalue-free region yields no modes, whatever the band | argument-principle winding as the Beyn rank | `test_beyn_moment_rank_is_ambiguous_on_an_empty_contour`, `test_no_modes_survive_an_eigenvalue_free_region`, `test_eigenmodes_are_insensitive_to_the_band_edge` |
 | A mode is told from an arbitrary frequency on an ill-conditioned operator | residual on the equilibrated $\mathbf{D}_r\mathbf{A}\mathbf{D}_c$ | `test_equilibrated_residual_separates_a_mode_from_an_arbitrary_point` |

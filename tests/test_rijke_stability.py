@@ -1,7 +1,7 @@
 """Self-excited thermoacoustic instability of a Rijke tube.
 
 A compact flame with an ``n-tau`` heat-release response drives a duct mode unstable.
-The perturbation operator's source face ``S(omega)`` makes it non-self-adjoint, so the
+The perturbation operator's source block ``S(omega)`` makes it non-self-adjoint, so the
 eigenmodes acquire growth rates; for a band of time lags ``tau`` a mode crosses into
 instability.
 

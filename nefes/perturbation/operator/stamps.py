@@ -1,13 +1,13 @@
 """Analytic acoustic stamps written onto ``A(omega)`` after ``J_alg + i*omega*M``.
 
-The omega-dependent and closure faces:
+The omega-dependent blocks and terminal closures:
 
 * ``stamp_propagation`` -- the **duct** phase relations ``P(omega)``, the only bulk
   omega-dependent block.  For each duct it replaces three rows (its two node rows +
   the head edge's transport row) with the characteristic phase relations, built
   diagonally in the wave amplitudes ``w = (f, g, h)`` and mapped to solution-variable
   rows through ``L_e``.
-* ``stamp_sources`` -- the dynamic-source ``S(omega)`` face: a flame's unsteady heat
+* ``stamp_sources`` -- the dynamic-source ``S(omega)`` block: a flame's unsteady heat
   release on the downstream energy row, or a mass source's fluctuating injection on its
   node rows, each driven by a frequency-domain transfer function of a reference-edge
   fluctuation (:func:`build_source_stamps`).
@@ -428,7 +428,7 @@ def _mean_heat_release(prob, n, pb, mdot_mag, est, e_in, e_out, q_mean):
 
 
 def stamp_sources(A, omega, source_stamps):
-    """Apply the dynamic-source face ``S(omega)`` to LIL matrix ``A`` in place.
+    """Apply the dynamic-source block ``S(omega)`` to LIL matrix ``A`` in place.
 
     For each precomputed :class:`SourceStamp` and each of its rows ``r`` (factor
     ``fr``), adds ``fr * sum_k F_k(omega) * coeff_k`` into the reference columns --
@@ -637,7 +637,7 @@ def _terminal_closure(prob, est, t, bc, omega):
 
 
 def stamp_boundaries(A, omega, prob, x_bar):
-    """Terminal closure face ``A(omega)`` onto LIL ``A``.
+    """Stamp terminal reflection closures ``R(omega)`` onto LIL ``A``.
 
     Each single-port terminal carrying an explicit ``PerturbationBC`` (anything but
     ``inherit``) has the rows of its to-specify waves overwritten with the matrix
@@ -858,7 +858,7 @@ def _manifold_storage(prob, est, n):
 
     A branch's neck inertance is not a manifold parameter: model it as an explicit neck duct
     on the branch (its inertance then rides ``P(omega)``).  ``volume = 0`` (the default) ->
-    no storage.  Inert in the mean flow (storage is the ``i*omega*M`` face only).
+    no storage.  Inert in the mean flow (storage is the ``i*omega*M`` block only).
     """
     pb = int(prob.npar_fptr[n])
     base = int(prob.row_ptr[n])

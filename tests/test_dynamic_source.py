@@ -1,4 +1,4 @@
-"""The dynamic source face ``S(omega)`` of the perturbation operator.
+"""The dynamic source block ``S(omega)`` of the perturbation operator.
 
 A mass source or a flame may carry a frequency-domain feedback: its injected mass /
 heat release fluctuates with the unsteady flow elsewhere (a flame transfer function).
@@ -15,8 +15,10 @@ from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import (
     NTau,
+    NTauLowpass,
     Constant,
     n_tau,
+    n_tau_lowpass2,
     tabulated,
     constant,
     as_transfer,
@@ -65,6 +67,41 @@ def test_ntau_complex_frequency_is_analytic():
 def test_constant_broadcasts():
     F = constant(0.5 + 0.2j)(np.zeros(4))
     assert F.shape == (4,) and np.allclose(F, 0.5 + 0.2j)
+
+
+def test_lowpass2_matches_the_delayed_second_order_filter():
+    n, tau, fc, zeta = 0.9, 2.0e-3, 200.0, 0.5
+    f = np.array([0.0, 60.0, 200.0, 700.0])
+    s = 2j * np.pi * f
+    wc = 2.0 * np.pi * fc
+    expect = n * wc**2 / (s**2 + 2.0 * zeta * wc * s + wc**2) * np.exp(-tau * s)
+    assert np.allclose(n_tau_lowpass2(n, tau, fc, zeta)(f), expect)
+    # unit gain at zero frequency, and the second-order -40 dB/decade tail far above fc
+    F = n_tau_lowpass2(1.0, 0.0, fc, zeta)
+    assert abs(complex(F(0.0))) == pytest.approx(1.0)
+    assert abs(complex(F(10.0 * fc))) / abs(complex(F(100.0 * fc))) == pytest.approx(100.0, rel=1e-2)
+
+
+def test_lowpass2_is_analytic_below_its_poles():
+    fc, zeta = 200.0, 0.5
+    F = n_tau_lowpass2(1.0, 3e-3, fc, zeta)
+    assert F.analytic and F.max_delay == pytest.approx(3e-3)
+    # the eigenproblem visits growth rates -Im(omega); at zeta < 1 both poles sit at growth
+    # -2 pi zeta fc, so the model stays finite anywhere above them
+    assert np.isfinite(F(np.array([150.0 - 20.0j]))).all()
+    with pytest.raises(ValueError, match="cutoff"):
+        n_tau_lowpass2(1.0, 0.0, 0.0, zeta)
+    with pytest.raises(ValueError, match="damping ratio"):
+        n_tau_lowpass2(1.0, 0.0, fc, 0.0)
+
+
+def test_lowpass2_overshoots_where_the_first_order_form_cannot():
+    # zeta < 1/sqrt(2) gives a gain bump near the cutoff; the first-order roll-off is monotone
+    f = np.linspace(1.0, 400.0, 400)
+    g2 = np.abs(n_tau_lowpass2(1.0, 0.0, 200.0, 0.3)(f))
+    g1 = np.abs(NTauLowpass(1.0, 0.0, 200.0)(f))
+    assert g2.max() > 1.05
+    assert np.all(np.diff(g1) < 0.0)
 
 
 def test_tabulated_recovers_samples_and_rejects_complex():

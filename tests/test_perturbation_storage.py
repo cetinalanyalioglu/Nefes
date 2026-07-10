@@ -1,4 +1,4 @@
-"""Storage block ``M`` and the finite-volume cavity (the operator's compliance face).
+"""Storage block ``M`` and the finite-volume cavity (the operator's compliance block).
 
 Covers:
 

@@ -34,7 +34,7 @@ class CompiledProblem:
     head_node: np.ndarray
     # element dispatch + params
     node_rid: np.ndarray  # int64[N]
-    node_acoustic_id: np.ndarray  # int64[N] -- acoustic-face dispatch
+    node_acoustic_stamp: np.ndarray  # int64[N] -- acoustic-stamp dispatch
     npar_f: np.ndarray  # float64[...]
     npar_fptr: np.ndarray  # int64[N+1]
     # equation row layout

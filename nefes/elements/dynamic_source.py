@@ -22,7 +22,7 @@ reference edge.  Most flames are modelled with a single velocity term.
 This module owns only the **specification** (the descriptor + the transfer-function
 objects); the mean flow ignores it entirely (a constant mean source is acoustically
 passive), and the perturbation layer (:mod:`nefes.perturbation.operator.stamps`)
-consumes it to stamp the ``S(omega)`` face of the operator.  Nothing here depends on
+consumes it to stamp the ``S(omega)`` block of the operator.  Nothing here depends on
 the perturbation layer.
 
 Frequency convention
@@ -171,6 +171,67 @@ class NTauLowpass(TransferFunction):
         return f"NTauLowpass(n={self.n!r}, tau={self.tau!r}, fc={self.fc!r})"
 
 
+class NTauLowpass2(TransferFunction):
+    """The ``n-tau`` flame with a second-order gain roll-off.
+
+    ``F(f) = n e^{-i 2 pi f tau} / (1 - (f/f_c)^2 + 2 i zeta f / f_c)``, the delayed
+    response of a damped second-order oscillator.  Where :class:`NTauLowpass` rolls off
+    monotonically, this model can *overshoot* below the cutoff (a gain bump for
+    ``zeta < 1/sqrt(2)``) before falling off twice as steeply above it, and its phase
+    swings through a further half turn.  Measured V-shaped and swirl-stabilized flames
+    show exactly that shape, which the first-order form cannot reproduce.
+
+    Entire in the unstable (lower-half ``omega``) plane -- both poles sit at
+    ``f = f_c (i zeta +- sqrt(1 - zeta^2))``, in the *upper* half plane for every
+    ``zeta > 0``, so the model is analytically continuable for the eigenproblem as long as
+    the search region does not reach up to the nearer of them (for ``zeta < 1`` both sit at
+    growth ``-2 pi zeta f_c``).
+
+    Parameters
+    ----------
+    n : float or complex
+        Low-frequency interaction index; the zero-frequency gain is ``abs(n)``.
+    tau : float
+        Time lag [s] (``>= 0`` for a causal response).
+    fc : float
+        Roll-off cutoff frequency [Hz] (``> 0``).
+    zeta : float
+        Damping ratio of the second-order roll-off (``> 0``).  Below
+        ``1/sqrt(2)`` the gain peaks near ``f_c``; ``zeta >= 1`` is overdamped.
+
+    See Also
+    --------
+    NTauLowpass : the first-order roll-off, appropriate for conical flames.
+
+    Examples
+    --------
+    >>> F = n_tau_lowpass2(1.0, 2.0e-3, 200.0, 0.5)
+    >>> abs(complex(F(0.0)))  # unit gain at zero frequency
+    1.0
+    """
+
+    analytic = True
+
+    def __init__(self, n, tau, fc, zeta):
+        self.n = complex(n)
+        self.tau = float(tau)
+        self.fc = float(fc)
+        self.zeta = float(zeta)
+        if self.fc <= 0.0:
+            raise ValueError(f"roll-off cutoff fc must be positive; got {fc}")
+        if self.zeta <= 0.0:
+            raise ValueError(f"damping ratio zeta must be positive; got {zeta}")
+        self.max_delay = abs(float(tau))
+
+    def __call__(self, f):
+        f = np.asarray(f, dtype=np.complex128)
+        x = f / self.fc  # frequency scaled by the cutoff
+        return self.n * np.exp(-2j * np.pi * f * self.tau) / (1.0 - x * x + 2j * self.zeta * x)
+
+    def __repr__(self):
+        return f"NTauLowpass2(n={self.n!r}, tau={self.tau!r}, fc={self.fc!r}, zeta={self.zeta!r})"
+
+
 class Tabulated(TransferFunction):
     """A measured transfer function interpolated from a table ``F(freqs) = values``.
 
@@ -303,6 +364,27 @@ def n_tau_lowpass(n, tau, fc) -> NTauLowpass:
     NTauLowpass
     """
     return NTauLowpass(n, tau, fc)
+
+
+def n_tau_lowpass2(n, tau, fc, zeta) -> NTauLowpass2:
+    """The ``n-tau`` flame with a second-order gain roll-off (see :class:`NTauLowpass2`).
+
+    Parameters
+    ----------
+    n : float or complex
+        Low-frequency interaction index; the zero-frequency gain is ``abs(n)``.
+    tau : float
+        Time lag [s] (``>= 0`` for a causal response).
+    fc : float
+        Roll-off cutoff frequency [Hz] (``> 0``).
+    zeta : float
+        Damping ratio of the second-order roll-off (``> 0``).
+
+    Returns
+    -------
+    NTauLowpass2
+    """
+    return NTauLowpass2(n, tau, fc, zeta)
 
 
 def constant(value) -> Constant:

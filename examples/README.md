@@ -114,6 +114,14 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
 - **`rijke_tube.ipynb`** — the fundamental thermoacoustic oscillator: a duct with a heat
   source that, under the right conditions, feeds energy into a duct mode and drives a
   **self-excited instability** (an `n-τ` active element in the acoustic field).
+- **`ita_and_cavity_modes.ipynb`** — the same tube, tuned so its spectrum carries **both
+  families**: three **cavity** resonances set by the geometry and three **intrinsic
+  thermoacoustic (ITA)** modes set by the flame lag alone. Separates them three ways —
+  **anechoic ends** (`R = 0`) leave only the ITA ladder `f = (2k+1)/(2τ)`, verified against a
+  closed-form growth rate `σ = ln(K/B)/τ`; **`eigenvalue_trajectory`** continued toward `n = 0`
+  makes the ITA branches dive while cavity branches park on the passive resonances; and
+  **`nyquist_stability_map`** recovers the same stability boundary as an integer count step,
+  agreeing with the trajectory on both the onset gain and the onset frequency.
 - **`equivalence_ratio_instability.ipynb`** — **fuel-supply** combustion instability: a
   chamber fluctuation modulates the **fuel flow rate** → local **equivalence ratio** → a
   mixture fluctuation that convects to the flame and burns into unsteady heat release, with
@@ -130,6 +138,13 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
   **transfer matrix**, and the flame — buried inside the branches — is de-embedded with
   `nefes.perturbation.identify` as a transfer matrix and as a velocity `n-τ` FTF, with the
   de-embedding **conditioning** as the identifiability diagnostic.
+- **`em2c_combustor.ipynb`** — a **cross-code check against OSCILOS** on a published case: the
+  stable configuration of the EM2C swirl combustor (plenum → injection unit → chamber, compact
+  flame with a second-order low-pass FTF). Nefes solves the mean flow on the network and pins the
+  dominant mode at `153.4 Hz / -19.0 1/s` against the reported `152.6 Hz / -19.1 1/s`. Also
+  separates the damping (the **dump plane**, not the flame, is the main sink), shows the shed
+  **entropy wave is a spectator** at a pressure-release outlet, and maps the flame-lag stability
+  band the operating point sits below.
 
 ## `validation/`
 

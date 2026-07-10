@@ -1,11 +1,11 @@
 # Validation map
 
-This document is the traceability table that binds the framework's claims to their evidence: for each falsifiable physical claim, the reference it is checked against — an analytic relation, a chemical-equilibrium oracle, or a literature case — and the test or example that performs the check.
-It is the single place a reviewer can consult to confirm that no claim in the theory track stands on assertion alone, and it is the index the [verification](verification.md) and [benchmarks](benchmarks.md) documents expand.
-A claim that carries no check is, by the project's own standard, flagged as such rather than presented as established; the tables below therefore aim to be honest about coverage, not merely to list passes.
+This document records how physical claims in the theory track are checked.
+Each row names the claim, the independent reference it is compared against (an analytic relation, an equilibrium calculation, or a published case), and the test or example that runs the comparison.
+The tables are grouped by mean flow, thermochemistry, and acoustics with its inverse; where no check exists, the gap is marked openly rather than left unstated.
+Broader consistency evidence and named literature cases appear in [verification](verification.md) and [benchmarks](benchmarks.md).
 
-The entries are grouped by layer — mean flow, thermochemistry, and acoustics with its inverse — and each names the claim, the reference it is measured against, and the test that measures it.
-The test names are the actual functions in the suite, so an entry can be run directly.
+The test names are the routines in the codebase and can be run as written.
 
 ## Mean-flow claims
 
@@ -58,8 +58,7 @@ The test names are the actual functions in the suite, so an entry can be run dir
 
 ## Coverage remarks
 
-Two points of honesty about the table belong here.
-First, the entries above are the *representative* checks for each claim, not the whole suite: many claims carry several tests, and the full set is the test suite itself, of which this table is the navigable index.
-Second, the claims deferred in [limitations](../theory/limitations.md) — finite-rate chemistry, supersonic internal flow, and the compositional-noise gap at analytic terminal closures — are *not* listed as validated, because they are scope boundaries or known approximations rather than established results; where a partial check exists (for instance the warning that fires at a compositional-noise-dropping closure), it is recorded against the limitation, not as a validated capability.
+The entries above name one check per claim, not every check that backs it: many claims are tested several times, and the complete list lives in the tests themselves; this table is only a guide.
+The items left open in [limitations](../theory/limitations.md) (finite-rate chemistry, supersonic internal flow, and the compositional-noise gap at analytic terminal closures) are deliberately omitted here, because they mark what the present version does not yet cover or only approximates; where a partial check exists (for example a warning when compositional noise is dropped at a closure), it is noted in the limitations document, not counted as a proven result.
 
-The internal consistency checks that underlie many of these entries — the derivative, invariance, and round-trip verifications — are collected in [verification](verification.md), and the named literature cases are presented with their quantitative agreement in [benchmarks](benchmarks.md).
+Basic consistency checks that support many of these entries are gathered in [verification](verification.md); the named literature cases and their quantitative agreement appear in [benchmarks](benchmarks.md).

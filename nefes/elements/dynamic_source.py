@@ -22,7 +22,7 @@ reference edge.  Most flames are modelled with a single velocity term.
 This module owns only the **specification** (the descriptor + the transfer-function
 objects); the mean flow ignores it entirely (a constant mean source is acoustically
 passive), and the perturbation layer (:mod:`nefes.perturbation.operator.stamps`)
-consumes it to stamp the ``S(omega)`` face of the operator.  Nothing here depends on
+consumes it to stamp the ``S(omega)`` block of the operator.  Nothing here depends on
 the perturbation layer.
 
 Frequency convention

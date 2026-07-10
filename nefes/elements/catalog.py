@@ -25,9 +25,9 @@ from .ids import (
     SPLITTER,
     FORCED_SPLITTER,
     MASS_SOURCE,
-    ACOUSTIC_DEFAULT,
-    ACOUSTIC_DUCT,
-    ACOUSTIC_VOLUME,
+    STAMP_DEFAULT,
+    STAMP_DUCT,
+    STAMP_VOLUME,
 )
 
 # Relative tolerance for the equal-area check on constant-area elements.
@@ -64,7 +64,7 @@ class ElementSpec:
     residual_id: int  # element type (an ``ids`` constant); the @njit kernel dispatch key
     fparams: List[float] = field(default_factory=list)  # ordered float params, in kernel order
     name: str = ""  # human-readable label (reporting / plotting)
-    acoustic_id: int = ACOUSTIC_DEFAULT  # acoustic-face override; ACOUSTIC_DEFAULT -> only J_alg
+    acoustic_stamp: int = STAMP_DEFAULT  # perturbation stamp; STAMP_DEFAULT -> only J_alg
     # smoothing-width override in mass-flow units; None follows the global solve-time eps
     eps: Optional[float] = None
     perturbation_bc: Optional[object] = None  # PerturbationBC (None -> inherit)
@@ -72,7 +72,7 @@ class ElementSpec:
     # {species: fraction} in ``basis`` units, or raw passive scalars for a perfect gas
     composition_spec: object = None
     basis: str = "mole"  # units of composition_spec: "mole" or "mass"
-    dynamic_source: object = None  # DynamicSource for the S(omega) face; mean flow ignores it
+    dynamic_source: object = None  # DynamicSource for the S(omega) block; mean flow ignores it
     transfer_matrix: object = None  # TransferMatrix for a TRANSFER_MATRIX element; perturbation-only
     # injected burnt marker at an inflow/source (0 fresh, 1 burnt); marker-gated networks only
     marker: float = 0.0
@@ -345,7 +345,7 @@ def cavity(volume, name="cavity"):
     exactly like a :func:`wall`, so the leg behind it is stagnant and it needs no
     interior mean unknowns. Acoustically its enclosed gas stores energy: a finite
     volume ``V`` compresses isentropically, giving the lumped compliance ``C = V /
-    (rho c^2)`` that populates the storage block ``M`` (the ``i*omega*M`` face of the
+    (rho c^2)`` that populates the storage block ``M`` (the ``i*omega*M`` term of the
     operator ``A = J_alg + i*omega*M + P + S``). Paired with a neck inertance (a short
     :func:`duct`) off a :func:`junction`, it forms a Helmholtz resonator with
     ``omega_0 = c * sqrt(A_neck / (V * l_eff))`` (see :func:`helmholtz_resonator`).
@@ -374,7 +374,7 @@ def cavity(volume, name="cavity"):
     V = float(volume)
     if not V > 0.0:
         raise ValueError(f"cavity volume must be strictly positive; got {volume}")
-    return ElementSpec(CAVITY, [V], name, acoustic_id=ACOUSTIC_VOLUME)
+    return ElementSpec(CAVITY, [V], name, acoustic_stamp=STAMP_VOLUME)
 
 
 def isentropic_area_change(name="iac", l_up=0.0, l_down=0.0, end_correction=0.0):
@@ -803,7 +803,7 @@ def forced_splitter(fractions, name="splitter"):
 def duct(length=0.0, name="duct"):
     """A length-bearing, lossless, constant-area duct.
 
-    The mean face is equal-area continuity (length-independent); ``length`` is inert in the
+    The mean residual is equal-area continuity (length-independent); ``length`` is inert in the
     steady residual and read only by the acoustic phase stamp.  It rides ``fparams[0]`` as
     ordinary acoustic metadata.
 
@@ -820,7 +820,7 @@ def duct(length=0.0, name="duct"):
     """
     from .ids import DUCT
 
-    return ElementSpec(DUCT, [float(length)], name, acoustic_id=ACOUSTIC_DUCT)
+    return ElementSpec(DUCT, [float(length)], name, acoustic_stamp=STAMP_DUCT)
 
 
 def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
@@ -859,7 +859,7 @@ def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
     L, D, f = float(length), float(diameter), float(friction_factor)
     if not L > 0.0 or not D > 0.0 or not f >= 0.0:
         raise ValueError(f"pipe {name!r}: length and diameter must be positive and friction_factor >= 0")
-    return ElementSpec(PIPE, [L, D, f], name, acoustic_id=ACOUSTIC_DUCT)
+    return ElementSpec(PIPE, [L, D, f], name, acoustic_stamp=STAMP_DUCT)
 
 
 # ---------------------------------------------------------------------------

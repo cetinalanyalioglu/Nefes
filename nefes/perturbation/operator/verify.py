@@ -25,12 +25,12 @@ element geometry (see ``response._seats_entropy`` and ``stamps.build_duct_stamps
 
 from ...solver.report import states_table
 from ...assembly.recover import ES_M
-from ...elements.ids import ACOUSTIC_DUCT
+from ...elements.ids import STAMP_DUCT
 
 
 def duct_nodes(prob):
-    """Indices of nodes carrying the duct acoustic face."""
-    return [n for n in range(prob.n_nodes) if int(prob.node_acoustic_id[n]) == ACOUSTIC_DUCT]
+    """Indices of nodes carrying the duct propagation stamp."""
+    return [n for n in range(prob.n_nodes) if int(prob.node_acoustic_stamp[n]) == STAMP_DUCT]
 
 
 def verify_acoustic(prob, x_bar):

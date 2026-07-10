@@ -144,7 +144,7 @@ def _assemble_reference(omega, blocks: AcousticBlocks, with_boundaries=True, wit
     storage's additive contribution is folded in per frequency by the fast fill, like
     the dynamic source).
 
-    ``with_boundaries`` controls the terminal reflection face ``R(omega)``
+    ``with_boundaries`` controls the terminal reflection closure ``R(omega)``
     (``stamps.stamp_boundaries``).  The measurement driver (``response.py``) sets it
     ``False`` because it closes every terminal itself with independent prescribed
     incoming waves; the physical forced/stability drivers leave it ``True`` so each
@@ -473,7 +473,7 @@ def assemble_acoustic(omega, blocks: AcousticBlocks, with_boundaries=True):
     factorizations) scale to large networks.  Results are identical to
     :func:`_assemble_reference` to round-off.
 
-    ``with_boundaries`` controls the terminal reflection face ``R(omega)``; the plan is
+    ``with_boundaries`` controls the terminal reflection closure ``R(omega)``; the plan is
     cached per value on ``blocks``.  A dynamic source ``S(omega)`` and the storage block
     ``i*omega*M`` both ride the fast path too -- their (frequency-dependent) contributions
     are accumulated onto fixed slots per frequency, so the operator is assembled in full

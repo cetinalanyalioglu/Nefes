@@ -27,20 +27,20 @@ composite are namespaced under it).
 All residual math is **complex-step-safe** (smooth, complex-analytic, no `abs`/`min`/`max`/
 branches on the flow state); Jacobians come from complex-step differentiation.
 
-**Acoustic face.** In the perturbation problem the operator is
+**Acoustic contribution.** In the perturbation problem the operator is
 
 $$\mathbf{A}(\omega) = \overline{\mathbf{J}} + \mathrm{i}\omega\, \mathbf{M} + \mathbf{P} + \mathbf{S}.$$
 
 Most elements contribute only through $\overline{\mathbf{J}}$ (the complex-step linearization of their
-mean residual). Three override that default face: `duct`/`pipe` add the phase-propagation
-stamp $\mathbf{P}(\omega)$; `cavity` (and a plenum `junction`/`splitter`) add the storage stamp $\mathbf{M}$;
+mean residual). Three add blocks beyond that default: `duct`/`pipe` add the phase-propagation
+stamp $\mathbf{P}(\omega)$; `cavity` (and a plenum `junction`/`splitter`) add the storage block $\mathbf{M}$;
 the flames carry an unsteady heat-release source $\mathbf{S}(\omega)$ on their `DynamicSource`
 descriptor. Single-port boundaries can also carry an explicit `PerturbationBC`
 (reflection/impedance); left at `None` they inherit the linearization of their own mean row.
 
 ## The catalogue
 
-| Element | `residual_id` | Ports | Imposes (mean residual) | Acoustic face |
+| Element | `residual_id` | Ports | Imposes (mean residual) | Acoustic contribution |
 | --- | --- | --- | --- | --- |
 | `mass_flow_inlet` | `MASS_FLOW_INLET` (0) | 1 | $\dot m = \dot m_\text{spec}\ge 0$; feeds $h_t(T_t)$, composition | inherited ($\dot m'=0$) |
 | `total_pressure_inlet` | `PT_INLET` (1) | 1 | $p_t = p_{t,\text{spec}}$; feeds $h_t(T_t)$, composition | inherited |

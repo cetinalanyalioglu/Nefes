@@ -114,6 +114,14 @@ A reader new to the tool is best served by starting in **`getting-started/`** an
 - **`rijke_tube.ipynb`** — the fundamental thermoacoustic oscillator: a duct with a heat
   source that, under the right conditions, feeds energy into a duct mode and drives a
   **self-excited instability** (an `n-τ` active element in the acoustic field).
+- **`ita_and_cavity_modes.ipynb`** — the same tube, tuned so its spectrum carries **both
+  families**: three **cavity** resonances set by the geometry and three **intrinsic
+  thermoacoustic (ITA)** modes set by the flame lag alone. Separates them three ways —
+  **anechoic ends** (`R = 0`) leave only the ITA ladder `f = (2k+1)/(2τ)`, verified against a
+  closed-form growth rate `σ = ln(K/B)/τ`; **`eigenvalue_trajectory`** continued toward `n = 0`
+  makes the ITA branches dive while cavity branches park on the passive resonances; and
+  **`nyquist_stability_map`** recovers the same stability boundary as an integer count step,
+  agreeing with the trajectory on both the onset gain and the onset frequency.
 - **`equivalence_ratio_instability.ipynb`** — **fuel-supply** combustion instability: a
   chamber fluctuation modulates the **fuel flow rate** → local **equivalence ratio** → a
   mixture fluctuation that convects to the flame and burns into unsteady heat release, with

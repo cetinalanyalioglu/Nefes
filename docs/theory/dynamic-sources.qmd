@@ -91,13 +91,23 @@ $$
 where $n$ is the interaction index (the gain) and $\tau$ is the flame time lag, with $f$ the frequency in hertz.
 Under the $e^{+\mathrm{i}\omega t}$ convention of the acoustics, the factor $e^{-\mathrm{i}\omega\tau}$ is the causal delay of the response behind the driving fluctuation, so the model has constant gain $n$ and a phase that falls linearly with frequency at slope $-\tau$; both features are visible in @fig-ftf-bode (tests: `test_ntau_value_and_phase`, `test_ntau_complex_frequency_is_analytic`).
 
-A pure $n$–$\tau$ gain that never rolls off makes every high frequency equally excitable, which is unphysical and complicates the stability count; a first-order low-pass variant bounds the unstable band, given as:
+A pure $n$–$\tau$ gain that never rolls off makes every high frequency equally excitable, which is unphysical and complicates the stability count; a first-order low-pass variant, the shape a kinematic model of a conical flame predicts [@fleifil_1996; @dowling_1997], bounds the unstable band, given as:
 
 $$
 \mathcal{F}(\omega) \;=\; \frac{n\,e^{-\mathrm{i}\omega\tau}}{1 + \mathrm{i} f/f_c},
 $$
 
 where $f_c$ is the cutoff frequency, and its pole sits at $f = \mathrm{i} f_c$ in the *upper* half-plane — the stable side under the sign convention — so the roll-off adds damping at high frequency without introducing an instability of its own.
+
+The first-order roll-off is monotone in gain, which suits a conical flame but not a V-shaped or swirl-stabilized one, whose measured response overshoots below the cutoff before falling off more steeply above it [@palies_2011].
+A second-order roll-off reproduces that shape [@dowling_1997], given as:
+
+$$
+\mathcal{F}(\omega) \;=\; \frac{n\,e^{-\mathrm{i}\omega\tau}}{1 - (f/f_c)^2 + 2\mathrm{i}\zeta\,f/f_c},
+$$
+
+where $\zeta$ is the damping ratio: below $1/\sqrt{2}$ the gain peaks near $f_c$, and the phase swings through a further half turn on top of the pure lag.
+Both poles again lie in the upper half-plane, at $f = f_c\big(\mathrm{i}\zeta \pm \sqrt{1 - \zeta^2}\big)$, so the model stays analytically continuable for the eigenproblem as long as the search region does not reach up to the nearer of them (tests: `test_lowpass2_matches_the_delayed_second_order_filter`, `test_lowpass2_is_analytic_below_its_poles`, `test_lowpass2_overshoots_where_the_first_order_form_cannot`).
 
 ```{python}
 #|label: setup

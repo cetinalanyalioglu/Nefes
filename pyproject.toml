@@ -10,11 +10,17 @@ authors = [
 version = "0.1.0"
 description = "Network solver for reacting compressible flows and thermoacoustics"
 requires-python = ">=3.11"
+# Minimum supported versions follow SPEC 0 (https://scientific-python.org/specs/spec-0000/),
+# with numba as the pacing dependency: it transitively caps numpy (numpy < 2.1 for numba 0.60,
+# < 2.5 for numba 0.65) and sets the Python floor, so numpy is not capped here directly.
+# scipy >= 1.15 is a hard floor: the perturbation continuation and Nyquist routines use
+# scipy.interpolate.AAA, which was added in scipy 1.15. The full test suite is verified to
+# pass on Python 3.11 with the exact floors below.
 dependencies = [
-    "numpy",
-    "scipy",
-    "numba",
-    "pyyaml",
+    "numpy>=1.26",
+    "scipy>=1.15",
+    "numba>=0.60",
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]
@@ -22,11 +28,12 @@ dependencies = [
 # Plotly. The core solver does not, so Plotly is kept out of the base dependencies.
 viz = ["plotly>=5.0"]
 # Notebook stack: run and render the example gallery (pulls in Plotly through the viz extra).
-jupyter = ["nefes[viz]", "jupyterlab", "notebook", "ipykernel", "nbformat>=4.2.0", "nbclient"]
+# These floors are conservative, widely-available minimums rather than empirically pinned.
+jupyter = ["nefes[viz]", "jupyterlab>=4.0", "notebook>=7.0", "ipykernel>=6.0", "nbformat>=5.1", "nbclient>=0.6"]
 # Test suite: pytest plus everything the plotting and notebook-execution tests import.
-test = ["nefes[jupyter]", "pytest"]
+test = ["nefes[jupyter]", "pytest>=7.0"]
 # Developer tooling: the full test suite plus the formatter and linter.
-dev = ["nefes[test]", "flake8", "black"]
+dev = ["nefes[test]", "flake8>=6.0", "black>=24.0"]
 # Documentation site: quartodoc renders the API pages from docstrings and the example gallery
 # executes notebooks, so it pulls the notebook stack too. The Quarto CLI itself is external and
 # installed separately (https://quarto.org).

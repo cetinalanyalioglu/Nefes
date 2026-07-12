@@ -51,7 +51,7 @@ model:
       attributes:
         label: back-pressure
         index: 4
-        pressure: 160000.0
+        pressure: 150000.0
         backflowTotalTemperature: 300.0
   edges:
     - id: edge_1

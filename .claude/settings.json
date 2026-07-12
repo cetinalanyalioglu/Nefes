@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "conda run --no-capture-output -n fns python -c \"import sys,json,subprocess; p=json.load(sys.stdin).get('tool_input',{}).get('file_path',''); p.endswith('.py') and (subprocess.run(['isort','-q',p]), subprocess.run(['black','-q',p]))\" 2>/dev/null || true",
+            "statusMessage": "isort+black"
+          }
+        ]
+      }
+    ]
+  }
+}

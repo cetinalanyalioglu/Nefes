@@ -112,6 +112,12 @@ net = nefes.load_case("case.yaml")  # == nefes.Network.from_yaml("case.yaml")
 An area change reads the areas of its incident edges; you never pass an "outlet area" to the element factory.
 Ports auto-assign in attachment order; pin them only when you must (`edges=[(t, h, area, tail_port, head_port)]`).
 
+**Do not pass reference scales.**
+`Network(...)` accepts `p_ref`, `T_ref`, `mdot_ref`, `h_ref`, but they are advanced overrides — leave them out.
+The solver reads the operating pressure from the network's own boundaries, and re-measures the mass-flow and enthalpy scales from the realized inflow at solve time, so it self-scales to a 1-bar duct or a 200-bar reacting chamber alike.
+Passing a scale is not just noise: a mismatched `mdot_ref` can nudge the cold start into the wrong basin (it is what put the converging-nozzle solve on the spurious supersonic branch before the subsonic guard existed).
+Set one only in the rare case with no pressure boundary and no inflow to measure, and even then prefer letting it auto-derive first.
+
 ### Element catalog (`from nefes.elements import catalog as cat`)
 
 Boundaries (single-port; the only factories that take `perturbation_bc=`):

@@ -285,34 +285,34 @@ Python-only):
 | `.anechoic()` | reflection-free (`R=0`) |
 | `.reflection(R)` | prescribed `R` (constant, `(ω,values)` table, or callable) |
 | `.impedance(Z, specific=…)` / `.impedance_polar(mag, phase_deg)` | `R=(Z−ρc)/(Z+ρc)` |
-| `.excitation(amp, family=…)` | drive an incoming acoustic/entropy wave |
+| any constructor with `driven=(…)` | drive an incoming acoustic/entropy/scalar wave (e.g. `anechoic(driven=("acoustic",))`, scaled by `amplitudes=`) |
 | `.choked_nozzle()` / `.compact_nozzle()` | compact choked outlet, `g=Rf+R_s·h` (Marble–Candel) |
 | `.constant_mass_flow()` | outlet pinning `ṁ'=0`, `g=Rf+R_s·h` |
 
 See **`acoustics/perturbation_boundary_conditions.ipynb`** for a worked demonstration of every
 closure checked against its analytic value. The `Wall` element additionally blocks the
-**mean** flow (`ṁ=0` on its edge). To force the response, attach an excitation (a
-Python-only closure) and solve:
+**mean** flow (`ṁ=0` on its edge). To force the response, mark a terminal's closure as
+`driven` and solve:
 
 ```python
 import numpy as np
+import nefes
 from nefes.elements import catalog as cat
-from nefes.shell import build_problem
-from nefes.perturbation import PerturbationBC, boundary_response
-from nefes.solver import solve
-from nefes.thermo.configure import perfect_gas
+from nefes.perturbation import PerturbationBC, forced_response
 
-els = [
-    cat.total_pressure_inlet(108000.0, 300.0, perturbation_bc=PerturbationBC.excitation(1.0)),  # drive
-    cat.duct(0.5),
-    cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.impedance_polar(2.0, 0.0)),
-]
-prob = build_problem(perfect_gas(287.0, 1.4), els, [(0, 1, 0.05), (1, 2, 0.05)], 5.0, 1e5, 1004.5 * 300.0)
-res = solve(prob)
-fr = boundary_response(prob, res.x, np.linspace(50.0, 3000.0, 200))
+net = nefes.Network(
+    nodes=[
+        cat.total_pressure_inlet(108000.0, 300.0, perturbation_bc=PerturbationBC.anechoic(driven=("acoustic",))),  # drive
+        cat.duct(0.5),
+        cat.pressure_outlet(101325.0, 300.0, perturbation_bc=PerturbationBC.impedance_polar(2.0, 0.0)),
+    ],
+    edges=[(0, 1, 0.05), (1, 2, 0.05)],
+)
+sol = net.solve()
+fr = forced_response(sol, np.linspace(50.0, 3000.0, 200))   # takes the Solution directly
 gamma_in = fr.reflection_at(0)   # input reflection g/f at the feed edge
 ```
 
 The transfer/scattering-matrix analysis (`perturbation_response`) is unchanged and
-independent of the boundary conditions; `boundary_response` instead solves the network as it is
+independent of the boundary conditions; `forced_response` instead solves the network as it is
 *physically terminated*.

@@ -80,13 +80,11 @@ import warnings
 import numpy as np
 import plotly.graph_objects as go
 
+import nefes
 from nefes.plotting import use_nefes_theme, COLORWAY
 from nefes.elements import catalog as cat
-from nefes.shell import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
-from nefes.perturbation.operator.boundary_bc import PerturbationBC
-from nefes.perturbation import eigenmodes
-from nefes.solver import solve
+from nefes.perturbation import PerturbationBC, eigenmodes
 from nefes.thermo.configure import perfect_gas
 
 use_nefes_theme()
@@ -99,19 +97,24 @@ AREA, L1, L2 = 0.01, 0.6, 0.4  # tube areas and cold/hot duct lengths [m]
 def rijke_modes(n, tau, mdot=0.005, dT=400.0, band=(40.0, 520.0)):
     """Eigenmodes of a hard-wall / open-end Rijke tube with an n–τ flame at the junction."""
     Qdot = mdot * CP * dT
-    els = [
-        cat.mass_flow_inlet(mdot, 300.0, perturbation_bc=PerturbationBC.hard_wall()),
-        cat.duct(L1),
-        cat.heat_release_flame(Qdot, dynamic_source=n_tau_flame(n, tau, ref_edge=1)),
-        cat.duct(L2),
-        cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
-    ]
-    edges = [(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)]
-    prob = build_problem(perfect_gas(R_AIR, GAMMA), els, edges, mdot_ref=mdot, p_ref=1e5, h_ref=CP * 300.0)
-    x = solve(prob).x
+    net = nefes.Network(
+        perfect_gas(R_AIR, GAMMA),
+        nodes=[
+            cat.mass_flow_inlet(mdot, 300.0, perturbation_bc=PerturbationBC.hard_wall()),
+            cat.duct(L1),
+            cat.heat_release_flame(Qdot, dynamic_source=n_tau_flame(n, tau, ref_edge=1)),
+            cat.duct(L2),
+            cat.pressure_outlet(1.0e5, perturbation_bc=PerturbationBC.open_end()),
+        ],
+        edges=[(0, 1, AREA), (1, 2, AREA), (2, 3, AREA), (3, 4, AREA)],
+        mdot_ref=mdot,
+        p_ref=1e5,
+        h_ref=CP * 300.0,
+    )
+    sol = net.solve()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        r = eigenmodes(prob, x, freq_band=band, growth_band=(-400.0, 400.0), isentropic=True)
+        r = eigenmodes(sol, freq_band=band, growth_band=(-400.0, 400.0), isentropic=True)
     return np.array(r.freqs), np.array(r.growth_rates)
 ```
 

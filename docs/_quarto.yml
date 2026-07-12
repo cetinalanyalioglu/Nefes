@@ -40,6 +40,8 @@ website:
     contents:
       - href: index.md
         text: Home
+      - href: best-practices.md
+        text: Best practices
       - section: "Theory"
         contents:
           - theory/overview.md

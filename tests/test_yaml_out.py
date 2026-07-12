@@ -16,13 +16,13 @@ import numpy as np
 import pytest
 import yaml
 
-from nefes.shell import Network
-from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
-from nefes.io import load_case, save_case, dump_case, DataItem, DataSet, MetaEntry
-from nefes.io.yaml_out import SAVE_FILE_VERSION, _FIELD_META
 from nefes.assembly.recover import ES_C
-from nefes.perturbation import forced_response, eigenmodes, PerturbationBC
+from nefes.elements import catalog as cat
+from nefes.io import DataItem, DataSet, MetaEntry, dump_case, load_case, save_case
+from nefes.io.yaml_out import _FIELD_META, SAVE_FILE_VERSION
+from nefes.perturbation import PerturbationBC, eigenmodes, forced_response
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 _HANDLE_RE = re.compile(r"^.+-port-\d+$")

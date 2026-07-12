@@ -2,12 +2,12 @@
 
 import pytest
 
-from nefes.thermo import SpeciesLibrary
 from nefes.chem.composition import (
+    _o2_demand,
     equivalence_ratio_mixture,
     species_mole_fractions,
-    _o2_demand,
 )
+from nefes.thermo import SpeciesLibrary
 
 
 @pytest.fixture(scope="module")

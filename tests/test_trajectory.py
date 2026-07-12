@@ -20,8 +20,8 @@ import pytest
 
 from nefes.elements import catalog as cat
 from nefes.elements.dynamic_source import n_tau_flame
+from nefes.perturbation import TrajectoryResult, eigenmodes, eigenvalue_trajectory
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
-from nefes.perturbation import eigenmodes, eigenvalue_trajectory, TrajectoryResult
 from nefes.shell import Network
 from nefes.thermo.configure import perfect_gas
 

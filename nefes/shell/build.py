@@ -14,39 +14,39 @@ from typing import List, Tuple
 import numpy as np
 
 from ..chem.composition import build_streams, enthalpy_mass, species_mass_fractions
-from ..graph.connectivity import (
-    build_connectivity,
-    build_jacobian_pattern,
-    Connectivity,
-)
-from . import checks
-from .problem import CompiledProblem
-from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
-from ..thermo.configure import ThermoConfig
 from ..elements.catalog import ElementSpec, ensure_unique_names
 from ..elements.composite import expand_composites
 from ..elements.ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    CHOKED_NOZZLE_OUTLET,
-    JUNCTION,
-    SPLITTER,
-    FORCED_SPLITTER,
-    FLAME_EQUILIBRIUM,
-    MASS_SOURCE,
-    FIXED_NPORTS,
     ALLOWS_AREA_CHANGE,
+    CHOKED_NOZZLE_OUTLET,
     ELEMENT_TYPE_NAMES,
+    FIXED_NPORTS,
+    FLAME_EQUILIBRIUM,
+    FORCED_SPLITTER,
+    JUNCTION,
     KIND_MASS,
     KIND_PRESSURE,
+    MASS_FLOW_INLET,
+    MASS_SOURCE,
+    P_OUTLET,
+    PORT_ANY,
     PORT_SOURCE,
     PORT_TARGET,
-    PORT_ANY,
+    PT_INLET,
+    SPLITTER,
+    STREAM_INTRODUCING,
     port_kinds,
     row_kind_tags,
-    STREAM_INTRODUCING,
 )
+from ..graph.connectivity import (
+    Connectivity,
+    build_connectivity,
+    build_jacobian_pattern,
+)
+from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
+from ..thermo.configure import ThermoConfig
+from . import checks
+from .problem import CompiledProblem
 
 # Relative tolerance for the equal-area check on constant-area elements.
 _AREA_RTOL = 1e-9

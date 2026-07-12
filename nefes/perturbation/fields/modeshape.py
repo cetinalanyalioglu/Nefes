@@ -24,10 +24,10 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
-from ..operator.characteristics import basis_block_from_state, BASIS_LABELS, VARIABLE_SPEC
-from ..operator.verify import duct_nodes
 from ...assembly.recover import ES_C, ES_U
 from ...elements.ids import MASS_FLOW_INLET, PT_INLET
+from ..operator.characteristics import BASIS_LABELS, VARIABLE_SPEC, basis_block_from_state
+from ..operator.verify import duct_nodes
 
 # Below this |speed| a duct is treated as quiescent: the entropy wave does not
 # convect (tau_0 -> inf), so it carries no interior spatial structure.

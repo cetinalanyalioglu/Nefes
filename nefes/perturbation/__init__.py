@@ -22,91 +22,91 @@ stability analysis (:func:`eigenmodes` -- the nonlinear eigenproblem
 element is present.
 """
 
+from .continuation import (
+    FiniteImpulseResponse,
+    RationalFit,
+    continuation_warning,
+    finite_impulse_response,
+    fit_impulse_response,
+    rational_fit,
+)
+from .fields.cuton import (
+    ALPHA_CIRCULAR,
+    CutOnReport,
+    DuctCutOn,
+    cuton_frequency,
+    duct_cuton_frequencies,
+)
+from .fields.duct import DuctAcoustics, scattering_2port
+from .fields.modeshape import DuctSegment, NetworkGeometry, PathField, build_geometry, reconstruct_field
+from .fields.power import (
+    BoundaryPower,
+    ForcedPowerBalance,
+    ModalEnergyBalance,
+    acoustic_energy_density,
+    acoustic_flux_spectrum,
+    acoustic_intensity,
+    boundary_power,
+    compact_power_spectrum,
+    duct_energy_spectrum,
+    forced_power_balance,
+    intensity_along_network,
+    modal_energy_balance,
+    passive_reflection_bound,
+)
+from .identify import (
+    TransferFunctionIdentification,
+    TransferMatrixIdentification,
+    UnknownTransferMatrix,
+    identify_transfer_function,
+    identify_transfer_matrix,
+    unknown_dynamic_source,
+)
+from .matrix import FreqMatrix, PortState, ScatteringMatrix, TransferMatrix
+from .operator import matrices
+from .operator.boundary_bc import PerturbationBC
 from .operator.characteristics import (
-    char_to_dx,
+    BASIS_LABELS,
+    basis_block_from_state,
+    basis_matrix,
     char_to_dq,
+    char_to_dx,
     dx_to_char,
     edge_caloric,
     edge_transforms,
-    basis_matrix,
-    basis_block_from_state,
-    BASIS_LABELS,
 )
-from .operator.operator import build_acoustic_blocks, assemble_acoustic, AcousticBlocks
-from .matrix import TransferMatrix, ScatteringMatrix, PortState, FreqMatrix
-from .identify import (
-    identify_transfer_matrix,
-    identify_transfer_function,
-    TransferMatrixIdentification,
-    TransferFunctionIdentification,
-    UnknownTransferMatrix,
-    unknown_dynamic_source,
-)
-from .operator.verify import verify_acoustic
-from .operator.boundary_bc import PerturbationBC
-from .operator.terminals import Terminal, find_terminals
-from .response.response import (
-    perturbation_response,
-    PerturbationResponse,
-    excite_perturbation,
-    PerturbationField,
-    TransferMatrixWarning,
-)
-from .response.forced import forced_response, ForcedResponse, CompositionalNoiseWarning
-from .operator.stamps import boundary_forcing
-from .operator import matrices
 from .operator.matrices import (
-    tm_in_basis,
-    tm_to_sm,
-    sm_to_tm,
     partition,
     scattering_labels,
-    wave_speeds,
+    sm_to_tm,
+    tm_in_basis,
+    tm_to_sm,
     wave_signs,
+    wave_speeds,
 )
-from .fields.duct import DuctAcoustics, scattering_2port
-from .fields.cuton import (
-    cuton_frequency,
-    duct_cuton_frequencies,
-    CutOnReport,
-    DuctCutOn,
-    ALPHA_CIRCULAR,
+from .operator.operator import AcousticBlocks, assemble_acoustic, build_acoustic_blocks
+from .operator.stamps import boundary_forcing
+from .operator.terminals import Terminal, find_terminals
+from .operator.verify import verify_acoustic
+from .response.forced import CompositionalNoiseWarning, ForcedResponse, forced_response
+from .response.response import (
+    PerturbationField,
+    PerturbationResponse,
+    TransferMatrixWarning,
+    excite_perturbation,
+    perturbation_response,
 )
-from .fields.power import (
-    acoustic_intensity,
-    acoustic_energy_density,
-    passive_reflection_bound,
-    boundary_power,
-    BoundaryPower,
-    acoustic_flux_spectrum,
-    compact_power_spectrum,
-    intensity_along_network,
-    duct_energy_spectrum,
-    forced_power_balance,
-    ForcedPowerBalance,
-    modal_energy_balance,
-    ModalEnergyBalance,
-)
-from .continuation import (
-    RationalFit,
-    rational_fit,
-    continuation_warning,
-    fit_impulse_response,
-    finite_impulse_response,
-    FiniteImpulseResponse,
-)
-from .stability.contour import Contour, ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
-from .stability.eigenmodes import eigenmodes, EigenmodeResult, EigenmodeWarning, build_operator
-from .stability.trajectory import eigenvalue_trajectory, TrajectoryResult, TrajectoryBranch, TrajectoryWarning
-from .fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry, PathField, DuctSegment
+from .stability.contour import Contour, beyn, circle_contour, ellipse_contour, lu_logdet_phase, winding_count
+from .stability.eigenmodes import EigenmodeResult, EigenmodeWarning, build_operator, eigenmodes
 from .stability.nyquist import (
-    open_loop_response,
-    nyquist_stability,
-    nyquist_stability_map,
     NyquistResponse,
     NyquistStabilityMap,
     NyquistWarning,
+    nyquist_stability,
+    nyquist_stability_map,
+    open_loop_response,
 )
+from .stability.trajectory import TrajectoryBranch, TrajectoryResult, TrajectoryWarning, eigenvalue_trajectory
 
 # perturbation-network primary names (thin aliases over the original spellings)
 build_blocks = build_acoustic_blocks

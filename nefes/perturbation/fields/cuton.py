@@ -32,7 +32,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from ...assembly.recover import ES_C, ES_M, ES_AREA
+from ...assembly.recover import ES_AREA, ES_C, ES_M
 
 # First non-trivial root of J1'(x): the (m=1, n=0) mode of a hard-walled circular
 # duct -- the lowest higher-order mode, hence the one that cuts on first.

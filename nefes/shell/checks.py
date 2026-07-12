@@ -17,8 +17,8 @@ Public: the ``CHECK_*`` toggles, :func:`assert_single_component` and
 
 from collections import defaultdict
 
-from ..graph.connectivity import Connectivity
 from ..elements.ids import DISALLOWED_NEIGHBORS, ELEMENT_TYPE_NAMES
+from ..graph.connectivity import Connectivity
 
 # --- global check toggles (flip to disable a check process-wide) ---
 # Reject a model that splits into more than one disconnected sub-network.

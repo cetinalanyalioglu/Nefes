@@ -13,15 +13,15 @@ The two outflow boundaries added alongside the static-pressure outlet:
 import numpy as np
 import pytest
 
-from nefes.thermo.configure import perfect_gas
+from nefes.assembly.recover import ES_AREA, ES_C, ES_M, ES_MDOT, ES_P, ES_PT, ES_RHO, ES_U
 from nefes.elements import catalog as cat
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.perturbation.operator.characteristics import char_to_dx
+from nefes.perturbation.operator.operator import assemble_acoustic, build_acoustic_blocks
 from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
-from nefes.perturbation.operator.characteristics import char_to_dx
-from nefes.perturbation.operator.boundary_bc import PerturbationBC
-from nefes.assembly.recover import ES_MDOT, ES_P, ES_M, ES_PT, ES_RHO, ES_C, ES_U, ES_AREA
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

@@ -50,15 +50,15 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from ..operator.operator import build_acoustic_blocks, assemble_acoustic
-from ..operator.stamps import _terminal_closure, _set_row
-from ..operator.characteristics import dx_to_char, basis_block_from_state, caloric_row, CHAR_SYMBOLS
-from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry
-from ..operator.terminals import Terminal, find_terminals, BOUNDARY_RIDS  # noqa: F401  (re-exported)
-from ..operator import matrices as mat
+from ...assembly.recover import ES_AREA, ES_C, ES_MDOT, ES_P, ES_RHO, ES_U  # noqa: F401
 from ...solver.report import states_table
-from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT  # noqa: F401
 from .._meanstate import accepts_solution
+from ..fields.modeshape import NetworkGeometry, build_geometry, reconstruct_field
+from ..operator import matrices as mat
+from ..operator.characteristics import CHAR_SYMBOLS, basis_block_from_state, caloric_row, dx_to_char
+from ..operator.operator import assemble_acoustic, build_acoustic_blocks
+from ..operator.stamps import _set_row, _terminal_closure
+from ..operator.terminals import BOUNDARY_RIDS, Terminal, find_terminals  # noqa: F401  (re-exported)
 
 # The first scalar characteristic index: chars 0/1 are acoustic (f, g), 2 is entropy (h),
 # and 3.. are the transported reacting scalars.
@@ -1429,7 +1429,9 @@ class PerturbationResponse:
         -------
         plotly.graph_objects.Figure
         """
-        from ...plotting import animate_mode_shape as _animate, AnimSeries, mathify
+        from ...plotting import AnimSeries
+        from ...plotting import animate_mode_shape as _animate
+        from ...plotting import mathify
         from ..fields.modeshape import resolve_specs
 
         fi = int(np.argmin(np.abs(self.freqs - float(freq))))

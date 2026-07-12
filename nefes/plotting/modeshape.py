@@ -20,10 +20,10 @@ from dataclasses import dataclass, field
 from typing import List
 
 import numpy as np
-from ._deps import go
 
-from .theme import NEFES_TEMPLATE_NAME, COLORWAY
+from ._deps import go
 from .labels import mathify
+from .theme import COLORWAY, NEFES_TEMPLATE_NAME
 
 # Light fill for the +/- |psi| envelope band, keyed off the path's line colour.
 _ENVELOPE_ALPHA = 0.14

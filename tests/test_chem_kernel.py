@@ -118,8 +118,8 @@ def test_kernel_masks_condensed_feed_from_products():
     """A condensed feed species (liquid Jet-A) sets the elements + enthalpy but is excluded
     from the burnt products in the compiled kernel -- matching the masked equilibrium solve, not
     the spurious low temperature you get if the liquid is (wrongly) allowed as a product."""
-    from nefes.thermo import ThermoInp, equilibrate_HP
     from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from nefes.thermo import ThermoInp, equilibrate_HP
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -151,8 +151,8 @@ def test_kernel_drops_absent_element():
     null -> singular.  The compiled kernel drops carbon and every carbon-bearing
     species (keep_el / keep_sp), exactly as the masked equilibrium solve requires -- so the
     burnt state matches and the complex-step Jacobian stays finite."""
-    from nefes.thermo import equilibrate_HP, ThermoInp
     from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from nefes.thermo import ThermoInp, equilibrate_HP
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -203,8 +203,8 @@ def test_kernel_cold_near_inert_mixture_stays_finite():
     ``0 * -inf = NaN``, which poisons the reduced Newton matrix and aborts the whole recovery).
     The equilibrium of cold air is essentially frozen air, so the recovered state must match it.
     """
-    from nefes.thermo import ThermoInp
     from nefes.chem.composition import elemental_Z, enthalpy_mass, species_mass_fractions
+    from nefes.thermo import ThermoInp
 
     if not os.path.isfile(THERMO_INP):
         pytest.skip("thermo.inp not present")
@@ -255,8 +255,8 @@ def test_frozen_from_xi_matches_properties():
     forward blend of feed-stream mixture fractions -- matching a direct frozen
     property evaluation of the same mixture, with no element inversion."""
     from nefes.chem.composition import enthalpy_mass
-    from nefes.thermo.edge_state import eq_frozen_state
     from nefes.thermo import Thermo
+    from nefes.thermo.edge_state import eq_frozen_state
 
     lib, heavy = _mixed_feed_lib()
     gas = Thermo(lib)
@@ -311,8 +311,8 @@ def test_comixed_fuels_are_resolvable():
     C,H,O,N elemental level) is recovered exactly: each fuel is its own feed
     stream, so the forward blend is unambiguous."""
     from nefes.chem.composition import enthalpy_mass
-    from nefes.thermo.edge_state import eq_frozen_state
     from nefes.thermo import Thermo
+    from nefes.thermo.edge_state import eq_frozen_state
 
     lib, heavy = _mixed_feed_lib()
     gas = Thermo(lib)

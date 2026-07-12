@@ -27,17 +27,17 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
-from nefes.perturbation.continuation import rational_fit, continuation_warning
 from nefes.elements.dynamic_source import (
     NTau,
     NTauLowpass,
-    tabulated,
     heat_release_response,
     mass_flow_response,
+    tabulated,
 )
-from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import eigenmodes, nyquist_stability
+from nefes.perturbation.continuation import continuation_warning, rational_fit
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.thermo.configure import perfect_gas
 

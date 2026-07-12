@@ -86,8 +86,8 @@ from typing import List, Optional
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from ..operator.operator import build_acoustic_blocks, assemble_acoustic
 from .._meanstate import accepts_solution
+from ..operator.operator import assemble_acoustic, build_acoustic_blocks
 
 
 class NyquistWarning(UserWarning):

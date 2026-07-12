@@ -36,13 +36,13 @@ published pair.
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_T, ES_U
 from nefes.elements import catalog as cat
 from nefes.elements.dynamic_source import heat_release_response, n_tau_lowpass2
 from nefes.perturbation import eigenmodes
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.shell.network import Network
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_T, ES_U
 
 # OSCILOS's air: R = R_u / W_air, and its "constant gamma" option holds gamma = 1.4 everywhere.
 R_AIR = 8.3145 / 28.96512 * 1000.0

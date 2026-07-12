@@ -18,7 +18,7 @@ derivatives) are formed downstream from the recovered state in
 from numba import njit
 
 from .edge_state import eq_frozen_state, eq_kernel_state, eq_total_pressure
-from .perfect_gas import pg_update, pg_state, pg_total_pressure
+from .perfect_gas import pg_state, pg_total_pressure, pg_update
 
 # --- model ids -------------------------------------------------------------
 PERFECT_GAS = 0  # The standard perfect gas model

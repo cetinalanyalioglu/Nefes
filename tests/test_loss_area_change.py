@@ -11,12 +11,12 @@ heads.
 
 import pytest
 
-from nefes.thermo.configure import perfect_gas
+from nefes.assembly.recover import ES_AREA, ES_MDOT, ES_PT, ES_RHO
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_MDOT, ES_RHO, ES_PT, ES_AREA
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

@@ -18,10 +18,10 @@ import numpy as np
 import scipy.sparse as sp
 from numba import njit
 
-from .recover import recover_all, recover_edge, NS_EST, ES_MDOT
-from .smooth import smooth_step
-from ..elements.kernels import node_residual, node_donor
+from ..elements.kernels import node_donor, node_residual
 from ..thermo.api import PERFECT_GAS
+from .recover import ES_MDOT, NS_EST, recover_all, recover_edge
+from .smooth import smooth_step
 
 # Complex step perturbation size
 CS_H = 1e-30

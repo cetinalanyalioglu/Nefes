@@ -9,9 +9,9 @@ from typing import List, Optional, Tuple
 
 import yaml
 
-from ..graph.connectivity import build_connectivity, Connectivity
 from ..elements import catalog as cat
-from ..elements.ids import FLAME_EQUILIBRIUM, MASS_FLOW_INLET, MASS_SOURCE, PT_INLET, P_OUTLET
+from ..elements.ids import FLAME_EQUILIBRIUM, MASS_FLOW_INLET, MASS_SOURCE, P_OUTLET, PT_INLET
+from ..graph.connectivity import Connectivity, build_connectivity
 from ..thermo.api import EQ_FROZEN, EQ_KERNEL
 from ..thermo.configure import equilibrium, perfect_gas
 from ..thermo.edge_state import AUTO_REDUCE_THRESHOLD

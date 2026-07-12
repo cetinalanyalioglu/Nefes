@@ -61,33 +61,33 @@ from typing import List, Optional
 import numpy as np
 import yaml
 
-from ..elements.ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    MASS_FLOW_OUTLET,
-    CHOKED_NOZZLE_OUTLET,
-    ISEN_AREA_CHANGE,
-    TRANSFER_MATRIX,
-    SUDDEN_AREA_CHANGE,
-    LOSS,
-    JUNCTION,
-    SPLITTER,
-    DUCT,
-    PIPE,
-    WALL,
-    CAVITY,
-    LINEAR_RESISTANCE,
-    FLAME_HEAT_RELEASE,
-    FLAME_EQUILIBRIUM,
-    MASS_SOURCE,
-    FORCED_SPLITTER,
-    BOUNDARY_RIDS,
-    STREAM_INTRODUCING,
-)
 from ..elements.composite import is_composite
+from ..elements.ids import (
+    BOUNDARY_RIDS,
+    CAVITY,
+    CHOKED_NOZZLE_OUTLET,
+    DUCT,
+    FLAME_EQUILIBRIUM,
+    FLAME_HEAT_RELEASE,
+    FORCED_SPLITTER,
+    ISEN_AREA_CHANGE,
+    JUNCTION,
+    LINEAR_RESISTANCE,
+    LOSS,
+    MASS_FLOW_INLET,
+    MASS_FLOW_OUTLET,
+    MASS_SOURCE,
+    P_OUTLET,
+    PIPE,
+    PT_INLET,
+    SPLITTER,
+    STREAM_INTRODUCING,
+    SUDDEN_AREA_CHANGE,
+    TRANSFER_MATRIX,
+    WALL,
+)
 from ..thermo.api import EQ_KERNEL
-from .yaml_in import MODEL_ID, EDGE_CLOSURE
+from .yaml_in import EDGE_CLOSURE, MODEL_ID
 
 # The UI save-file schema version this writer targets (matches yaml_in / the UI).
 SAVE_FILE_VERSION = "2.0.0"

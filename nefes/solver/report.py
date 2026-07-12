@@ -11,14 +11,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..assembly.assemble import residual
 from ..elements.ids import (
-    KIND_MASS,
-    KIND_PRESSURE,
-    KIND_NAMES,
     ELEMENT_TYPE_NAMES,
+    KIND_MASS,
+    KIND_NAMES,
+    KIND_PRESSURE,
     row_kind_tags,
 )
-from ..assembly.assemble import residual
 from ..thermo.api import PERFECT_GAS
 
 
@@ -90,7 +90,7 @@ def states_table(prob, x2d, caloric=True):
     consumer.  Pass ``caloric=False`` to skip them (mean-flow reporting, which does not use
     them and need not pay the reacting complex step).
     """
-    from ..assembly.recover import recover_all, enrich_caloric, NS_EST
+    from ..assembly.recover import NS_EST, enrich_caloric, recover_all
 
     est = np.zeros((NS_EST, prob.n_edges))
     nj_cache = np.zeros((prob.n_edges, 0))  # diagnostics: no warm start (single pass, robust uniform)
@@ -109,7 +109,7 @@ def _states_columns(prob, x2d, edges=None, precision=5):
     (``"edge"`` followed by ``"<label> [<unit>]"`` per quantity) and ``rows`` is a
     list of pre-formatted string cells, one list per edge.
     """
-    from ..assembly.recover import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA
+    from ..assembly.recover import ES_AREA, ES_C, ES_HT, ES_M, ES_MDOT, ES_P, ES_PT, ES_RHO, ES_T, ES_U
 
     # (label, est-row index, unit) in edge-state-table column order
     cols = (
@@ -210,7 +210,7 @@ def print_states(prob, x2d, edges=None, precision=5, file=None):
     :func:`print` (``file`` defaults to ``sys.stdout``).
     """
     if file is None and _in_notebook():
-        from IPython.display import display, HTML
+        from IPython.display import HTML, display
 
         display(HTML(format_states_html(prob, x2d, edges=edges, precision=precision)))
         return
@@ -368,7 +368,7 @@ def residual_breakdown(prob, x2d, kappa=0.0, eps=None):
     R_hat : ndarray
         Scaled residual, length ``n_eq``.
     """
-    from .control import _stage_eps, EPS_FB
+    from .control import EPS_FB, _stage_eps
 
     if eps is None:
         eps = _stage_eps(prob.var_scale[0], kappa)
@@ -453,7 +453,7 @@ def _nonphysical_report(prob, x2d, top=10):
     str
         A newline-joined report of the non-physical edges.
     """
-    from ..assembly.recover import recover_edge, NS_EST
+    from ..assembly.recover import NS_EST, recover_edge
 
     x = np.ascontiguousarray(x2d, dtype=np.float64)
     n_elem = int(prob.n_elem)

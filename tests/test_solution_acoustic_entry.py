@@ -14,6 +14,7 @@ import pytest
 
 import nefes
 from nefes.elements import catalog as cat
+from nefes.elements.dynamic_source import n_tau_flame
 from nefes.perturbation import (
     PerturbationBC,
     eigenmodes,
@@ -26,7 +27,6 @@ from nefes.perturbation import (
     perturbation_response,
     verify_perturbation,
 )
-from nefes.elements.dynamic_source import n_tau_flame
 
 
 def _rijke():

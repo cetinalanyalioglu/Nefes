@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from nefes.assembly.closure import closure_solve
-from nefes.thermo import perfect_gas, PERFECT_GAS
+from nefes.thermo import PERFECT_GAS, perfect_gas
 
 CS_H = 1e-30
 R_AIR, GAMMA = 287.0, 1.4

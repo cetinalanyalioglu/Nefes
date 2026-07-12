@@ -16,15 +16,15 @@ import os
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_MDOT, ES_P, ES_RHO, ES_T
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
-from nefes.thermo.configure import equilibrium
-from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
-from nefes.shell.network import Network
-from nefes.solver.control import solve, auto_initial_guess
-from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_T, ES_RHO, ES_MDOT, ES_P
 from nefes.perturbation.response.response import perturbation_response
+from nefes.shell.build import build_problem
+from nefes.shell.network import Network
+from nefes.solver.control import auto_initial_guess, solve
+from nefes.solver.report import states_table
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS
+from nefes.thermo.configure import equilibrium
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 AIR = {"O2": 0.21, "N2": 0.79}

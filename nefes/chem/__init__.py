@@ -17,12 +17,12 @@ no deeper import::
 """
 
 from .composition import (
-    species_mass_fractions,
-    species_mole_fractions,
     elemental_Z,
     enthalpy_mass,
-    resolve_composition,
     equivalence_ratio_mixture,
+    resolve_composition,
+    species_mass_fractions,
+    species_mole_fractions,
 )
 
 __all__ = [

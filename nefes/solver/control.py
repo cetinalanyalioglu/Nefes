@@ -23,14 +23,13 @@ from typing import List
 
 import numpy as np
 
-from ..assembly.assemble import residual, jacobian
+from ..assembly.assemble import jacobian, residual
 from ..assembly.recover import ES_M
-from ..elements.ids import MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE, CHOKED_NOZZLE_OUTLET
-from ..thermo.api import thermo_state
-from ..thermo.api import EQ_KERNEL, PERFECT_GAS
 from ..assembly.scaling import compose_scales, measure_inflow_scales
 from ..config import config
-from .linear import newton_step, lm_step, scaled_system, col_scale, unflatten
+from ..elements.ids import CHOKED_NOZZLE_OUTLET, MASS_FLOW_INLET, MASS_SOURCE, P_OUTLET, PT_INLET
+from ..thermo.api import EQ_KERNEL, PERFECT_GAS, thermo_state
+from .linear import col_scale, lm_step, newton_step, scaled_system, unflatten
 from .report import _Reporter, states_table
 
 # Mach above which an edge is treated as genuinely supersonic (outside the subsonic scope)
@@ -651,8 +650,14 @@ def solve(
         if m_max > SUPERSONIC_TOL:
             seed = initial_guess(prob, p0=_max_boundary_pressure(prob))  # low-Mach start
             recov = solve(
-                prob, x0=seed, tol=tol, max_iter=max_iter, kappa_stages=kappa_stages,
-                kappa_scale=kappa_scale, adaptive_scale=adaptive_scale, enforce_subsonic=False,
+                prob,
+                x0=seed,
+                tol=tol,
+                max_iter=max_iter,
+                kappa_stages=kappa_stages,
+                kappa_scale=kappa_scale,
+                adaptive_scale=adaptive_scale,
+                enforce_subsonic=False,
             )
             rec_m = float(np.max(np.abs(states_table(prob, recov.x, caloric=False)[ES_M, :].real)))
             if recov.converged and rec_m < m_max:

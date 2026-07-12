@@ -13,15 +13,15 @@ import numpy as np
 import pytest
 
 from nefes.assembly.smooth import marker_gate
+from nefes.chem.composition import enthalpy_mass, species_mass_fractions
 from nefes.thermo.edge_state import (
-    pack_equilibrium,
+    MARKER_GATE_WIDTH,
     eq_frozen_state,
     eq_kernel_state,
     eq_marker_state,
     eq_marker_state_warm,
-    MARKER_GATE_WIDTH,
+    pack_equilibrium,
 )
-from nefes.chem.composition import species_mass_fractions, enthalpy_mass
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 

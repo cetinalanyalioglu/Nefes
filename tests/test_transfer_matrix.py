@@ -7,7 +7,7 @@ plus real-grid evaluation and the rational continuation that makes a table analy
 import numpy as np
 import pytest
 
-from nefes.perturbation import TransferMatrix, ScatteringMatrix, PortState
+from nefes.perturbation import PortState, ScatteringMatrix, TransferMatrix
 
 FREQS = np.linspace(50.0, 1500.0, 25)
 PA = PortState(rho=1.1, c=340.0, u=30.0, p=101325.0, area=0.05)

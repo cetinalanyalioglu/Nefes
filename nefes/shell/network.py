@@ -5,22 +5,23 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
+
 from nefes.thermo.constants import R_UNIVERSAL
 
-from ..thermo.configure import ThermoConfig, perfect_gas
-from ..thermo.api import PERFECT_GAS, EQ_KERNEL
-from ..graph.connectivity import build_connectivity
+from ..assembly.recover import ES_AREA, ES_C, ES_CP, ES_HT, ES_M, ES_MDOT, ES_P, ES_PT, ES_RHO, ES_T, ES_U, ES_W
 from ..elements import catalog as cat
 from ..elements.catalog import ElementSpec
-from . import checks
-from .build import build_problem, build_problem_from_connectivity
-from ..elements.composite import expand_composites, is_composite, CompositeView
-from ..elements.ids import ELEMENT_TYPE_NAMES, CHOKED_NOZZLE_OUTLET
-from .problem import CompiledProblem
+from ..elements.composite import CompositeView, expand_composites, is_composite
+from ..elements.ids import CHOKED_NOZZLE_OUTLET, ELEMENT_TYPE_NAMES
+from ..graph.connectivity import build_connectivity
 from ..solver import solve as _solve
 from ..solver.control import initial_guess
-from ..solver.report import states_table, print_states, residual_breakdown, print_residuals
-from ..assembly.recover import ES_MDOT, ES_P, ES_HT, ES_RHO, ES_U, ES_T, ES_C, ES_M, ES_PT, ES_AREA, ES_W, ES_CP
+from ..solver.report import print_residuals, print_states, residual_breakdown, states_table
+from ..thermo.api import EQ_KERNEL, PERFECT_GAS
+from ..thermo.configure import ThermoConfig, perfect_gas
+from . import checks
+from .build import build_problem, build_problem_from_connectivity
+from .problem import CompiledProblem
 
 # ES for "edge state"
 _EDGE_FIELDS = {

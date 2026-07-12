@@ -25,9 +25,9 @@ density ``rho = p / R T`` differs (e.g. element 1: table 8.56 = V, whereas rho =
 import numpy as np
 import pytest
 
-from nefes.thermo.configure import perfect_gas
 from nefes.elements import catalog as cat
 from nefes.shell.network import Network
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA, T_ISO = 287.0, 1.4, 288.15
 FRICTION = 0.03

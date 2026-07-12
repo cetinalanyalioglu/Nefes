@@ -10,10 +10,10 @@ to confirm the connectivity, element indices and edge directions before solving.
 """
 
 import numpy as np
-from ._deps import go, sample_colorscale
 
-from .theme import NEFES_TEMPLATE_NAME
 from ..shell.network import _EDGE_FIELDS
+from ._deps import go, sample_colorscale
+from .theme import NEFES_TEMPLATE_NAME
 
 # Per-edge solved field -> (display label, unit, value format) for the overlay
 # colorbar / labels / hover.  Keyed to match :data:`nefes.shell.network._EDGE_FIELDS`

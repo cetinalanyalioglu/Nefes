@@ -20,22 +20,22 @@ import scipy.sparse as sp
 
 from ...assembly.assemble import jacobian
 from ...solver.report import states_table
-from .terminals import find_terminals
 from .stamps import (
     DuctStamp,
+    _terminal_closure,
+    _tm_block,
     build_duct_stamps,
     build_source_stamps,
-    build_tm_stamps,
     build_storage,
+    build_tm_stamps,
     heat_addition_edges,
+    stamp_boundaries,
+    stamp_isentropic,
     stamp_propagation,
     stamp_sources,
     stamp_transfer_matrix,
-    _tm_block,
-    stamp_boundaries,
-    stamp_isentropic,
-    _terminal_closure,
 )
+from .terminals import find_terminals
 
 # Generic non-zero frequency used to capture the (omega-independent) sparsity pattern.
 _PLAN_OMEGA = 1.0

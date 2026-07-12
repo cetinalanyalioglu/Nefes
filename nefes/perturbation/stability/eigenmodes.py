@@ -60,15 +60,15 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from ..operator.operator import build_acoustic_blocks, assemble_acoustic
-from ..operator.stamps import storage_stamps_from_est
-from ..operator.characteristics import edge_transforms, basis_block_from_state
-from .contour import Contour, ellipse_contour, beyn, winding_count, lu_logdet_phase
-from ..operator.terminals import find_terminals
-from ..fields.modeshape import build_geometry, reconstruct_field, NetworkGeometry
-from ...solver.report import states_table
 from ...assembly.recover import ES_C
+from ...solver.report import states_table
 from .._meanstate import accepts_solution
+from ..fields.modeshape import NetworkGeometry, build_geometry, reconstruct_field
+from ..operator.characteristics import basis_block_from_state, edge_transforms
+from ..operator.operator import assemble_acoustic, build_acoustic_blocks
+from ..operator.stamps import storage_stamps_from_est
+from ..operator.terminals import find_terminals
+from .contour import Contour, beyn, ellipse_contour, lu_logdet_phase, winding_count
 
 # Below this Mach number a duct's entropy wave is treated as decoupled (stationary) in the
 # stability assembly: its transit time tau_0 = L/u diverges as u -> 0, so for a complex omega
@@ -1312,7 +1312,8 @@ class EigenmodeResult:
         -------
         plotly.graph_objects.Figure
         """
-        from ...plotting import animate_mode_shape as _animate, AnimSeries
+        from ...plotting import AnimSeries
+        from ...plotting import animate_mode_shape as _animate
         from ..fields.modeshape import resolve_specs
 
         modes = [int(i)] if np.isscalar(i) else [int(m) for m in i]

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import List, Sequence
 
-from ...elements.dynamic_source import DynamicSource, DynamicResponseTerm, Constant
+from ...elements.dynamic_source import Constant, DynamicResponseTerm, DynamicSource
 
 
 class UnknownTransferMatrix:

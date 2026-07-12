@@ -13,14 +13,14 @@ Targets:
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_AREA, ES_C, ES_P, ES_RHO, ES_U
 from nefes.elements import catalog as cat
+from nefes.perturbation import PortState, TransferMatrix, perturbation_response
+from nefes.perturbation.operator.operator import _assemble_reference, assemble_acoustic, build_acoustic_blocks
 from nefes.shell.build import build_problem
-from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.perturbation import perturbation_response, TransferMatrix, PortState
-from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
-from nefes.assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

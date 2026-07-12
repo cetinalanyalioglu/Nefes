@@ -4,8 +4,8 @@ import pytest
 
 from nefes.graph.connectivity import (
     build_connectivity,
-    connectivity_from_directed_edges,
     build_jacobian_pattern,
+    connectivity_from_directed_edges,
     pattern_to_csc,
 )
 

@@ -23,9 +23,9 @@ so the entropy seat and the duct entropy-phase row follow the flow rather than t
 element geometry (see ``response._seats_entropy`` and ``stamps.build_duct_stamps``).
 """
 
-from ...solver.report import states_table
 from ...assembly.recover import ES_M
 from ...elements.ids import STAMP_DUCT
+from ...solver.report import states_table
 from .._meanstate import accepts_solution
 
 

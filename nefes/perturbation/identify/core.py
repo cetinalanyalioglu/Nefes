@@ -39,18 +39,18 @@ from typing import List
 
 import numpy as np
 
+from ...elements.dynamic_source import Constant, DynamicResponseTerm, DynamicSource, Tabulated, TransferFunction
+from .._meanstate import accepts_solution
+from ..continuation import RationalFit
 from ..matrix import TransferMatrix
 from ..operator.stamps import build_source_stamps, build_tm_stamps
 from ..response.response import (
+    _N_FIXED_CHAR,
     _build_excitation_context,
     _driven_prescriptions,
     _excited_char_indices,
     _seats_entropy,
-    _N_FIXED_CHAR,
 )
-from ...elements.dynamic_source import DynamicSource, DynamicResponseTerm, Constant, TransferFunction, Tabulated
-from ..continuation import RationalFit
-from .._meanstate import accepts_solution
 
 # ==========================================================================
 # results
@@ -268,8 +268,8 @@ def _port_state(est, edge):
     Carries the edge's caloric row (from the ``caloric=True`` state columns) so the recovered
     matrix converts to the ``network`` flavor reacting-correctly.
     """
+    from ...assembly.recover import ES_AREA, ES_C, ES_P, ES_RHO, ES_U
     from ..matrix import PortState
-    from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA
     from ..operator.characteristics import caloric_row
 
     return PortState(

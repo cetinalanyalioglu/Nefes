@@ -19,18 +19,18 @@ import warnings
 import numpy as np
 import pytest
 
-from nefes.shell import Network
+from nefes.assembly.recover import ES_C, ES_U
 from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_U, ES_C
 from nefes.perturbation import (
     PerturbationBC,
     eigenmodes,
     perturbation_response,
 )
-from nefes.perturbation.fields.modeshape import VARIABLE_SPEC, build_geometry, resolve_specs, PathField
+from nefes.perturbation.fields.modeshape import VARIABLE_SPEC, PathField, build_geometry, resolve_specs
 from nefes.perturbation.operator.characteristics import BASIS_LABELS
-from nefes.plotting import animate_mode_shape, AnimSeries
+from nefes.plotting import AnimSeries, animate_mode_shape
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)
 LDUCT = 0.5

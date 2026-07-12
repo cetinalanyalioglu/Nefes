@@ -10,13 +10,13 @@ and tapered-duct chains (the Class-2 composites).  Its complex-step safety lives
 import numpy as np
 import pytest
 
-from nefes.thermo.configure import perfect_gas
+from nefes.assembly.recover import ES_M, ES_PT, ES_T
 from nefes.elements import catalog as cat
+from nefes.perturbation import perturbation_response
 from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_PT, ES_M, ES_T
-from nefes.perturbation import perturbation_response
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

@@ -54,7 +54,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .operator import matrices as mat
-from .operator.characteristics import basis_matrix, BASIS_LABELS
+from .operator.characteristics import BASIS_LABELS, basis_matrix
 
 
 @dataclass(frozen=True)

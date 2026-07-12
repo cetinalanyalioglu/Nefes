@@ -3,16 +3,16 @@
 import numpy as np
 import pytest
 
-from nefes.shell import Network
+from nefes.assembly.recover import ES_C, ES_M, ES_RHO
 from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_C, ES_RHO, ES_M
 from nefes.perturbation import (
     PerturbationBC,
-    perturbation_response,
-    eigenmodes,
     acoustic_intensity,
+    eigenmodes,
+    perturbation_response,
 )
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)
 LDUCT = 0.5

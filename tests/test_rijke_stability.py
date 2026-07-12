@@ -24,16 +24,16 @@ import warnings
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_C, ES_P, ES_RHO, ES_T, ES_U
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
-from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation import eigenmodes
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_T
 from nefes.thermo.api import thermo_state
-from nefes.thermo.configure import perfect_gas, equilibrium
+from nefes.thermo.configure import equilibrium, perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -365,7 +365,7 @@ def test_composition_wave_convects_with_duct_phase():
     is decoupled under the isentropic stability mode, like the entropy wave, to keep the long
     transit time out of the acoustic spectrum.)
     """
-    from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
+    from nefes.perturbation.operator.operator import assemble_acoustic, build_acoustic_blocks
 
     prob, x = _reacting_rijke(0.0, 0.0)
     est = states_table(prob, x)

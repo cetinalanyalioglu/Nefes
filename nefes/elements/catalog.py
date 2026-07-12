@@ -14,20 +14,20 @@ from typing import List, Optional
 
 from .composite import CompositeElementSpec
 from .ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    MASS_FLOW_OUTLET,
-    CHOKED_NOZZLE_OUTLET,
-    WALL,
     CAVITY,
-    JUNCTION,
-    SPLITTER,
+    CHOKED_NOZZLE_OUTLET,
     FORCED_SPLITTER,
+    JUNCTION,
+    MASS_FLOW_INLET,
+    MASS_FLOW_OUTLET,
     MASS_SOURCE,
+    P_OUTLET,
+    PT_INLET,
+    SPLITTER,
     STAMP_DEFAULT,
     STAMP_DUCT,
     STAMP_VOLUME,
+    WALL,
 )
 
 # Relative tolerance for the equal-area check on constant-area elements.

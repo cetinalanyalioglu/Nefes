@@ -52,13 +52,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_T, ES_U
 from nefes.elements import catalog as cat
 from nefes.elements.dynamic_source import finite_impulse_response, fit_impulse_response, heat_release_response
 from nefes.perturbation import eigenmodes
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.shell.network import Network
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_T, ES_U
 
 DATA = Path(__file__).resolve().parents[1] / "examples" / "thermoacoustics" / "data"
 FTF_CSV = DATA / "brs_ftf.csv"

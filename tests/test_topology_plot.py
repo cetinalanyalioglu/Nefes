@@ -2,11 +2,11 @@
 
 import pytest
 
-from nefes.shell import Network
 from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
 from nefes.plotting import plot_network_topology
 from nefes.plotting.topology import _layers, _positions
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(R=287.0, gamma=1.4)
 

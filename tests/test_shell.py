@@ -5,10 +5,10 @@ import os
 import numpy as np
 import pytest
 
-from nefes.shell import Network
 from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
 from nefes.io import load_case, load_connectivity
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -225,7 +225,7 @@ def test_residuals_label_composition_scalars():
 
 
 def test_residual_groups_partition_and_quadrature():
-    from nefes.solver import residual_groups, residual_breakdown
+    from nefes.solver import residual_breakdown, residual_groups
 
     sol = _nozzle_solution()
     labels, ids = residual_groups(sol.problem)

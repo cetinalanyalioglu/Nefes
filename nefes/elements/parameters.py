@@ -24,27 +24,27 @@ from typing import Callable, Dict, Optional, Tuple
 
 from .composite import CompositeElementSpec, is_composite
 from .ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    MASS_FLOW_OUTLET,
-    CHOKED_NOZZLE_OUTLET,
-    WALL,
     CAVITY,
-    ISEN_AREA_CHANGE,
-    TRANSFER_MATRIX,
-    SUDDEN_AREA_CHANGE,
-    LOSS,
-    LINEAR_RESISTANCE,
-    FLAME_HEAT_RELEASE,
-    FLAME_EQUILIBRIUM,
-    MASS_SOURCE,
-    JUNCTION,
-    SPLITTER,
-    FORCED_SPLITTER,
+    CHOKED_NOZZLE_OUTLET,
     DUCT,
-    PIPE,
     ELEMENT_TYPE_NAMES,
+    FLAME_EQUILIBRIUM,
+    FLAME_HEAT_RELEASE,
+    FORCED_SPLITTER,
+    ISEN_AREA_CHANGE,
+    JUNCTION,
+    LINEAR_RESISTANCE,
+    LOSS,
+    MASS_FLOW_INLET,
+    MASS_FLOW_OUTLET,
+    MASS_SOURCE,
+    P_OUTLET,
+    PIPE,
+    PT_INLET,
+    SPLITTER,
+    SUDDEN_AREA_CHANGE,
+    TRANSFER_MATRIX,
+    WALL,
 )
 
 # Parameter value kinds a descriptor may declare.
@@ -213,8 +213,8 @@ def _check_dynamic_source(value, where):
 
 
 def _check_transfer_matrix(value, where):
-    from ..perturbation.matrix import TransferMatrix
     from ..perturbation.identify import UnknownTransferMatrix
+    from ..perturbation.matrix import TransferMatrix
 
     if not isinstance(value, (TransferMatrix, UnknownTransferMatrix)):
         raise ValueError(

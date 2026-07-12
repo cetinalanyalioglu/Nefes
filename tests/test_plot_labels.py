@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from nefes.plotting import use_latex, latex_enabled, mathify, tex, detex
-from nefes.plotting.labels import _SUB
 import nefes.plotting.complex_matrix as cm
 import nefes.plotting.transfer_function as tf
+from nefes.plotting import detex, latex_enabled, mathify, tex, use_latex
+from nefes.plotting.labels import _SUB
 
 
 @pytest.fixture(autouse=True)

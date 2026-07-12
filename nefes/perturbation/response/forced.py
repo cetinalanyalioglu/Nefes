@@ -18,11 +18,11 @@ from typing import List, Optional
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from ..operator.operator import build_acoustic_blocks, assemble_acoustic
-from ..operator.stamps import boundary_forcing
-from ..operator.characteristics import edge_transforms, basis_block_from_state
 from ...solver.report import states_table
 from .._meanstate import accepts_solution
+from ..operator.characteristics import basis_block_from_state, edge_transforms
+from ..operator.operator import assemble_acoustic, build_acoustic_blocks
+from ..operator.stamps import boundary_forcing
 
 # Terminal closures whose analytic 3-wave (f, g, h) form drops the composition -> acoustic
 # off-diagonal R_xi (everywhere else the inherited J_alg retains it).

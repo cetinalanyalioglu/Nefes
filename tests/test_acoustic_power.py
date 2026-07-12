@@ -10,31 +10,31 @@ import warnings
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_AREA, ES_C, ES_RHO, ES_U
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import n_tau_flame
 from nefes.perturbation import (
-    eigenmodes,
-    forced_response,
-    acoustic_intensity,
     acoustic_energy_density,
-    passive_reflection_bound,
-    boundary_power,
     acoustic_flux_spectrum,
+    acoustic_intensity,
+    boundary_power,
     compact_power_spectrum,
     duct_energy_spectrum,
-    forced_power_balance,
-    modal_energy_balance,
+    eigenmodes,
     find_terminals,
+    forced_power_balance,
+    forced_response,
+    modal_energy_balance,
+    passive_reflection_bound,
 )
-from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation.fields.modeshape import build_geometry
 from nefes.perturbation.fields.power import _lumped_storage_energy, _stored_energy
+from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.shell import Network
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_RHO, ES_C, ES_U, ES_AREA
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

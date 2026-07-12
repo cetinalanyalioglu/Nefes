@@ -28,8 +28,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .properties import mixture_properties
 from .kernel import equilibrate_hp_cs, equilibrate_tp, equilibrium_sound_speed
+from .properties import mixture_properties
 
 __all__ = ["EquilibriumResult", "equilibrate_TP", "equilibrate_HP", "elemental_abundance"]
 

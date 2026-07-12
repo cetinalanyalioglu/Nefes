@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from scipy.optimize import brentq
 
-from nefes.thermo import perfect_gas, thermo_update, PERFECT_GAS
+from nefes.thermo import PERFECT_GAS, perfect_gas, thermo_update
 from nefes.thermo.perfect_gas import pg_solve_density
 
 CS_H = 1e-30

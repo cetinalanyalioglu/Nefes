@@ -10,10 +10,10 @@ See :func:`identify_transfer_matrix`, :func:`identify_transfer_function`, and th
 """
 
 from .core import (
-    identify_transfer_matrix,
-    identify_transfer_function,
-    TransferMatrixIdentification,
     TransferFunctionIdentification,
+    TransferMatrixIdentification,
+    identify_transfer_function,
+    identify_transfer_matrix,
 )
 from .markers import UnknownTransferMatrix, unknown_dynamic_source
 

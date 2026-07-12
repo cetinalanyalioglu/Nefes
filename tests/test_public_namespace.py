@@ -11,8 +11,8 @@ import numpy as np
 import nefes
 import nefes.thermo as thermo
 from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas, equilibrium
 from nefes.perturbation import PerturbationBC
+from nefes.thermo.configure import equilibrium, perfect_gas
 
 
 def test_all_names_resolve_on_package():
@@ -58,11 +58,17 @@ def test_flat_namespace_build_solve():
 
 def test_both_continuation_routes_live_under_perturbation():
     """The impulse-response and rational analytic-continuation routes are reachable from one place."""
-    import nefes.perturbation as pert
     import nefes.elements.dynamic_source as dsource
+    import nefes.perturbation as pert
 
-    for name in ("fit_impulse_response", "finite_impulse_response", "FiniteImpulseResponse",
-                 "rational_fit", "RationalFit", "continuation_warning"):
+    for name in (
+        "fit_impulse_response",
+        "finite_impulse_response",
+        "FiniteImpulseResponse",
+        "rational_fit",
+        "RationalFit",
+        "continuation_warning",
+    ):
         assert hasattr(pert, name), f"nefes.perturbation is missing {name}"
     #  Re-exported, not re-implemented: the impulse-response route is the same object as its source.
     assert pert.fit_impulse_response is dsource.fit_impulse_response
@@ -73,15 +79,21 @@ def test_chem_reexports_composition_helpers():
     """The user-facing composition helpers are reachable one submodule away, from ``nefes.chem``."""
     import nefes.chem as chem
 
-    for name in ("equivalence_ratio_mixture", "resolve_composition", "enthalpy_mass",
-                 "species_mass_fractions", "species_mole_fractions", "elemental_Z"):
+    for name in (
+        "equivalence_ratio_mixture",
+        "resolve_composition",
+        "enthalpy_mass",
+        "species_mass_fractions",
+        "species_mole_fractions",
+        "elemental_Z",
+    ):
         assert hasattr(chem, name), f"nefes.chem is missing {name}"
 
 
 def test_flat_namespace_reacting_build():
     """A reacting build off ``nefes.equilibrium`` + ``nefes.thermo`` closure ids."""
-    from nefes.thermo import ThermoInp
     from nefes.chem import equivalence_ratio_mixture
+    from nefes.thermo import ThermoInp
 
     lib = ThermoInp().library(["CH4", "O2", "N2", "CO2", "H2O", "CO", "OH", "H2", "H", "O", "NO"])
     mix = equivalence_ratio_mixture(lib, {"CH4": 1.0}, {"O2": 0.21, "N2": 0.79}, 1.0)

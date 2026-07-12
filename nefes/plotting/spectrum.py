@@ -9,10 +9,10 @@ Two views over an :class:`nefes.perturbation.EigenmodeResult`:
 """
 
 import numpy as np
-from ._deps import go, make_subplots
 
-from .theme import NEFES_TEMPLATE_NAME, COLORWAY
+from ._deps import go, make_subplots
 from .labels import mathify
+from .theme import COLORWAY, NEFES_TEMPLATE_NAME
 
 _STABLE_COLOR = COLORWAY[0]  # blue
 _UNSTABLE_COLOR = COLORWAY[4]  # red

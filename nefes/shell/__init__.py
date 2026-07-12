@@ -1,9 +1,9 @@
 """User-facing object shell: Network, Solution, and the CompiledProblem builder."""
 
+from .build import build_problem, build_problem_from_connectivity, finalize_thermo, validate_network
 from .network import Network, Solution
-from .build import build_problem, build_problem_from_connectivity, validate_network, finalize_thermo
-from .study import parameter_study, StudyResult
 from .params import ParameterInfo, ParameterInventory
+from .study import StudyResult, parameter_study
 
 __all__ = [
     "Network",

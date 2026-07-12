@@ -17,10 +17,10 @@ its closure -- which cannot ride the already-seeded residual/Jacobian recovery.
 import numpy as np
 from numba import njit
 
-from .closure import closure_solve
-from ..thermo.api import thermo_state, thermo_total_pressure, PERFECT_GAS, EQ_KERNEL, EQ_MARKER, EQ_FROZEN
-from ..thermo.edge_state import eq_kernel_state_ke_warm, eq_marker_state_ke_warm, eq_frozen_state_ke
+from ..thermo.api import EQ_FROZEN, EQ_KERNEL, EQ_MARKER, PERFECT_GAS, thermo_state, thermo_total_pressure
+from ..thermo.edge_state import eq_frozen_state_ke, eq_kernel_state_ke_warm, eq_marker_state_ke_warm
 from ..thermo.kernel import RU
+from .closure import closure_solve
 
 # edge-state table (est) slot layout
 ES_MDOT = 0

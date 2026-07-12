@@ -14,15 +14,15 @@ it reproduces the explicit hard closure it is meant to automate.
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_MDOT, ES_T
+from nefes.chem.chemistry import edge_species, product_moles, stream_mass_fractions
+from nefes.chem.composition import enthalpy_mass, equivalence_ratio_mixture, species_mass_fractions
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
-from nefes.thermo.configure import equilibrium
-from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
-from nefes.chem.composition import species_mass_fractions, enthalpy_mass, equivalence_ratio_mixture
-from nefes.chem.chemistry import edge_species, product_moles, stream_mass_fractions
 from nefes.solver.control import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_T, ES_MDOT
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.thermo.configure import equilibrium
 
 thermo = pytest.importorskip("nefes.thermo")
 

@@ -11,33 +11,33 @@ analytical Rijke tube in ``test_rijke_stability.py``.
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_AREA, ES_MDOT, ES_P, ES_RHO, ES_U
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import (
+    Constant,
+    DynamicResponseTerm,
+    DynamicSource,
+    FiniteImpulseResponse,
     NTau,
     NTauLowpass,
-    Constant,
-    n_tau,
-    n_tau_lowpass2,
+    as_transfer,
+    constant,
     finite_impulse_response,
     fit_impulse_response,
-    FiniteImpulseResponse,
-    tabulated,
-    constant,
-    as_transfer,
-    DynamicSource,
-    DynamicResponseTerm,
-    n_tau_flame,
     heat_release_response,
     mass_flow_response,
+    n_tau,
+    n_tau_flame,
+    n_tau_lowpass2,
+    tabulated,
 )
+from nefes.perturbation import eigenmodes
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
 from nefes.perturbation.operator.characteristics import dq_to_dx
-from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
-from nefes.perturbation import eigenmodes
+from nefes.perturbation.operator.operator import _assemble_reference, assemble_acoustic, build_acoustic_blocks
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_MDOT, ES_U, ES_RHO, ES_P, ES_AREA
 from nefes.thermo.configure import perfect_gas
 
 R, GAMMA = 287.0, 1.4

@@ -15,11 +15,11 @@ import numpy as np
 import pytest
 import yaml
 
-from nefes.shell import Network
 from nefes.elements import catalog as cat
 from nefes.elements.composite import CompositeElementSpec
 from nefes.io import load_case, save_case
 from nefes.io.yaml_in import _parse_area_profile, _parse_fractions
+from nefes.shell import Network
 from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)

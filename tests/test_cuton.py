@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 
 from nefes.elements import catalog as cat
+from nefes.perturbation import ALPHA_CIRCULAR, cuton_frequency, duct_cuton_frequencies
 from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.thermo.configure import perfect_gas
-from nefes.perturbation import cuton_frequency, duct_cuton_frequencies, ALPHA_CIRCULAR
 
 CFG = perfect_gas(R=287.0, gamma=1.4)
 CP = 1.4 * 287.0 / 0.4

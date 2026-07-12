@@ -11,11 +11,11 @@ import numpy as np
 import pytest
 
 from nefes.assembly.smooth import (
+    fischer_burmeister,
     smooth_abs,
     smooth_pos,
-    smooth_step,
     smooth_sign_sq,
-    fischer_burmeister,
+    smooth_step,
 )
 
 CS_H = 1e-30  # complex-step size

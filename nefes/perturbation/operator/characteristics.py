@@ -31,7 +31,7 @@ and ``BASIS_LABELS`` gives its per-component symbols (for plot labelling):
 
 import numpy as np
 
-from ...assembly.recover import ES_RHO, ES_U, ES_C, ES_AREA, ES_DHDRHO, ES_DHDP
+from ...assembly.recover import ES_AREA, ES_C, ES_DHDP, ES_DHDRHO, ES_RHO, ES_U
 
 
 def caloric_row(est_col):

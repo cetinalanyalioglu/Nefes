@@ -15,14 +15,14 @@ import os
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_T
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
-from nefes.thermo.configure import equilibrium, perfect_gas
-from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
 from nefes.shell.network import Network
 from nefes.solver.control import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_T
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.thermo.configure import equilibrium, perfect_gas
 
 MECH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data", "h2o2.yaml")
 # stoichiometric H2-air premix (2 H2 + O2 + 3.76 N2, by mole)
@@ -105,6 +105,7 @@ def test_marker_out_of_range_rejected_at_factory(bad):
 def test_marker_written_to_yaml():
     # yaml_out emits the marker attribute (reacting-only, only when non-zero)
     import yaml as _yaml
+
     from nefes.io import dump_case
 
     gas, h_ref = _premix_datum()

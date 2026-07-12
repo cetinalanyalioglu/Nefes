@@ -51,7 +51,7 @@ from typing import Callable, List, Optional, Sequence, Tuple
 import numpy as np
 import scipy.sparse.linalg as spla
 
-from .eigenmodes import build_operator, eigenmodes, EigenmodeResult, _NEWTON_FD_REL, _RESIDUAL_TOL
+from .eigenmodes import _NEWTON_FD_REL, _RESIDUAL_TOL, EigenmodeResult, build_operator, eigenmodes
 
 
 class TrajectoryWarning(UserWarning):

@@ -63,15 +63,14 @@ import warnings
 
 import numpy as np
 
-from ..elements.dynamic_source import TransferFunction
-
 # Both analytic-continuation routes are reached from here: the rational route (``rational_fit`` /
 # ``RationalFit`` below) and the impulse-response route, re-exported from ``elements.dynamic_source``
 # so the eigensolver-continuation toolkit for tabulated data lives in one place.
 from ..elements.dynamic_source import (  # noqa: F401  (re-exported)
-    fit_impulse_response,
-    finite_impulse_response,
     FiniteImpulseResponse,
+    TransferFunction,
+    finite_impulse_response,
+    fit_impulse_response,
 )
 
 

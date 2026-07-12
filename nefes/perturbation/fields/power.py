@@ -34,7 +34,7 @@ from typing import List
 
 import numpy as np
 
-from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_M, ES_P, ES_AREA
+from ...assembly.recover import ES_AREA, ES_C, ES_M, ES_P, ES_RHO, ES_U
 from ...elements.ids import MASS_FLOW_INLET, PT_INLET, WALL
 from ..operator.stamps import storage_stamps_from_est
 
@@ -574,7 +574,7 @@ def intensity_along_network(geometry, chars_of_edge, est, omega, *, energy_densi
     list of nefes.perturbation.fields.modeshape.PathField
         One per root->leaf path; ``values`` is the real intensity (or energy density).
     """
-    from .modeshape import walk_paths, _duct_chars, PathField
+    from .modeshape import PathField, _duct_chars, walk_paths
 
     def _quantity(rho, c, mach, f, g):
         if energy_density:
@@ -704,8 +704,8 @@ def forced_power_balance(fr, prob, *, n_x: int = 120) -> ForcedPowerBalance:
     -------
     ForcedPowerBalance
     """
-    from .modeshape import build_geometry
     from ..operator.terminals import find_terminals
+    from .modeshape import build_geometry
 
     geo = build_geometry(prob)
     terms = find_terminals(prob)

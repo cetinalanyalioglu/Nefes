@@ -31,40 +31,40 @@ Two layers of coverage:
 import numpy as np
 import pytest
 
-from nefes.thermo.configure import perfect_gas
+from nefes.assembly.assemble import jacobian, residual
+from nefes.assembly.recover import ES_M
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
 from nefes.elements.ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    ISEN_AREA_CHANGE,
-    SUDDEN_AREA_CHANGE,
-    LOSS,
-    JUNCTION,
-    SPLITTER,
-    FORCED_SPLITTER,
-    DUCT,
-    WALL,
     CAVITY,
-    FLAME_HEAT_RELEASE,
-    FLAME_EQUILIBRIUM,
-    MASS_SOURCE,
-    MASS_FLOW_OUTLET,
     CHOKED_NOZZLE_OUTLET,
+    DUCT,
+    ELEMENT_TYPE_NAMES,
+    FLAME_EQUILIBRIUM,
+    FLAME_HEAT_RELEASE,
+    FORCED_SPLITTER,
+    ISEN_AREA_CHANGE,
+    JUNCTION,
     LINEAR_RESISTANCE,
+    LOSS,
+    MASS_FLOW_INLET,
+    MASS_FLOW_OUTLET,
+    MASS_SOURCE,
+    P_OUTLET,
     PIPE,
-    TRANSFER_MATRIX,
+    PT_INLET,
+    SPLITTER,
+    SUDDEN_AREA_CHANGE,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
-    ELEMENT_TYPE_NAMES,
+    TRANSFER_MATRIX,
+    WALL,
 )
-from nefes.assembly.assemble import residual, jacobian
 from nefes.elements.kernels import node_donor
+from nefes.shell.build import build_problem
 from nefes.solver import solve
+from nefes.solver.linear import col_scale, scaled_system
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_M
-from nefes.solver.linear import scaled_system, col_scale
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

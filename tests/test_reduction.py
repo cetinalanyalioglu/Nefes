@@ -12,15 +12,15 @@ import pytest
 from nefes.thermo import (
     EquilibriumSamplingReducer,
     NullReducer,
+    ReductionResult,
     SampleState,
+    SpeciesReducer,
     ThermoInp,
     available_reducers,
     equilibrate_HP,
     equilibrate_TP,
     get_reducer,
     register_reducer,
-    SpeciesReducer,
-    ReductionResult,
 )
 
 # Stoichiometric CH4/air elemental mass fractions (a convenient reusable burnt state).

@@ -18,10 +18,10 @@ be overlaid by passing lists.
 from itertools import cycle
 
 import numpy as np
-from ._deps import go, make_subplots
 
-from .theme import NEFES_TEMPLATE_NAME, COLORWAY
+from ._deps import go, make_subplots
 from .labels import mathify, tex
+from .theme import COLORWAY, NEFES_TEMPLATE_NAME
 
 # default per-index symbols by matrix size (used when no explicit labels given)
 _DEFAULT_LABELS = {2: ("f", "g"), 3: ("f", "g", "h")}

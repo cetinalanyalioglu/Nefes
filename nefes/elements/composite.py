@@ -27,7 +27,7 @@ from typing import Dict, FrozenSet, List, Optional, Tuple
 
 import numpy as np
 
-from .ids import FIXED_NPORTS, ELEMENT_TYPE_NAMES
+from .ids import ELEMENT_TYPE_NAMES, FIXED_NPORTS
 
 
 @dataclass

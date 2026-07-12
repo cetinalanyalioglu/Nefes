@@ -22,19 +22,19 @@ import warnings
 import numpy as np
 import pytest
 
-from nefes.shell import Network
+from nefes.assembly.recover import ES_C, ES_U
 from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_U, ES_C
 from nefes.perturbation import (
-    PerturbationBC,
-    eigenmodes,
+    DuctAcoustics,
     EigenmodeResult,
     EigenmodeWarning,
+    PerturbationBC,
+    eigenmodes,
     forced_response,
-    DuctAcoustics,
 )
-from nefes.perturbation.stability.contour import ellipse_contour, circle_contour, beyn, winding_count, lu_logdet_phase
+from nefes.perturbation.stability.contour import beyn, circle_contour, ellipse_contour, lu_logdet_phase, winding_count
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CFG = perfect_gas(R_AIR, GAMMA)
@@ -311,7 +311,7 @@ def test_assembly_fast_path_matches_reference():
     # the cached fixed-pattern A(omega) must equal the LIL reference to round-off, across
     # a flowing duct (entropy phase live) and a quiescent one (entropy decoupled), with and
     # without terminal closures, at real and complex omega.
-    from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+    from nefes.perturbation.operator.operator import _assemble_reference, assemble_acoustic, build_acoustic_blocks
 
     nets = [
         # flowing: reflecting ends, driven -> mean flow, so the entropy phase is omega-dependent
@@ -593,7 +593,7 @@ def test_certification_recovers_with_explicit_contour_and_tiny_probe():
 
 def test_isentropic_fast_path_matches_reference():
     # the fixed-pattern fast path must equal the reference assembly with isentropic on too.
-    from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic, _assemble_reference
+    from nefes.perturbation.operator.operator import _assemble_reference, assemble_acoustic, build_acoustic_blocks
 
     _, sol = _duct_net(
         PerturbationBC.reflection(0.7),
@@ -739,7 +739,9 @@ def test_low_mach_choked_nozzle_warns_not_crashes():
     recovers them -- so the honest outcome is uncertified, not a silent empty answer.
     """
     import warnings
+
     import numpy as np
+
     import nefes
     from nefes.elements import catalog as cat
 

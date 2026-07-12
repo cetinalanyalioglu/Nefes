@@ -13,17 +13,17 @@ forward machinery, then de-embed and compare:
 import numpy as np
 
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
-from nefes.elements.dynamic_source import n_tau, n_tau_flame, DynamicSource, DynamicResponseTerm
-from nefes.thermo.configure import perfect_gas
-from nefes.solver import solve
-from nefes.perturbation import perturbation_response, TransferMatrix
+from nefes.elements.dynamic_source import DynamicResponseTerm, DynamicSource, n_tau, n_tau_flame
+from nefes.perturbation import TransferMatrix, perturbation_response
 from nefes.perturbation.identify import (
-    identify_transfer_matrix,
-    identify_transfer_function,
     UnknownTransferMatrix,
+    identify_transfer_function,
+    identify_transfer_matrix,
     unknown_dynamic_source,
 )
+from nefes.shell.build import build_problem
+from nefes.solver import solve
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -200,6 +200,7 @@ def test_identify_rejects_degenerate_stations():
     """Identifying between a==b (same station) fails with a clear message, not a cryptic matmul error."""
     import numpy as np
     import pytest
+
     import nefes
     from nefes.elements import catalog as cat
     from nefes.elements import n_tau_flame

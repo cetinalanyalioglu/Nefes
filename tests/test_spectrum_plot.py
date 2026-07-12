@@ -4,14 +4,14 @@ import warnings
 
 import numpy as np
 
-from nefes.shell import Network
-from nefes.elements import catalog as cat
-from nefes.thermo.configure import perfect_gas
 from nefes.assembly.recover import ES_C
+from nefes.elements import catalog as cat
 from nefes.perturbation import PerturbationBC, eigenmodes
 from nefes.perturbation.stability.contour import ellipse_contour
 from nefes.plotting import plot_spectrum
 from nefes.plotting.spectrum import _contour_to_fg
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)
 LDUCT = 0.5

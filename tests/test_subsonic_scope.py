@@ -15,7 +15,6 @@ import pytest
 import nefes
 from nefes.elements import catalog as cat
 
-
 # The converging nozzle whose cold solve lands on the supersonic branch at this back pressure:
 # reservoir (2 bar) -> feed pipe -> isentropic contraction -> tailpipe -> 1.5 bar outlet.
 PT_IN, T_IN, P_OUT = 2.0e5, 300.0, 1.5e5

@@ -21,14 +21,14 @@ import numpy as np
 import pytest
 import yaml
 
-from nefes.shell import Network
+from nefes.assembly.recover import ES_C, ES_P, ES_RHO, ES_U
 from nefes.elements import catalog as cat
 from nefes.elements.ids import WALL
 from nefes.io import load_case
-from nefes.thermo.configure import perfect_gas, perfect_gas_passive_scalars
-from nefes.assembly.recover import ES_U, ES_C, ES_RHO, ES_P
-from nefes.perturbation import PerturbationBC, forced_response, CompositionalNoiseWarning
+from nefes.perturbation import CompositionalNoiseWarning, PerturbationBC, forced_response
 from nefes.perturbation.operator.characteristics import char_to_dq
+from nefes.shell import Network
+from nefes.thermo.configure import perfect_gas, perfect_gas_passive_scalars
 
 _EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 
@@ -736,8 +736,10 @@ def test_loader_builds_wall_element(tmp_path):
 def test_forced_response_warns_when_nothing_is_driven():
     """A frequency sweep with no driven terminal warns (the field is the trivial zero)."""
     import warnings
+
     import numpy as np
     import pytest
+
     import nefes
     from nefes.elements import catalog as cat
 

@@ -14,8 +14,8 @@ import os
 
 import pytest
 
-from nefes.chem.composition import enthalpy_mass, resolve_composition
 from nefes.assembly.recover import ES_HT, ES_MDOT, ES_T, ES_U
+from nefes.chem.composition import enthalpy_mass, resolve_composition
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
 from nefes.solver import solve
@@ -345,6 +345,7 @@ def test_reacting_low_level_initial_guess_never_zero_composition():
     reacting problem handed straight to the closure can be evaluated.
     """
     import numpy as np
+
     from nefes.solver.control import initial_guess
 
     prob = _ch4_air_reacting_network().compile()
@@ -355,6 +356,7 @@ def test_reacting_low_level_initial_guess_never_zero_composition():
 def test_perfect_gas_initial_guess_unchanged():
     """The non-reacting initial guess keeps its simple ``(3, E)`` form and still solves."""
     import numpy as np
+
     import nefes
 
     net = nefes.Network(

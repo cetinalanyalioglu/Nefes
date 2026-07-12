@@ -21,12 +21,12 @@ load or save cases with :func:`load_case` / :func:`save_case`.  The acoustic ana
 
 __version__ = "0.1.0"
 
-from .shell import Network, Solution, parameter_study, StudyResult
-from .io import load_case, load_solution, save_case, save_solution
-from .elements import catalog as cat
-from .thermo.configure import perfect_gas, equilibrium
-from .perturbation import PerturbationBC
 from .config import config
+from .elements import catalog as cat
+from .io import load_case, load_solution, save_case, save_solution
+from .perturbation import PerturbationBC
+from .shell import Network, Solution, StudyResult, parameter_study
+from .thermo.configure import equilibrium, perfect_gas
 
 __all__ = [
     "Network",

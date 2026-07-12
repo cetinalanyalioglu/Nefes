@@ -14,12 +14,12 @@ residual and Jacobian -- are independent of the warm start.
 import numpy as np
 import pytest
 
-from nefes.shell import Network
-from nefes.elements import catalog as cat
-from nefes.thermo.configure import equilibrium
-from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
-from nefes.chem.composition import equivalence_ratio_mixture
 from nefes.assembly import assemble
+from nefes.chem.composition import equivalence_ratio_mixture
+from nefes.elements import catalog as cat
+from nefes.shell import Network
+from nefes.thermo.api import EQ_FROZEN, EQ_KERNEL
+from nefes.thermo.configure import equilibrium
 
 thermo = pytest.importorskip("nefes.thermo")
 

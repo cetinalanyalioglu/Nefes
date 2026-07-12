@@ -10,11 +10,11 @@ from nefes.plotting import (
     FONT_FAMILY,
     NEFES_TEMPLATE_NAME,
     nefes_template,
-    use_nefes_theme,
     plot_complex_matrix,
-    plot_transfer_matrix,
     plot_scattering_matrix,
+    plot_transfer_matrix,
     scattering_axis_labels,
+    use_nefes_theme,
 )
 
 

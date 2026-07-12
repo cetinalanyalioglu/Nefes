@@ -36,22 +36,22 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 
-from .characteristics import dx_to_char, dq_to_dx, caloric_row
-from .matrices import partition
-from .verify import duct_nodes, verify_acoustic
-from .terminals import find_terminals
-from ...solver.report import states_table
-from ...assembly.recover import ES_RHO, ES_C, ES_U, ES_P, ES_AREA, ES_MDOT, ES_T, ES_HT
+from ...assembly.recover import ES_AREA, ES_C, ES_HT, ES_MDOT, ES_P, ES_RHO, ES_T, ES_U
 from ...elements.ids import (
     CAVITY,
     FLAME_HEAT_RELEASE,
     ISEN_AREA_CHANGE,
-    SUDDEN_AREA_CHANGE,
-    LOSS,
-    LINEAR_RESISTANCE,
     JUNCTION,
+    LINEAR_RESISTANCE,
+    LOSS,
     SPLITTER,
+    SUDDEN_AREA_CHANGE,
 )
+from ...solver.report import states_table
+from .characteristics import caloric_row, dq_to_dx, dx_to_char
+from .matrices import partition
+from .terminals import find_terminals
+from .verify import duct_nodes, verify_acoustic
 
 
 @dataclass

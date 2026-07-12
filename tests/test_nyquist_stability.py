@@ -21,17 +21,17 @@ import warnings
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_M
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
 from nefes.elements.dynamic_source import heat_release_response, n_tau_lowpass, tabulated
+from nefes.perturbation import eigenmodes, nyquist_stability, open_loop_response
 from nefes.perturbation.operator.boundary_bc import PerturbationBC
-from nefes.perturbation import open_loop_response, nyquist_stability, eigenmodes
-from nefes.perturbation.stability.nyquist import _rank1_terms, _passive_blocks
-from nefes.perturbation.operator.operator import build_acoustic_blocks, assemble_acoustic
+from nefes.perturbation.operator.operator import assemble_acoustic, build_acoustic_blocks
+from nefes.perturbation.stability.nyquist import _passive_blocks, _rank1_terms
+from nefes.shell.build import build_problem
 from nefes.solver import solve
 from nefes.solver.report import states_table
 from nefes.thermo.configure import perfect_gas
-from nefes.assembly.recover import ES_M
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -340,8 +340,8 @@ def test_passive_premise_holds_for_lossless_resonator():
 
 def _net_rijke(n, tau=3.0e-3):
     """Unsolved near-stagnant Rijke *network* with an n-tau flame -- the public sweep interface."""
-    from nefes.shell import Network
     from nefes.elements.dynamic_source import n_tau_flame
+    from nefes.shell import Network
 
     mdot, dT, area, L1, L2 = 0.001, 1000.0, 0.01, 0.25, 0.75
     net = Network(perfect_gas(R_AIR, GAMMA), p_ref=1.0e5, T_ref=300.0)
@@ -364,7 +364,7 @@ def test_stability_map_detects_the_ita_bifurcation():
     The count is the robust integer the contour eigensolver sprays artifacts around at mid-gain;
     the step (3 -> 2) and the margin collapse pin the stability boundary and its onset frequency.
     """
-    from nefes.perturbation import nyquist_stability_map, NyquistStabilityMap
+    from nefes.perturbation import NyquistStabilityMap, nyquist_stability_map
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -386,8 +386,8 @@ def test_stability_map_detects_the_ita_bifurcation():
 
 def test_stability_map_accepts_presolved_and_rejects_sourceless():
     """``build`` may return a solved solution; a network without a dynamic source is rejected."""
-    from nefes.shell import Network
     from nefes.perturbation import nyquist_stability_map
+    from nefes.shell import Network
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

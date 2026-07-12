@@ -10,29 +10,29 @@ to zero by the solver.
 
 from numba import njit
 
-from ..assembly.smooth import smooth_step, smooth_pos, smooth_abs, fischer_burmeister
-from ..assembly.recover import ES_MDOT, ES_P, ES_RHO, ES_U, ES_M, ES_PT, ES_AREA, ES_C
+from ..assembly.recover import ES_AREA, ES_C, ES_M, ES_MDOT, ES_P, ES_PT, ES_RHO, ES_U
+from ..assembly.smooth import fischer_burmeister, smooth_abs, smooth_pos, smooth_step
 from .ids import (
-    MASS_FLOW_INLET,
-    PT_INLET,
-    P_OUTLET,
-    MASS_FLOW_OUTLET,
-    CHOKED_NOZZLE_OUTLET,
-    WALL,
     CAVITY,
-    ISEN_AREA_CHANGE,
-    SUDDEN_AREA_CHANGE,
-    LOSS,
-    JUNCTION,
-    SPLITTER,
-    FORCED_SPLITTER,
+    CHOKED_NOZZLE_OUTLET,
     DUCT,
-    FLAME_HEAT_RELEASE,
     FLAME_EQUILIBRIUM,
-    MASS_SOURCE,
+    FLAME_HEAT_RELEASE,
+    FORCED_SPLITTER,
+    ISEN_AREA_CHANGE,
+    JUNCTION,
     LINEAR_RESISTANCE,
+    LOSS,
+    MASS_FLOW_INLET,
+    MASS_FLOW_OUTLET,
+    MASS_SOURCE,
+    P_OUTLET,
     PIPE,
+    PT_INLET,
+    SPLITTER,
+    SUDDEN_AREA_CHANGE,
     TRANSFER_MATRIX,
+    WALL,
 )
 
 

@@ -24,19 +24,19 @@ ships in the ``viz`` extra (``pip install nefes[viz]``).  Importing ``nefes.plot
 succeeds without Plotly; the missing-dependency error is deferred until a figure is built.
 """
 
-from .theme import COLORWAY, FONT_FAMILY, NEFES_TEMPLATE_NAME, nefes_template, use_nefes_theme
-from .labels import use_latex, latex_enabled, mathify, tex, detex, tex_text
 from .complex_matrix import (
     plot_complex_matrix,
-    plot_transfer_matrix,
     plot_scattering_matrix,
+    plot_transfer_matrix,
     scattering_axis_labels,
 )
-from .transfer_function import plot_transfer_function
 from .continuation import plot_fit, plot_pole_map
-from .spectrum import plot_spectrum, plot_mode_shape
-from .modeshape import animate_mode_shape, AnimSeries
+from .labels import detex, latex_enabled, mathify, tex, tex_text, use_latex
+from .modeshape import AnimSeries, animate_mode_shape
+from .spectrum import plot_mode_shape, plot_spectrum
+from .theme import COLORWAY, FONT_FAMILY, NEFES_TEMPLATE_NAME, nefes_template, use_nefes_theme
 from .topology import plot_network_topology
+from .transfer_function import plot_transfer_function
 
 __all__ = [
     "COLORWAY",

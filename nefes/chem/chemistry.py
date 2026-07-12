@@ -15,10 +15,10 @@ A perfect-gas edge carries no chemical species (its scalars, if any, are passive
 
 import numpy as np
 
-from ..assembly.recover import recover_all, NS_EST
-from ..thermo.api import PERFECT_GAS, EQ_KERNEL, EQ_MARKER
-from ..elements.ids import STREAM_INTRODUCING
+from ..assembly.recover import NS_EST, recover_all
 from ..elements.composite import is_composite
+from ..elements.ids import STREAM_INTRODUCING
+from ..thermo.api import EQ_KERNEL, EQ_MARKER, PERFECT_GAS
 from .composition import build_streams
 
 

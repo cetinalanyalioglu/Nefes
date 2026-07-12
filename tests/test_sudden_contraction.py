@@ -13,12 +13,12 @@ balance, so the loss is exact only to ``O(M^2)``; these tests run at modest Mach
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_M, ES_PT, ES_RHO, ES_U
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
-from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_RHO, ES_U, ES_M, ES_PT
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

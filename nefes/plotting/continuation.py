@@ -14,10 +14,10 @@ same ``(frequency, growth = -Im(omega))`` axes as :func:`nefes.plotting.plot_spe
 """
 
 import numpy as np
-from ._deps import go, make_subplots
 
-from .theme import NEFES_TEMPLATE_NAME, COLORWAY
+from ._deps import go, make_subplots
 from .labels import tex
+from .theme import COLORWAY, NEFES_TEMPLATE_NAME
 
 _DATA_COLOR = COLORWAY[1]  # orange markers for the tabulated samples
 _FIT_COLOR = COLORWAY[0]  # blue line for the continued curve

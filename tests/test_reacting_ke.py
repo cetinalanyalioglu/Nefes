@@ -19,7 +19,7 @@ import numpy as np
 import pytest
 
 from nefes.thermo.configure import equilibrium
-from nefes.thermo.edge_state import eq_kernel_state_ke_warm, eq_frozen_state_ke, eq_marker_state_ke_warm
+from nefes.thermo.edge_state import eq_frozen_state_ke, eq_kernel_state_ke_warm, eq_marker_state_ke_warm
 
 DATA = os.path.join(os.path.dirname(os.path.dirname(__file__)), "nefes", "thermo", "data")
 H2O2 = os.path.join(DATA, "h2o2.yaml")

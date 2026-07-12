@@ -11,23 +11,23 @@ acoustic 2x2 sub-block, and internal consistency (cascade composition, unitarity
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_AREA, ES_C, ES_RHO, ES_U
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem, build_problem_from_connectivity
+from nefes.elements.ids import STAMP_DEFAULT, STAMP_DUCT, STAMP_FLAME
 from nefes.graph.connectivity import build_connectivity
-from nefes.elements.ids import STAMP_DUCT, STAMP_DEFAULT, STAMP_FLAME
-from nefes.thermo.configure import perfect_gas
+from nefes.perturbation import (
+    TransferMatrixWarning,
+    assemble_acoustic,
+    build_acoustic_blocks,
+    find_terminals,
+    perturbation_response,
+    scattering_2port,
+    verify_acoustic,
+)
+from nefes.shell.build import build_problem, build_problem_from_connectivity
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_C, ES_U, ES_RHO, ES_AREA
-from nefes.perturbation import (
-    perturbation_response,
-    find_terminals,
-    build_acoustic_blocks,
-    assemble_acoustic,
-    verify_acoustic,
-    scattering_2port,
-    TransferMatrixWarning,
-)
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

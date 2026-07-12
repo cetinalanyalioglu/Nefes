@@ -14,13 +14,13 @@ compatible with the perturbation network (a finite multiport scattering matrix).
 import numpy as np
 import pytest
 
+from nefes.assembly.recover import ES_MDOT, ES_PT
 from nefes.elements import catalog as cat
+from nefes.perturbation import perturbation_response
 from nefes.shell.build import build_problem
-from nefes.thermo.configure import perfect_gas
 from nefes.solver import solve
 from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_MDOT, ES_PT
-from nefes.perturbation import perturbation_response
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)

@@ -10,12 +10,12 @@ supply ``mdot_ref`` / ``h_ref`` (auto-derived seeds, hidden but overridable).  T
 import numpy as np
 import pytest
 
+from nefes.assembly.scaling import compose_scales, measure_inflow_scales
 from nefes.elements import catalog as cat
 from nefes.shell.build import build_problem
-from nefes.thermo.configure import perfect_gas
 from nefes.shell.network import Network
 from nefes.solver import solve
-from nefes.assembly.scaling import compose_scales, measure_inflow_scales
+from nefes.thermo.configure import perfect_gas
 
 CFG = perfect_gas(287.0, 1.4)
 CP = 1.4 * 287.0 / 0.4

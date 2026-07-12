@@ -10,9 +10,9 @@ so the definition lives here to keep them decoupled.
 from dataclasses import dataclass
 from typing import List
 
-from ...solver.report import states_table
 from ...assembly.recover import ES_MDOT
 from ...elements.ids import BOUNDARY_RIDS
+from ...solver.report import states_table
 from .._meanstate import accepts_solution
 
 

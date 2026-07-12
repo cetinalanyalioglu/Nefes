@@ -12,15 +12,15 @@ import warnings
 import numpy as np
 import pytest
 
-from nefes.thermo.configure import perfect_gas
+from nefes.assembly.recover import ES_AREA, ES_M, ES_P, ES_PT, ES_RHO, ES_U
 from nefes.elements import catalog as cat
-from nefes.shell.build import build_problem
-from nefes.elements.composite import CompositeElementSpec, expand_composites, validate_composite, is_composite
-from nefes.solver import solve
-from nefes.solver.report import states_table
-from nefes.assembly.recover import ES_M, ES_P, ES_RHO, ES_U, ES_AREA, ES_PT
+from nefes.elements.composite import CompositeElementSpec, expand_composites, is_composite, validate_composite
 from nefes.perturbation import perturbation_response
 from nefes.shell import Network
+from nefes.shell.build import build_problem
+from nefes.solver import solve
+from nefes.solver.report import states_table
+from nefes.thermo.configure import perfect_gas
 
 R_AIR, GAMMA = 287.0, 1.4
 CP = GAMMA * R_AIR / (GAMMA - 1.0)
@@ -430,7 +430,7 @@ def test_tapered_duct_scattering_matrix_converges_with_refinement():
 
 
 def test_auto_refine_converges_on_a_fanno_pipe():
-    from nefes.elements.composite import auto_refine, GridRefinement
+    from nefes.elements.composite import GridRefinement, auto_refine
 
     def build(n):
         prob, x = _fanno(n)

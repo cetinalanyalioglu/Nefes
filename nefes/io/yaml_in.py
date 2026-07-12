@@ -567,7 +567,10 @@ def _build_ui_spec(node: dict):
     except KeyError:
         raise ValueError(f"unknown Nefes element type {ntype!r}")
     spec = builder(attrs)
+    # The loaded label is an explicit name (from the saved case), not a factory default: assigning it
+    # clears ``name_auto`` so the dedup keeps it verbatim instead of numbering it on reload.
     spec.name = str(attrs.get("label") or node.get("id") or ntype)
+    spec.name_auto = False
     if ntype in _BOUNDARY_TYPES:
         bc = _parse_perturbation_bc(attrs)
         if bc is not None:  # else keep the factory default

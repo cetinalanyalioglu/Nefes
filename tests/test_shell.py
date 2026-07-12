@@ -602,8 +602,8 @@ def test_network_repr_summarizes_topology_and_thermo():
     assert "mdot=0.5 kg/s (auto)" in text
     # element + edge listings with their names, and the dynamic-source marker on the flame
     assert "air-in" in text and "HeatReleaseFlame *" in text
-    # factory-default names are numbered from the start ("duct" -> "duct-1"); "pre-flame" is an explicit edge name
-    assert "duct-1 -> flame-1" in text and "pre-flame" in text
+    # explicitly chosen names are kept verbatim ("duct", "flame"); "pre-flame" is an explicit edge name
+    assert "duct -> flame" in text and "pre-flame" in text
     assert "carries a dynamic S(omega) source" in text
 
     html = net._repr_html_()

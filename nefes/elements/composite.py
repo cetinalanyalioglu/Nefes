@@ -70,6 +70,9 @@ class CompositeElementSpec:
     downstream_sub: int = -1
     kind: str = ""
     params: Dict[str, object] = field(default_factory=dict)
+    # True when ``name`` was left at the factory default; set by the catalog factory wrapper so the
+    # dedup pass numbers a lone default while keeping an explicitly chosen name bare.
+    name_auto: bool = field(default=False, compare=False, repr=False)
 
     @property
     def n_sub(self) -> int:

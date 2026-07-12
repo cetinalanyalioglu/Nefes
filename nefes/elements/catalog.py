@@ -9,7 +9,7 @@ import inspect
 import math
 import sys
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, wraps
 from typing import List, Optional
 
 from .composite import CompositeElementSpec
@@ -79,6 +79,10 @@ class ElementSpec:
     # ambient back pressure [Pa] a choked_nozzle_outlet discharges into; diagnostic only
     # (never read by a kernel), used post-solve to warn if the nozzle would not actually choke
     back_pressure: Optional[float] = None
+    # True when ``name`` was left at the factory default (not chosen by the caller); the dedup pass
+    # numbers a lone default ("duct" -> "duct-1") but keeps an explicitly chosen name bare.  Set by
+    # the factory wrapper, not the user; excluded from equality / repr.
+    name_auto: bool = field(default=False, compare=False, repr=False)
 
 
 def _validate_marker(marker, name):
@@ -1279,12 +1283,14 @@ def ensure_unique_names(elements: List[ElementSpec]) -> None:
         The network elements, in node order.  Mutated in place.
     """
     seen = set()
-    bases = default_name_bases()
     for el in elements:
         base = el.name or ""
-        # Factory defaults always start numbered ("inlet" -> "inlet-1"); user-chosen names keep
-        # their bare form and are suffixed only on an actual clash.
-        el.name = unique_name(base, seen, always_number=base in bases)
+        # A factory default always starts numbered ("inlet" -> "inlet-1"); a name the caller chose
+        # keeps its bare form and is suffixed only on an actual clash.  ``name_auto`` records which
+        # (set by the factory wrapper); a spec built directly, without it, counts as chosen.
+        el.name = unique_name(base, seen, always_number=getattr(el, "name_auto", False))
+        # The name is now concrete: clear the flag so a second pass over the same list is idempotent.
+        el.name_auto = False
         seen.add(el.name)
 
 
@@ -1323,16 +1329,55 @@ def default_name_bases() -> frozenset:
     """The set of factory-default element names, read from the catalog factory signatures.
 
     Every public factory here declares its default label as a ``name=`` keyword (``duct`` for
-    :func:`duct`, ``inlet`` for :func:`mass_flow_inlet`, ...).  Collecting those defaults lets the
-    dedup pass tell a factory default apart from a name the user chose, so only the defaults are
-    force-numbered.  Cached: the signatures are fixed at import.
+    :func:`duct`, ``inlet`` for :func:`mass_flow_inlet`, ...); this collects those defaults.
+    Informational -- the dedup pass numbers factory defaults off each spec's ``name_auto`` flag
+    (set by the factory wrapper), not off this set.  Cached: the signatures are fixed at import.
     """
     bases = set()
     module = sys.modules[__name__]
     for obj in vars(module).values():
-        if not (inspect.isfunction(obj) and obj.__module__ == __name__):
+        if not (inspect.isfunction(obj) and getattr(obj, "__module__", None) == __name__):
             continue
         param = inspect.signature(obj).parameters.get("name")
         if param is not None and isinstance(param.default, str) and param.default:
             bases.add(param.default)
     return frozenset(bases)
+
+
+def _track_default_name(factory):
+    """Wrap a catalog factory so its returned spec records whether ``name`` was defaulted.
+
+    When the caller does not pass ``name``, the returned spec's ``name_auto`` is set ``True``, so the
+    dedup pass (:func:`ensure_unique_names`, :meth:`nefes.shell.Network.add`) numbers a lone factory
+    default (``duct`` -> ``duct-1``) while leaving an explicitly chosen name bare.  A user-chosen name
+    equal to the default (``name="duct"``) is kept as-is when free.
+    """
+    sig = inspect.signature(factory)
+
+    @wraps(factory)
+    def wrapper(*args, **kwargs):
+        spec = factory(*args, **kwargs)
+        try:
+            explicit = "name" in sig.bind(*args, **kwargs).arguments
+        except TypeError:
+            explicit = "name" in kwargs
+        if hasattr(spec, "name_auto"):
+            spec.name_auto = not explicit
+        return spec
+
+    return wrapper
+
+
+def _install_default_name_tracking() -> None:
+    """Wrap every catalog factory (a module function with a defaulted string ``name=``) so a lone
+    factory default is numbered while an explicitly chosen name is kept.  Runs once at import."""
+    module = sys.modules[__name__]
+    for attr, obj in list(vars(module).items()):
+        if not (inspect.isfunction(obj) and obj.__module__ == __name__):
+            continue
+        param = inspect.signature(obj).parameters.get("name")
+        if param is not None and isinstance(param.default, str) and param.default:
+            setattr(module, attr, _track_default_name(obj))
+
+
+_install_default_name_tracking()

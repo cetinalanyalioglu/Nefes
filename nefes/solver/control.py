@@ -24,12 +24,20 @@ from typing import List
 import numpy as np
 
 from ..assembly.assemble import residual, jacobian
+from ..assembly.recover import ES_M
 from ..elements.ids import MASS_FLOW_INLET, PT_INLET, P_OUTLET, MASS_SOURCE, CHOKED_NOZZLE_OUTLET
 from ..thermo.api import thermo_state
 from ..thermo.api import EQ_KERNEL, PERFECT_GAS
 from ..assembly.scaling import compose_scales, measure_inflow_scales
+from ..config import config
 from .linear import newton_step, lm_step, scaled_system, col_scale, unflatten
-from .report import _Reporter
+from .report import _Reporter, states_table
+
+# Mach above which an edge is treated as genuinely supersonic (outside the subsonic scope)
+# rather than a smoothed sonic throat: the choking complementarity's Fischer-Burmeister floor
+# lets a choked edge sit a hair above M = 1, so the threshold clears that band while catching
+# the spurious supersonic branch (which runs well above it).
+SUPERSONIC_TOL = 1.01
 
 # Fischer-Burmeister smoothing width for the choking complementarity residual
 # (``fischer_burmeister(a, b, EPS_FB)`` in the area-change / pressure-outlet kernels).
@@ -128,6 +136,24 @@ def _choked_chamber_pressure(prob, node, edge_mdot, edge_ht, edge_xi):
     return pc if (np.isfinite(pc) and pc > 0.0) else None
 
 
+def _max_boundary_pressure(prob):
+    """Highest boundary or reference pressure in the network.
+
+    Seeding every edge at this near-stagnation pressure starts the whole flow at a low Mach
+    number, biasing the solve toward the physical subsonic branch -- the seed the subsonic-scope
+    re-solve uses to escape a spurious supersonic root.
+    """
+    ptr = np.asarray(prob.npar_fptr)
+    npar_f = np.asarray(prob.npar_f)
+    rid = np.asarray(prob.node_rid)
+    p_hi = float(prob.var_scale[1])  # the reference pressure
+    for n in range(prob.n_nodes):
+        r = int(rid[n])
+        if r == PT_INLET or r == P_OUTLET:  # both carry their spec pressure at offset 0
+            p_hi = max(p_hi, float(npar_f[int(ptr[n]) + 0]))
+    return p_hi
+
+
 def _boundary_pressure_seed(prob, edge_mdot, edge_ht, edge_xi, interior_default=None):
     """Per-edge static-pressure seed derived from the network's own boundary pressures.
 
@@ -179,7 +205,21 @@ def initial_guess(prob, mdot0=None, p0=None, h0=None, z0=None):
     network usually needs **per-edge** ``h0``/``z0``: an unburnt air edge and a
     burnt edge sit at very different ``(h_t, Z)``, so a single uniform guess can
     leave a frozen ``h -> T`` inversion or an equilibrium solve far from any root.
+    When the caller supplies no composition for a reacting network, this returns the
+    same feed-mixing seed :func:`solve` uses (via :func:`auto_initial_guess`) rather
+    than a zero-composition guess, which a reacting closure cannot evaluate (a mixture
+    of zero total mass has no temperature).
     """
+    # A reacting network seeded with zero composition is not evaluable -- the closure
+    # divides by the mixture's total moles -- so unless the caller pins the composition
+    # (z0), fall back to the physically-seeded per-edge guess solve() itself uses.
+    if prob.model_id == EQ_KERNEL and z0 is None:
+        x = auto_initial_guess(prob, mdot0=mdot0, p0=p0)
+        if h0 is not None:
+            x[2, :] = h0
+        if getattr(prob, "marker_row", -1) >= 0 and prob.marker_seed is not None:
+            x[prob.marker_row, :] = prob.marker_seed  # match solve()'s flood-fill marker seed
+        return x
     mdot_ref, p_ref, h_ref = prob.var_scale[0], prob.var_scale[1], prob.var_scale[2]
     x = np.zeros((prob.n_solve, prob.n_edges))
     x[0, :] = 0.05 * mdot_ref if mdot0 is None else mdot0
@@ -490,6 +530,7 @@ def solve(
     adaptive_scale=True,
     verbose=0,
     progress_interval=1,
+    enforce_subsonic=None,
 ):
     """Solve the steady mean flow.  Returns a SolveResult (state shape (3, E)).
 
@@ -531,6 +572,13 @@ def solve(
         each composition scalar) every ``progress_interval`` iterations within a stage.
     progress_interval : int, optional
         Iteration stride for the per-iteration prints at ``verbose >= 2``.
+    enforce_subsonic : bool or None, optional
+        Whether to keep the returned mean flow on the physical subsonic branch (the present
+        modeling scope).  ``None`` (default) follows the global ``nefes.config.enforce_subsonic``.
+        When active, a converged solution carrying a genuinely supersonic edge (a spurious branch
+        a cold start can reach) is re-solved once from a near-stagnation seed that lands the
+        subsonic branch; a warning is issued only if that re-solve cannot remove the supersonic
+        edge (so a real scope violation is never returned silently).
 
     Returns
     -------
@@ -591,4 +639,32 @@ def solve(
         if not converged and kappa == 0.0:
             reporter.failure(prob, x2d, kappa)
             break
+
+    # Subsonic-scope backstop.  The steady residual admits a spurious *supersonic* isentropic
+    # root beside the physical subsonic one at over-critical operating points, and a cold seed
+    # can land on it; the choking model is unaffected (a real throat still pins at M = 1).  When
+    # subsonic enforcement is on, a converged solution carrying a genuinely supersonic edge is
+    # re-solved once from a near-stagnation seed, which reliably reaches the subsonic branch.
+    enforce = config.enforce_subsonic if enforce_subsonic is None else bool(enforce_subsonic)
+    if enforce and converged:
+        m_max = float(np.max(np.abs(states_table(prob, x2d, caloric=False)[ES_M, :].real)))
+        if m_max > SUPERSONIC_TOL:
+            seed = initial_guess(prob, p0=_max_boundary_pressure(prob))  # low-Mach start
+            recov = solve(
+                prob, x0=seed, tol=tol, max_iter=max_iter, kappa_stages=kappa_stages,
+                kappa_scale=kappa_scale, adaptive_scale=adaptive_scale, enforce_subsonic=False,
+            )
+            rec_m = float(np.max(np.abs(states_table(prob, recov.x, caloric=False)[ES_M, :].real)))
+            if recov.converged and rec_m < m_max:
+                x2d, converged, norm = recov.x, recov.converged, recov.residual_norm
+                total_it += recov.iterations
+                m_max = rec_m
+            if m_max > SUPERSONIC_TOL:
+                warnings.warn(
+                    f"the steady solve carries a supersonic edge (max M = {m_max:.2f}); the "
+                    "subsonic-scope re-solve could not remove it. The flow may be genuinely "
+                    "supersonic, which is outside the present (subsonic) scope, or the case is "
+                    "ill-posed. Set nefes.config.enforce_subsonic = False to accept this branch.",
+                    stacklevel=2,
+                )
     return SolveResult(x=x2d, converged=converged, iterations=total_it, residual_norm=norm, history=history)

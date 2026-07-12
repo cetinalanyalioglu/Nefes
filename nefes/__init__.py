@@ -26,6 +26,7 @@ from .io import load_case, load_solution, save_case, save_solution
 from .elements import catalog as cat
 from .thermo.configure import perfect_gas, equilibrium
 from .perturbation import PerturbationBC
+from .config import config
 
 __all__ = [
     "Network",
@@ -40,4 +41,5 @@ __all__ = [
     "perfect_gas",
     "equilibrium",
     "PerturbationBC",
+    "config",
 ]

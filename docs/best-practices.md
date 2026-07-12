@@ -631,6 +631,8 @@ The residual `history` tells you which of two very different situations you are 
 
 High-pressure reacting cold-starts now converge on their own (the seed reads the boundary pressures), so warm-starting is an accelerant, not a necessity.
 
+**Subsonic scope is enforced automatically.** The steady rows admit a spurious *supersonic* isentropic branch beside the physical subsonic one, and a cold start can occasionally land on it. `solve()` guards against this: it detects a genuinely supersonic edge and re-solves once from a near-stagnation seed that reaches the subsonic branch, so a bare `net.solve()` returns the subsonic root with no hand-seeding (real choking is untouched — a throat still pins at M=1). It is on by default; opt out with `nefes.config.enforce_subsonic = False` (or `net.solve(enforce_subsonic=False)`) for the deferred supersonic work. If a case is *genuinely* supersonic in the mean, the re-solve cannot remove it and `solve()` warns rather than returning it silently.
+
 **When an acoustic analysis raises or will not certify**
 
 - *"non-subsonic / degenerate terminal"* or *"mean Mach >= 1"* — the mean flow is sonic somewhere and the plane-wave split is degenerate at M=1. Model a choked exit with the compact `choked_nozzle_outlet` (which never resolves the sonic point), not a resolved M=1 throat.

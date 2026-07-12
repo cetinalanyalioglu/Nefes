@@ -297,3 +297,71 @@ def test_reacting_recovery_never_raises_on_a_hard_cold_start():
         edge_models=[EQ_FROZEN, EQ_KERNEL],
     ).solve()  # must not raise
     assert sol.converged  # and with the boundary-pressure seed it also converges
+
+
+def _ch4_air_reacting_network():
+    import nefes
+    from nefes.chem import equivalence_ratio_mixture
+
+    lib = _ch4_air_lib()
+    mix = equivalence_ratio_mixture(lib, {"CH4": 1.0}, {"O2": 0.21, "N2": 0.79}, 1.0)
+    return nefes.Network(
+        nefes.equilibrium(lib),
+        nodes=[
+            cat.mass_flow_inlet(1.0, 300.0, composition=mix, name="feed"),
+            cat.equilibrium_flame(name="flame"),
+            cat.pressure_outlet(101325.0, 300.0, composition=mix, name="out"),
+        ],
+        edges=[(0, 1, 0.05), (1, 2, 0.05)],
+        edge_models=[EQ_FROZEN, EQ_KERNEL],
+    )
+
+
+def test_reacting_initial_guess_is_evaluable_and_solves():
+    """``net.initial_guess()`` on a reacting network is a usable seed, not a poisoned one.
+
+    The public initial guess must match the seed ``solve()`` itself uses: the composition
+    rows carry the feed mixture (never all zero, which a reacting closure cannot evaluate),
+    so ``solve(x0=net.initial_guess())`` converges to the same state as a bare ``solve()``.
+    """
+    import numpy as np
+
+    net = _ch4_air_reacting_network()
+
+    x0 = net.initial_guess()
+    assert x0.shape[0] > 3  # reacting: mass, pressure, enthalpy, then composition scalars
+    assert not np.allclose(x0[3:, :], 0.0)  # composition seeded from the feed, not zeros
+
+    sol_auto = net.solve()  # bare solve (uses auto_initial_guess internally)
+    sol_seed = net.solve(x0=net.initial_guess())  # must not raise, must converge
+    assert sol_auto.converged and sol_seed.converged
+    assert np.allclose(sol_auto.field("T"), sol_seed.field("T"), rtol=1e-8)
+
+
+def test_reacting_low_level_initial_guess_never_zero_composition():
+    """The low-level ``initial_guess(prob)`` is reacting-safe for any direct caller.
+
+    With no composition supplied it returns the feed-mixing seed rather than zeros, so a
+    reacting problem handed straight to the closure can be evaluated.
+    """
+    import numpy as np
+    from nefes.solver.control import initial_guess
+
+    prob = _ch4_air_reacting_network().compile()
+    x = initial_guess(prob)
+    assert not np.allclose(x[3:, :], 0.0)
+
+
+def test_perfect_gas_initial_guess_unchanged():
+    """The non-reacting initial guess keeps its simple ``(3, E)`` form and still solves."""
+    import numpy as np
+    import nefes
+
+    net = nefes.Network(
+        nodes=[cat.mass_flow_inlet(0.5, 300.0), cat.duct(0.3), cat.pressure_outlet(101325.0)],
+        edges=[(0, 1, 0.05), (1, 2, 0.05)],
+    )
+    x0 = net.initial_guess()
+    assert x0.shape[0] == 3  # perfect gas transports no composition scalars
+    assert net.solve(x0=x0).converged
+    assert np.all(x0[0, :] > 0.0)  # a small co-directional mass flow

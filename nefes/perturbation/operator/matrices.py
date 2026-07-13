@@ -314,6 +314,12 @@ _OMG = np.array([[0.5, 0.5], [0.5, -0.5]])  # (f, g) = OMG @ (p'/(rho c), u')
 def tm_pu_to_fg(tm_pu):
     """2x2 acoustic TM from ``(p'/(rho c), u')`` to ``(f, g)`` coordinates.
 
+    Both coordinate pairs follow this project's ordering: the state vector is
+    ``(p'/(rho c), u')`` with the pressure component first and the velocity
+    second, and the wave vector is ``(f, g)`` with the downstream acoustic wave
+    ``f`` first and the upstream acoustic wave ``g`` second. The two are related
+    by ``(f, g) = OMG @ (p'/(rho c), u')`` with ``OMG = [[0.5, 0.5], [0.5, -0.5]]``.
+
     Parameters
     ----------
     tm_pu : ndarray
@@ -331,6 +337,10 @@ def tm_pu_to_fg(tm_pu):
 
 def tm_fg_to_pu(tm_fg):
     """2x2 acoustic TM from ``(f, g)`` to ``(p'/(rho c), u')`` coordinates.
+
+    Ordering matches :func:`tm_pu_to_fg`: the wave vector is ``(f, g)`` (downstream
+    ``f`` first, upstream ``g`` second) and the state vector is ``(p'/(rho c), u')``
+    (pressure first, velocity second).
 
     Parameters
     ----------
@@ -350,6 +360,20 @@ def tm_fg_to_pu(tm_fg):
 def tm_fg_to_sm2(tm_fg):
     """Classic 2x2 acoustic scattering matrix from a 2x2 ``(f, g)`` transfer matrix.
 
+    The ordering is the classic duct-acoustics one, which differs from the
+    station-major convention of :func:`scattering_labels`. Here the incoming
+    waves are ``(f_a, g_b)`` (the downstream wave entering at the upstream face
+    ``a`` and the upstream wave entering at the downstream face ``b``) and the
+    outgoing waves are ``(f_b, g_a)`` (transmission out at ``b`` first, reflection
+    back at ``a`` second)::
+
+        (f_b, g_a) = S @ (f_a, g_b)
+
+    So row 0 is the transmitted downstream wave ``f_b`` and row 1 is the reflected
+    upstream wave ``g_a``; column 0 multiplies the upstream input ``f_a`` and
+    column 1 the downstream input ``g_b``. The entries are the textbook
+    ``[[t11 - t12 t21 / t22, t12 / t22], [-t21 / t22, 1 / t22]]``.
+
     Parameters
     ----------
     tm_fg : ndarray
@@ -358,7 +382,7 @@ def tm_fg_to_sm2(tm_fg):
     Returns
     -------
     ndarray
-        The 2x2 acoustic scattering matrix.
+        The 2x2 acoustic scattering matrix in the ``(f_a, g_b) -> (f_b, g_a)`` ordering.
     """
     M, was2d = _as_batch(tm_fg)
     S = np.zeros_like(M)

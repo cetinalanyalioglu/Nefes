@@ -132,6 +132,42 @@ It should be noted, however, that the reduction discards the entropy wave altoge
 Between any two stations the operator induces a two-port relation, and two equivalent forms of it are used.
 The *transfer matrix* $\mathbf{T}(f)$ relates the flow variables at the two stations along their arrows, $\mathbf{v}_{\text{down}} = \mathbf{T}\,\mathbf{v}_{\text{up}}$, while the *scattering matrix* $\boldsymbol{\mathcal{S}}(f)$ relates the incoming waves to the outgoing ones, $\mathbf{w}_{\text{out}} = \boldsymbol{\mathcal{S}}\,\mathbf{w}_{\text{in}}$; the two are inter-convertible closed-form rearrangements of the same information.
 Both may be expressed in any of several *flavors* — the characteristic amplitudes $(f, g, h)$, the velocity-normalized primitives, the network variables $(\widehat{\dot m}, \widehat{p}, \widehat{h}_t)$, or the Riemann normalization — which are non-singular rescalings of the wave amplitudes, so a matrix converts between flavors by a similarity built from the per-edge basis blocks.
+
+Because the row and column order of either matrix is an arbitrary choice, this project fixes it once and reports every matrix in that order.
+The transfer matrix uses, by default, the characteristic amplitudes of [characteristics](characteristics.md) as its variables, ordered downstream acoustic wave $\widehat{f}$, upstream acoustic wave $\widehat{g}$, then entropy/convected wave $\widehat{h}$, and relates the upstream station $a$ to the downstream station $b$ along their arrows:
+
+$$
+\begin{bmatrix} \widehat{f} \\ \widehat{g} \\ \widehat{h} \end{bmatrix}_{b}
+= \mathbf{T}(f)\,
+\begin{bmatrix} \widehat{f} \\ \widehat{g} \\ \widehat{h} \end{bmatrix}_{a}.
+$$
+
+Under the isentropic reduction the entropy row and column are dropped and the two-port acts on $(\widehat{f}, \widehat{g})$ alone.
+The other flavors keep this same ordering after their rescaling, so the primitive flavor reads $(\,\widehat{p}/\varrho c,\ \widehat{u},\ \widehat{\varrho}\, c/\varrho\,)$ with the pressure component first and the velocity second.
+
+The scattering matrix orders its waves by station and, within a station, by travel direction: the incoming waves are $a$'s downstream-running waves followed by $b$'s upstream-running waves, and the outgoing waves are $a$'s upstream-running waves followed by $b$'s downstream-running ones.
+For the reduced $(\widehat{f}, \widehat{g})$ acoustics this reads
+
+$$
+\begin{bmatrix} \widehat{g}_a \\ \widehat{f}_b \end{bmatrix}
+= \boldsymbol{\mathcal{S}}(f)\,
+\begin{bmatrix} \widehat{f}_a \\ \widehat{g}_b \end{bmatrix},
+$$
+
+so reflection at $a$ occupies the first row and transmission to $b$ the second.
+Written out, the four entries are the reflection and transmission coefficients of the two-port,
+
+$$
+\begin{bmatrix} \widehat{g}_a \\ \widehat{f}_b \end{bmatrix}
+=
+\begin{bmatrix} r_{+} & t_{-} \\ t_{+} & r_{-} \end{bmatrix}
+\begin{bmatrix} \widehat{f}_a \\ \widehat{g}_b \end{bmatrix},
+$$
+
+where the subscript records the travel direction of the *incoming* wave the coefficient acts on:
+$r_{+}$ reflects the downstream-incoming wave $\widehat{f}_a$ back into $\widehat{g}_a$ and $t_{+}$ transmits it through to $\widehat{f}_b$, while $r_{-}$ reflects the upstream-incoming wave $\widehat{g}_b$ back into $\widehat{f}_b$ and $t_{-}$ transmits it through to $\widehat{g}_a$.
+The classic duct-acoustics ordering, which places the transmitted wave $\widehat{f}_b$ in the first row and takes incoming $(\widehat{f}_a, \widehat{g}_b)$ to outgoing $(\widehat{f}_b, \widehat{g}_a)$, is kept only for round-trips with external two-port data and is not the default.
+
 An important remark is that a transfer matrix is a frequency-domain constraint between the two stations and **should not be interpreted as a causal input–output law**; it relates the linearized states at a frequency, nothing more.
 These two-port views are what the transfer-matrix element embeds (see [elements](elements.md)) and what the identification procedure recovers from data (tests: `test_transfer_scattering_round_trip`, `test_flavor_round_trip`, `test_quiescent_scattering_unitary`).
 

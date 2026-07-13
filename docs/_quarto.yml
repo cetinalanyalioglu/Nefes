@@ -42,6 +42,8 @@ website:
         text: Home
       - href: best-practices.md
         text: Best practices
+      - href: conventions.md
+        text: Conventions
       - section: "Theory"
         contents:
           - theory/overview.md

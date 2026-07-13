@@ -4,7 +4,7 @@ title: "Best practices"
 
 This document is the single source of truth for **how Nefes is meant to be used**, for human users and for agentic AI collaborators.
 Every code block here was checked against the actual signatures (line-cited to the source) and the runnable ones were executed.
-When in doubt, prefer the patterns in this document over anything found in older notebooks: the notebooks predate the public façade and are inconsistent (see "Anti-patterns" at the end).
+When in doubt, prefer the patterns in this document over anything found in older notebooks: the notebooks predate the current public API and are inconsistent (see "Anti-patterns" at the end).
 
 ## The golden rule
 

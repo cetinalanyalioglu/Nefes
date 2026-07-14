@@ -35,12 +35,14 @@ Each notebook opens with its network topology drawn by the **Nemo** UI, then bui
   checks the global **mass balance**, draws the network as a **Sankey**, and runs the
   **multiport scattering** perturbation layer with per-terminal source attribution.
 - **`can_annular_combustor.ipynb`** (+ **`can_annular_combustor.yaml`**) — the **reacting
-  showcase**: a whole can-annular combustor with its **secondary-air system**. One plenum
-  distributes compressor-discharge air to a **ring of eight reacting Jet-A(L) cans** (dome
-  swirl air, plus dilution and cooling air metered through liner holes by **flow splitting**)
-  and a turbine-cooling **bypass**; the cans are cross-linked by flame-tube **interconnectors**
-  (a **non-tree** ring) and collected through a **choked NGV** throat that sets the combustor
-  pressure. 79 elements / 109 edges, fully subsonic. Shows the mass-conserving air budget, an
+  showcase**: a whole can-annular combustor with its **secondary-air system**. One plenum (a
+  lossless **splitter**) distributes compressor-discharge air in two stages, through per-can
+  **distributor** splitters, to a **ring of eight reacting Jet-A(L) cans** (dome swirl air, plus
+  dilution and cooling air metered through liner holes by **flow splitting**) and a
+  turbine-cooling **bypass**; the delivery, feed, bypass, and interconnector lines are **pipes**
+  (Darcy friction), and the cans are cross-linked by flame-tube **interconnector pipes** (a
+  **non-tree** ring) and collected through a **choked NGV** throat that sets the combustor
+  pressure. 103 elements / 133 edges, fully subsonic. Shows the mass-conserving air budget, an
   axial profile through one can, the choked-throat
   pressure lever, **staged fuelling** driving emergent interconnector cross-flow, and
   turbine-inlet-temperature control. `plotly`, Nefes theme.

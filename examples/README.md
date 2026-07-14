@@ -37,10 +37,11 @@ Each notebook opens with its network topology drawn by the **Nemo** UI, then bui
 - **`can_annular_combustor.ipynb`** (+ **`can_annular_combustor.yaml`**) — the **reacting
   showcase**: a whole can-annular combustor with its **secondary-air system**. One plenum
   distributes compressor-discharge air to a **ring of eight reacting Jet-A(L) cans** (dome
-  swirl air, dilution and cooling along each liner) plus a turbine-cooling **bypass**; the
-  cans are cross-linked by flame-tube **interconnectors** (a **non-tree** ring) and collected
-  through a **choked NGV** throat that sets the combustor pressure. 63 elements / 77 edges,
-  fully subsonic. Shows the air budget, an axial profile through one can, the choked-throat
+  swirl air, plus dilution and cooling air metered through liner holes by **flow splitting**)
+  and a turbine-cooling **bypass**; the cans are cross-linked by flame-tube **interconnectors**
+  (a **non-tree** ring) and collected through a **choked NGV** throat that sets the combustor
+  pressure. 79 elements / 109 edges, fully subsonic. Shows the mass-conserving air budget, an
+  axial profile through one can, the choked-throat
   pressure lever, **staged fuelling** driving emergent interconnector cross-flow, and
   turbine-inlet-temperature control. `plotly`, Nefes theme.
 - **`huge_network_stress.ipynb`** — **generates** a 1000+ element network programmatically

@@ -1,5 +1,5 @@
 version: 2.0.0
-timestamp: '2026-07-14T02:11:13.734471+00:00'
+timestamp: '2026-07-14T16:24:48.781285+00:00'
 meta:
   title: Nefes case
 model:
@@ -43,7 +43,7 @@ model:
     attributes:
       label: plenum
       leftPorts: 1
-      rightPorts: 9
+      rightPorts: 25
       index: 2
   - id: LossElement_1
     type: LossElement
@@ -54,7 +54,7 @@ model:
   - id: PressureOutlet_1
     type: PressureOutlet
     attributes:
-      pressure: 1200000.0
+      pressure: 930000.0
       backflowTotalTemperature: 720.0
       label: turbine_cooling
       composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
@@ -76,13 +76,13 @@ model:
   - id: LossElement_2
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_0
       index: 7
   - id: MassSource_1
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_0
@@ -101,402 +101,450 @@ model:
       leftPorts: 2
       rightPorts: 2
       index: 10
-  - id: MassSource_2
-    type: MassSource
+  - id: LossElement_3
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
-      label: dilution_0
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
+      lossCoefficient: 5.0
+      label: dil_hole_0
       index: 11
-  - id: MassSource_3
-    type: MassSource
+  - id: JunctionStaticP_4
+    type: JunctionStaticP
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
-      label: cooling_0
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
+      label: dilution_0
+      leftPorts: 2
+      rightPorts: 1
       index: 12
+  - id: LossElement_4
+    type: LossElement
+    attributes:
+      lossCoefficient: 12.0
+      label: cool_hole_0
+      index: 13
+  - id: JunctionStaticP_5
+    type: JunctionStaticP
+    attributes:
+      label: cooling_0
+      leftPorts: 2
+      rightPorts: 1
+      index: 14
   - id: IsentropicAreaChange_1
     type: IsentropicAreaChange
     attributes:
       label: taper_0
-      index: 13
-  - id: LossElement_3
+      index: 15
+  - id: LossElement_5
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_1
-      index: 14
-  - id: MassSource_4
+      index: 16
+  - id: MassSource_2
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_1
       composition: Jet-A(L):1
       basis: mole
-      index: 15
+      index: 17
   - id: EquilibriumFlame_2
     type: EquilibriumFlame
     attributes:
       label: flame_1
-      index: 16
-  - id: JunctionStaticP_4
+      index: 18
+  - id: JunctionStaticP_6
     type: JunctionStaticP
     attributes:
       label: primary_1
       leftPorts: 2
       rightPorts: 2
-      index: 17
-  - id: MassSource_5
-    type: MassSource
-    attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
-      label: dilution_1
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 18
-  - id: MassSource_6
-    type: MassSource
-    attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
-      label: cooling_1
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
       index: 19
+  - id: LossElement_6
+    type: LossElement
+    attributes:
+      lossCoefficient: 5.0
+      label: dil_hole_1
+      index: 20
+  - id: JunctionStaticP_7
+    type: JunctionStaticP
+    attributes:
+      label: dilution_1
+      leftPorts: 2
+      rightPorts: 1
+      index: 21
+  - id: LossElement_7
+    type: LossElement
+    attributes:
+      lossCoefficient: 12.0
+      label: cool_hole_1
+      index: 22
+  - id: JunctionStaticP_8
+    type: JunctionStaticP
+    attributes:
+      label: cooling_1
+      leftPorts: 2
+      rightPorts: 1
+      index: 23
   - id: IsentropicAreaChange_2
     type: IsentropicAreaChange
     attributes:
       label: taper_1
-      index: 20
-  - id: LossElement_4
+      index: 24
+  - id: LossElement_8
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_2
-      index: 21
-  - id: MassSource_7
+      index: 25
+  - id: MassSource_3
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_2
       composition: Jet-A(L):1
       basis: mole
-      index: 22
+      index: 26
   - id: EquilibriumFlame_3
     type: EquilibriumFlame
     attributes:
       label: flame_2
-      index: 23
-  - id: JunctionStaticP_5
+      index: 27
+  - id: JunctionStaticP_9
     type: JunctionStaticP
     attributes:
       label: primary_2
       leftPorts: 2
       rightPorts: 2
-      index: 24
-  - id: MassSource_8
-    type: MassSource
+      index: 28
+  - id: LossElement_9
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 5.0
+      label: dil_hole_2
+      index: 29
+  - id: JunctionStaticP_10
+    type: JunctionStaticP
+    attributes:
       label: dilution_2
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 25
-  - id: MassSource_9
-    type: MassSource
+      leftPorts: 2
+      rightPorts: 1
+      index: 30
+  - id: LossElement_10
+    type: LossElement
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 12.0
+      label: cool_hole_2
+      index: 31
+  - id: JunctionStaticP_11
+    type: JunctionStaticP
+    attributes:
       label: cooling_2
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 26
+      leftPorts: 2
+      rightPorts: 1
+      index: 32
   - id: IsentropicAreaChange_3
     type: IsentropicAreaChange
     attributes:
       label: taper_2
-      index: 27
-  - id: LossElement_5
+      index: 33
+  - id: LossElement_11
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_3
-      index: 28
-  - id: MassSource_10
+      index: 34
+  - id: MassSource_4
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_3
       composition: Jet-A(L):1
       basis: mole
-      index: 29
+      index: 35
   - id: EquilibriumFlame_4
     type: EquilibriumFlame
     attributes:
       label: flame_3
-      index: 30
-  - id: JunctionStaticP_6
+      index: 36
+  - id: JunctionStaticP_12
     type: JunctionStaticP
     attributes:
       label: primary_3
       leftPorts: 2
       rightPorts: 2
-      index: 31
-  - id: MassSource_11
-    type: MassSource
+      index: 37
+  - id: LossElement_12
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 5.0
+      label: dil_hole_3
+      index: 38
+  - id: JunctionStaticP_13
+    type: JunctionStaticP
+    attributes:
       label: dilution_3
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 32
-  - id: MassSource_12
-    type: MassSource
+      leftPorts: 2
+      rightPorts: 1
+      index: 39
+  - id: LossElement_13
+    type: LossElement
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 12.0
+      label: cool_hole_3
+      index: 40
+  - id: JunctionStaticP_14
+    type: JunctionStaticP
+    attributes:
       label: cooling_3
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 33
+      leftPorts: 2
+      rightPorts: 1
+      index: 41
   - id: IsentropicAreaChange_4
     type: IsentropicAreaChange
     attributes:
       label: taper_3
-      index: 34
-  - id: LossElement_6
+      index: 42
+  - id: LossElement_14
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_4
-      index: 35
-  - id: MassSource_13
+      index: 43
+  - id: MassSource_5
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_4
       composition: Jet-A(L):1
       basis: mole
-      index: 36
+      index: 44
   - id: EquilibriumFlame_5
     type: EquilibriumFlame
     attributes:
       label: flame_4
-      index: 37
-  - id: JunctionStaticP_7
+      index: 45
+  - id: JunctionStaticP_15
     type: JunctionStaticP
     attributes:
       label: primary_4
       leftPorts: 2
       rightPorts: 2
-      index: 38
-  - id: MassSource_14
-    type: MassSource
+      index: 46
+  - id: LossElement_15
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 5.0
+      label: dil_hole_4
+      index: 47
+  - id: JunctionStaticP_16
+    type: JunctionStaticP
+    attributes:
       label: dilution_4
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 39
-  - id: MassSource_15
-    type: MassSource
+      leftPorts: 2
+      rightPorts: 1
+      index: 48
+  - id: LossElement_16
+    type: LossElement
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 12.0
+      label: cool_hole_4
+      index: 49
+  - id: JunctionStaticP_17
+    type: JunctionStaticP
+    attributes:
       label: cooling_4
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 40
+      leftPorts: 2
+      rightPorts: 1
+      index: 50
   - id: IsentropicAreaChange_5
     type: IsentropicAreaChange
     attributes:
       label: taper_4
-      index: 41
-  - id: LossElement_7
+      index: 51
+  - id: LossElement_17
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_5
-      index: 42
-  - id: MassSource_16
+      index: 52
+  - id: MassSource_6
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_5
       composition: Jet-A(L):1
       basis: mole
-      index: 43
+      index: 53
   - id: EquilibriumFlame_6
     type: EquilibriumFlame
     attributes:
       label: flame_5
-      index: 44
-  - id: JunctionStaticP_8
+      index: 54
+  - id: JunctionStaticP_18
     type: JunctionStaticP
     attributes:
       label: primary_5
       leftPorts: 2
       rightPorts: 2
-      index: 45
-  - id: MassSource_17
-    type: MassSource
+      index: 55
+  - id: LossElement_18
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 5.0
+      label: dil_hole_5
+      index: 56
+  - id: JunctionStaticP_19
+    type: JunctionStaticP
+    attributes:
       label: dilution_5
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 46
-  - id: MassSource_18
-    type: MassSource
+      leftPorts: 2
+      rightPorts: 1
+      index: 57
+  - id: LossElement_19
+    type: LossElement
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 12.0
+      label: cool_hole_5
+      index: 58
+  - id: JunctionStaticP_20
+    type: JunctionStaticP
+    attributes:
       label: cooling_5
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 47
+      leftPorts: 2
+      rightPorts: 1
+      index: 59
   - id: IsentropicAreaChange_6
     type: IsentropicAreaChange
     attributes:
       label: taper_5
-      index: 48
-  - id: LossElement_8
+      index: 60
+  - id: LossElement_20
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_6
-      index: 49
-  - id: MassSource_19
+      index: 61
+  - id: MassSource_7
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_6
       composition: Jet-A(L):1
       basis: mole
-      index: 50
+      index: 62
   - id: EquilibriumFlame_7
     type: EquilibriumFlame
     attributes:
       label: flame_6
-      index: 51
-  - id: JunctionStaticP_9
+      index: 63
+  - id: JunctionStaticP_21
     type: JunctionStaticP
     attributes:
       label: primary_6
       leftPorts: 2
       rightPorts: 2
-      index: 52
-  - id: MassSource_20
-    type: MassSource
+      index: 64
+  - id: LossElement_21
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 5.0
+      label: dil_hole_6
+      index: 65
+  - id: JunctionStaticP_22
+    type: JunctionStaticP
+    attributes:
       label: dilution_6
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 53
-  - id: MassSource_21
-    type: MassSource
+      leftPorts: 2
+      rightPorts: 1
+      index: 66
+  - id: LossElement_22
+    type: LossElement
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 12.0
+      label: cool_hole_6
+      index: 67
+  - id: JunctionStaticP_23
+    type: JunctionStaticP
+    attributes:
       label: cooling_6
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 54
+      leftPorts: 2
+      rightPorts: 1
+      index: 68
   - id: IsentropicAreaChange_7
     type: IsentropicAreaChange
     attributes:
       label: taper_6
-      index: 55
-  - id: LossElement_9
+      index: 69
+  - id: LossElement_23
     type: LossElement
     attributes:
-      lossCoefficient: 6.0
+      lossCoefficient: 10.0
       label: swirl_7
-      index: 56
-  - id: MassSource_22
+      index: 70
+  - id: MassSource_8
     type: MassSource
     attributes:
-      massFlowRate: 0.03727473010558141
+      massFlowRate: 0.030372002308251517
       injectionVelocity: 0.0
       injectionTemperature: 720.0
       label: fuel_7
       composition: Jet-A(L):1
       basis: mole
-      index: 57
+      index: 71
   - id: EquilibriumFlame_8
     type: EquilibriumFlame
     attributes:
       label: flame_7
-      index: 58
-  - id: JunctionStaticP_10
+      index: 72
+  - id: JunctionStaticP_24
     type: JunctionStaticP
     attributes:
       label: primary_7
       leftPorts: 2
       rightPorts: 2
-      index: 59
-  - id: MassSource_23
-    type: MassSource
+      index: 73
+  - id: LossElement_24
+    type: LossElement
     attributes:
-      massFlowRate: 0.405
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 5.0
+      label: dil_hole_7
+      index: 74
+  - id: JunctionStaticP_25
+    type: JunctionStaticP
+    attributes:
       label: dilution_7
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 60
-  - id: MassSource_24
-    type: MassSource
+      leftPorts: 2
+      rightPorts: 1
+      index: 75
+  - id: LossElement_25
+    type: LossElement
     attributes:
-      massFlowRate: 0.18225
-      injectionVelocity: 0.0
-      injectionTemperature: 720.0
+      lossCoefficient: 12.0
+      label: cool_hole_7
+      index: 76
+  - id: JunctionStaticP_26
+    type: JunctionStaticP
+    attributes:
       label: cooling_7
-      composition: O2:0.2095, N2:0.7808, Ar:0.0093, CO2:0.0004
-      basis: mole
-      index: 61
+      leftPorts: 2
+      rightPorts: 1
+      index: 77
   - id: IsentropicAreaChange_8
     type: IsentropicAreaChange
     attributes:
       label: taper_7
-      index: 62
+      index: 78
   edges:
   - id: edge_1
     source: MassFlowInlet_1
@@ -588,9 +636,9 @@ model:
       thermoModel: equilibrium
   - id: edge_9
     source: JunctionStaticP_3
-    target: MassSource_2
+    target: JunctionStaticP_4
     sourceHandle: JunctionStaticP_3-port-2
-    targetHandle: MassSource_2-port-0
+    targetHandle: JunctionStaticP_4-port-0
     type: flow
     attributes:
       label: e8
@@ -598,10 +646,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_10
-    source: MassSource_2
-    target: MassSource_3
-    sourceHandle: MassSource_2-port-1
-    targetHandle: MassSource_3-port-0
+    source: JunctionStaticP_4
+    target: JunctionStaticP_5
+    sourceHandle: JunctionStaticP_4-port-2
+    targetHandle: JunctionStaticP_5-port-0
     type: flow
     attributes:
       label: e9
@@ -609,9 +657,9 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_11
-    source: MassSource_3
+    source: JunctionStaticP_5
     target: IsentropicAreaChange_1
-    sourceHandle: MassSource_3-port-1
+    sourceHandle: JunctionStaticP_5-port-2
     targetHandle: IsentropicAreaChange_1-port-0
     type: flow
     attributes:
@@ -643,174 +691,174 @@ model:
       thermoModel: frozen
   - id: edge_14
     source: LossElement_3
-    target: MassSource_4
+    target: JunctionStaticP_4
     sourceHandle: LossElement_3-port-1
-    targetHandle: MassSource_4-port-0
+    targetHandle: JunctionStaticP_4-port-1
     type: flow
     attributes:
       label: e13
       index: 13
-      area: 0.01
+      area: 0.004
       thermoModel: frozen
   - id: edge_15
-    source: MassSource_4
-    target: EquilibriumFlame_2
-    sourceHandle: MassSource_4-port-1
-    targetHandle: EquilibriumFlame_2-port-0
-    type: flow
-    attributes:
-      label: e14
-      index: 14
-      area: 0.01
-      thermoModel: frozen
-  - id: edge_16
-    source: EquilibriumFlame_2
-    target: JunctionStaticP_4
-    sourceHandle: EquilibriumFlame_2-port-1
-    targetHandle: JunctionStaticP_4-port-0
-    type: flow
-    attributes:
-      label: e15
-      index: 15
-      area: 0.01
-      thermoModel: equilibrium
-  - id: edge_17
-    source: JunctionStaticP_4
-    target: MassSource_5
-    sourceHandle: JunctionStaticP_4-port-2
-    targetHandle: MassSource_5-port-0
-    type: flow
-    attributes:
-      label: e16
-      index: 16
-      area: 0.012
-      thermoModel: equilibrium
-  - id: edge_18
-    source: MassSource_5
-    target: MassSource_6
-    sourceHandle: MassSource_5-port-1
-    targetHandle: MassSource_6-port-0
-    type: flow
-    attributes:
-      label: e17
-      index: 17
-      area: 0.012
-      thermoModel: equilibrium
-  - id: edge_19
-    source: MassSource_6
-    target: IsentropicAreaChange_2
-    sourceHandle: MassSource_6-port-1
-    targetHandle: IsentropicAreaChange_2-port-0
-    type: flow
-    attributes:
-      label: e18
-      index: 18
-      area: 0.012
-      thermoModel: equilibrium
-  - id: edge_20
-    source: IsentropicAreaChange_2
-    target: JunctionStaticP_2
-    sourceHandle: IsentropicAreaChange_2-port-1
-    targetHandle: JunctionStaticP_2-port-1
-    type: flow
-    attributes:
-      label: e19
-      index: 19
-      area: 0.008
-      thermoModel: equilibrium
-  - id: edge_21
     source: JunctionStaticP_1
     target: LossElement_4
     sourceHandle: JunctionStaticP_1-port-4
     targetHandle: LossElement_4-port-0
     type: flow
     attributes:
-      label: e20
-      index: 20
-      area: 0.004
+      label: e14
+      index: 14
+      area: 0.003
       thermoModel: frozen
-  - id: edge_22
+  - id: edge_16
     source: LossElement_4
-    target: MassSource_7
-    sourceHandle: LossElement_4-port-1
-    targetHandle: MassSource_7-port-0
-    type: flow
-    attributes:
-      label: e21
-      index: 21
-      area: 0.01
-      thermoModel: frozen
-  - id: edge_23
-    source: MassSource_7
-    target: EquilibriumFlame_3
-    sourceHandle: MassSource_7-port-1
-    targetHandle: EquilibriumFlame_3-port-0
-    type: flow
-    attributes:
-      label: e22
-      index: 22
-      area: 0.01
-      thermoModel: frozen
-  - id: edge_24
-    source: EquilibriumFlame_3
     target: JunctionStaticP_5
-    sourceHandle: EquilibriumFlame_3-port-1
-    targetHandle: JunctionStaticP_5-port-0
+    sourceHandle: LossElement_4-port-1
+    targetHandle: JunctionStaticP_5-port-1
     type: flow
     attributes:
-      label: e23
-      index: 23
-      area: 0.01
-      thermoModel: equilibrium
-  - id: edge_25
-    source: JunctionStaticP_5
-    target: MassSource_8
-    sourceHandle: JunctionStaticP_5-port-2
-    targetHandle: MassSource_8-port-0
-    type: flow
-    attributes:
-      label: e24
-      index: 24
-      area: 0.012
-      thermoModel: equilibrium
-  - id: edge_26
-    source: MassSource_8
-    target: MassSource_9
-    sourceHandle: MassSource_8-port-1
-    targetHandle: MassSource_9-port-0
-    type: flow
-    attributes:
-      label: e25
-      index: 25
-      area: 0.012
-      thermoModel: equilibrium
-  - id: edge_27
-    source: MassSource_9
-    target: IsentropicAreaChange_3
-    sourceHandle: MassSource_9-port-1
-    targetHandle: IsentropicAreaChange_3-port-0
-    type: flow
-    attributes:
-      label: e26
-      index: 26
-      area: 0.012
-      thermoModel: equilibrium
-  - id: edge_28
-    source: IsentropicAreaChange_3
-    target: JunctionStaticP_2
-    sourceHandle: IsentropicAreaChange_3-port-1
-    targetHandle: JunctionStaticP_2-port-2
-    type: flow
-    attributes:
-      label: e27
-      index: 27
-      area: 0.008
-      thermoModel: equilibrium
-  - id: edge_29
+      label: e15
+      index: 15
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_17
     source: JunctionStaticP_1
     target: LossElement_5
     sourceHandle: JunctionStaticP_1-port-5
     targetHandle: LossElement_5-port-0
+    type: flow
+    attributes:
+      label: e16
+      index: 16
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_18
+    source: LossElement_5
+    target: MassSource_2
+    sourceHandle: LossElement_5-port-1
+    targetHandle: MassSource_2-port-0
+    type: flow
+    attributes:
+      label: e17
+      index: 17
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_19
+    source: MassSource_2
+    target: EquilibriumFlame_2
+    sourceHandle: MassSource_2-port-1
+    targetHandle: EquilibriumFlame_2-port-0
+    type: flow
+    attributes:
+      label: e18
+      index: 18
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_20
+    source: EquilibriumFlame_2
+    target: JunctionStaticP_6
+    sourceHandle: EquilibriumFlame_2-port-1
+    targetHandle: JunctionStaticP_6-port-0
+    type: flow
+    attributes:
+      label: e19
+      index: 19
+      area: 0.01
+      thermoModel: equilibrium
+  - id: edge_21
+    source: JunctionStaticP_6
+    target: JunctionStaticP_7
+    sourceHandle: JunctionStaticP_6-port-2
+    targetHandle: JunctionStaticP_7-port-0
+    type: flow
+    attributes:
+      label: e20
+      index: 20
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_22
+    source: JunctionStaticP_7
+    target: JunctionStaticP_8
+    sourceHandle: JunctionStaticP_7-port-2
+    targetHandle: JunctionStaticP_8-port-0
+    type: flow
+    attributes:
+      label: e21
+      index: 21
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_23
+    source: JunctionStaticP_8
+    target: IsentropicAreaChange_2
+    sourceHandle: JunctionStaticP_8-port-2
+    targetHandle: IsentropicAreaChange_2-port-0
+    type: flow
+    attributes:
+      label: e22
+      index: 22
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_24
+    source: IsentropicAreaChange_2
+    target: JunctionStaticP_2
+    sourceHandle: IsentropicAreaChange_2-port-1
+    targetHandle: JunctionStaticP_2-port-1
+    type: flow
+    attributes:
+      label: e23
+      index: 23
+      area: 0.008
+      thermoModel: equilibrium
+  - id: edge_25
+    source: JunctionStaticP_1
+    target: LossElement_6
+    sourceHandle: JunctionStaticP_1-port-6
+    targetHandle: LossElement_6-port-0
+    type: flow
+    attributes:
+      label: e24
+      index: 24
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_26
+    source: LossElement_6
+    target: JunctionStaticP_7
+    sourceHandle: LossElement_6-port-1
+    targetHandle: JunctionStaticP_7-port-1
+    type: flow
+    attributes:
+      label: e25
+      index: 25
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_27
+    source: JunctionStaticP_1
+    target: LossElement_7
+    sourceHandle: JunctionStaticP_1-port-7
+    targetHandle: LossElement_7-port-0
+    type: flow
+    attributes:
+      label: e26
+      index: 26
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_28
+    source: LossElement_7
+    target: JunctionStaticP_8
+    sourceHandle: LossElement_7-port-1
+    targetHandle: JunctionStaticP_8-port-1
+    type: flow
+    attributes:
+      label: e27
+      index: 27
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_29
+    source: JunctionStaticP_1
+    target: LossElement_8
+    sourceHandle: JunctionStaticP_1-port-8
+    targetHandle: LossElement_8-port-0
     type: flow
     attributes:
       label: e28
@@ -818,10 +866,10 @@ model:
       area: 0.004
       thermoModel: frozen
   - id: edge_30
-    source: LossElement_5
-    target: MassSource_10
-    sourceHandle: LossElement_5-port-1
-    targetHandle: MassSource_10-port-0
+    source: LossElement_8
+    target: MassSource_3
+    sourceHandle: LossElement_8-port-1
+    targetHandle: MassSource_3-port-0
     type: flow
     attributes:
       label: e29
@@ -829,10 +877,10 @@ model:
       area: 0.01
       thermoModel: frozen
   - id: edge_31
-    source: MassSource_10
-    target: EquilibriumFlame_4
-    sourceHandle: MassSource_10-port-1
-    targetHandle: EquilibriumFlame_4-port-0
+    source: MassSource_3
+    target: EquilibriumFlame_3
+    sourceHandle: MassSource_3-port-1
+    targetHandle: EquilibriumFlame_3-port-0
     type: flow
     attributes:
       label: e30
@@ -840,10 +888,10 @@ model:
       area: 0.01
       thermoModel: frozen
   - id: edge_32
-    source: EquilibriumFlame_4
-    target: JunctionStaticP_6
-    sourceHandle: EquilibriumFlame_4-port-1
-    targetHandle: JunctionStaticP_6-port-0
+    source: EquilibriumFlame_3
+    target: JunctionStaticP_9
+    sourceHandle: EquilibriumFlame_3-port-1
+    targetHandle: JunctionStaticP_9-port-0
     type: flow
     attributes:
       label: e31
@@ -851,10 +899,10 @@ model:
       area: 0.01
       thermoModel: equilibrium
   - id: edge_33
-    source: JunctionStaticP_6
-    target: MassSource_11
-    sourceHandle: JunctionStaticP_6-port-2
-    targetHandle: MassSource_11-port-0
+    source: JunctionStaticP_9
+    target: JunctionStaticP_10
+    sourceHandle: JunctionStaticP_9-port-2
+    targetHandle: JunctionStaticP_10-port-0
     type: flow
     attributes:
       label: e32
@@ -862,10 +910,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_34
-    source: MassSource_11
-    target: MassSource_12
-    sourceHandle: MassSource_11-port-1
-    targetHandle: MassSource_12-port-0
+    source: JunctionStaticP_10
+    target: JunctionStaticP_11
+    sourceHandle: JunctionStaticP_10-port-2
+    targetHandle: JunctionStaticP_11-port-0
     type: flow
     attributes:
       label: e33
@@ -873,10 +921,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_35
-    source: MassSource_12
-    target: IsentropicAreaChange_4
-    sourceHandle: MassSource_12-port-1
-    targetHandle: IsentropicAreaChange_4-port-0
+    source: JunctionStaticP_11
+    target: IsentropicAreaChange_3
+    sourceHandle: JunctionStaticP_11-port-2
+    targetHandle: IsentropicAreaChange_3-port-0
     type: flow
     attributes:
       label: e34
@@ -884,10 +932,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_36
-    source: IsentropicAreaChange_4
+    source: IsentropicAreaChange_3
     target: JunctionStaticP_2
-    sourceHandle: IsentropicAreaChange_4-port-1
-    targetHandle: JunctionStaticP_2-port-3
+    sourceHandle: IsentropicAreaChange_3-port-1
+    targetHandle: JunctionStaticP_2-port-2
     type: flow
     attributes:
       label: e35
@@ -896,9 +944,9 @@ model:
       thermoModel: equilibrium
   - id: edge_37
     source: JunctionStaticP_1
-    target: LossElement_6
-    sourceHandle: JunctionStaticP_1-port-6
-    targetHandle: LossElement_6-port-0
+    target: LossElement_9
+    sourceHandle: JunctionStaticP_1-port-9
+    targetHandle: LossElement_9-port-0
     type: flow
     attributes:
       label: e36
@@ -906,175 +954,175 @@ model:
       area: 0.004
       thermoModel: frozen
   - id: edge_38
-    source: LossElement_6
-    target: MassSource_13
-    sourceHandle: LossElement_6-port-1
-    targetHandle: MassSource_13-port-0
+    source: LossElement_9
+    target: JunctionStaticP_10
+    sourceHandle: LossElement_9-port-1
+    targetHandle: JunctionStaticP_10-port-1
     type: flow
     attributes:
       label: e37
       index: 37
-      area: 0.01
+      area: 0.004
       thermoModel: frozen
   - id: edge_39
-    source: MassSource_13
-    target: EquilibriumFlame_5
-    sourceHandle: MassSource_13-port-1
-    targetHandle: EquilibriumFlame_5-port-0
+    source: JunctionStaticP_1
+    target: LossElement_10
+    sourceHandle: JunctionStaticP_1-port-10
+    targetHandle: LossElement_10-port-0
     type: flow
     attributes:
       label: e38
       index: 38
-      area: 0.01
+      area: 0.003
       thermoModel: frozen
   - id: edge_40
-    source: EquilibriumFlame_5
-    target: JunctionStaticP_7
-    sourceHandle: EquilibriumFlame_5-port-1
-    targetHandle: JunctionStaticP_7-port-0
+    source: LossElement_10
+    target: JunctionStaticP_11
+    sourceHandle: LossElement_10-port-1
+    targetHandle: JunctionStaticP_11-port-1
     type: flow
     attributes:
       label: e39
       index: 39
-      area: 0.01
-      thermoModel: equilibrium
+      area: 0.003
+      thermoModel: frozen
   - id: edge_41
-    source: JunctionStaticP_7
-    target: MassSource_14
-    sourceHandle: JunctionStaticP_7-port-2
-    targetHandle: MassSource_14-port-0
+    source: JunctionStaticP_1
+    target: LossElement_11
+    sourceHandle: JunctionStaticP_1-port-11
+    targetHandle: LossElement_11-port-0
     type: flow
     attributes:
       label: e40
       index: 40
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.004
+      thermoModel: frozen
   - id: edge_42
-    source: MassSource_14
-    target: MassSource_15
-    sourceHandle: MassSource_14-port-1
-    targetHandle: MassSource_15-port-0
+    source: LossElement_11
+    target: MassSource_4
+    sourceHandle: LossElement_11-port-1
+    targetHandle: MassSource_4-port-0
     type: flow
     attributes:
       label: e41
       index: 41
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.01
+      thermoModel: frozen
   - id: edge_43
-    source: MassSource_15
-    target: IsentropicAreaChange_5
-    sourceHandle: MassSource_15-port-1
-    targetHandle: IsentropicAreaChange_5-port-0
+    source: MassSource_4
+    target: EquilibriumFlame_4
+    sourceHandle: MassSource_4-port-1
+    targetHandle: EquilibriumFlame_4-port-0
     type: flow
     attributes:
       label: e42
       index: 42
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.01
+      thermoModel: frozen
   - id: edge_44
-    source: IsentropicAreaChange_5
-    target: JunctionStaticP_2
-    sourceHandle: IsentropicAreaChange_5-port-1
-    targetHandle: JunctionStaticP_2-port-4
+    source: EquilibriumFlame_4
+    target: JunctionStaticP_12
+    sourceHandle: EquilibriumFlame_4-port-1
+    targetHandle: JunctionStaticP_12-port-0
     type: flow
     attributes:
       label: e43
       index: 43
-      area: 0.008
+      area: 0.01
       thermoModel: equilibrium
   - id: edge_45
-    source: JunctionStaticP_1
-    target: LossElement_7
-    sourceHandle: JunctionStaticP_1-port-7
-    targetHandle: LossElement_7-port-0
+    source: JunctionStaticP_12
+    target: JunctionStaticP_13
+    sourceHandle: JunctionStaticP_12-port-2
+    targetHandle: JunctionStaticP_13-port-0
     type: flow
     attributes:
       label: e44
       index: 44
-      area: 0.004
-      thermoModel: frozen
+      area: 0.012
+      thermoModel: equilibrium
   - id: edge_46
-    source: LossElement_7
-    target: MassSource_16
-    sourceHandle: LossElement_7-port-1
-    targetHandle: MassSource_16-port-0
+    source: JunctionStaticP_13
+    target: JunctionStaticP_14
+    sourceHandle: JunctionStaticP_13-port-2
+    targetHandle: JunctionStaticP_14-port-0
     type: flow
     attributes:
       label: e45
       index: 45
-      area: 0.01
-      thermoModel: frozen
+      area: 0.012
+      thermoModel: equilibrium
   - id: edge_47
-    source: MassSource_16
-    target: EquilibriumFlame_6
-    sourceHandle: MassSource_16-port-1
-    targetHandle: EquilibriumFlame_6-port-0
+    source: JunctionStaticP_14
+    target: IsentropicAreaChange_4
+    sourceHandle: JunctionStaticP_14-port-2
+    targetHandle: IsentropicAreaChange_4-port-0
     type: flow
     attributes:
       label: e46
       index: 46
-      area: 0.01
-      thermoModel: frozen
+      area: 0.012
+      thermoModel: equilibrium
   - id: edge_48
-    source: EquilibriumFlame_6
-    target: JunctionStaticP_8
-    sourceHandle: EquilibriumFlame_6-port-1
-    targetHandle: JunctionStaticP_8-port-0
+    source: IsentropicAreaChange_4
+    target: JunctionStaticP_2
+    sourceHandle: IsentropicAreaChange_4-port-1
+    targetHandle: JunctionStaticP_2-port-3
     type: flow
     attributes:
       label: e47
       index: 47
-      area: 0.01
+      area: 0.008
       thermoModel: equilibrium
   - id: edge_49
-    source: JunctionStaticP_8
-    target: MassSource_17
-    sourceHandle: JunctionStaticP_8-port-2
-    targetHandle: MassSource_17-port-0
+    source: JunctionStaticP_1
+    target: LossElement_12
+    sourceHandle: JunctionStaticP_1-port-12
+    targetHandle: LossElement_12-port-0
     type: flow
     attributes:
       label: e48
       index: 48
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.004
+      thermoModel: frozen
   - id: edge_50
-    source: MassSource_17
-    target: MassSource_18
-    sourceHandle: MassSource_17-port-1
-    targetHandle: MassSource_18-port-0
+    source: LossElement_12
+    target: JunctionStaticP_13
+    sourceHandle: LossElement_12-port-1
+    targetHandle: JunctionStaticP_13-port-1
     type: flow
     attributes:
       label: e49
       index: 49
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.004
+      thermoModel: frozen
   - id: edge_51
-    source: MassSource_18
-    target: IsentropicAreaChange_6
-    sourceHandle: MassSource_18-port-1
-    targetHandle: IsentropicAreaChange_6-port-0
+    source: JunctionStaticP_1
+    target: LossElement_13
+    sourceHandle: JunctionStaticP_1-port-13
+    targetHandle: LossElement_13-port-0
     type: flow
     attributes:
       label: e50
       index: 50
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.003
+      thermoModel: frozen
   - id: edge_52
-    source: IsentropicAreaChange_6
-    target: JunctionStaticP_2
-    sourceHandle: IsentropicAreaChange_6-port-1
-    targetHandle: JunctionStaticP_2-port-5
+    source: LossElement_13
+    target: JunctionStaticP_14
+    sourceHandle: LossElement_13-port-1
+    targetHandle: JunctionStaticP_14-port-1
     type: flow
     attributes:
       label: e51
       index: 51
-      area: 0.008
-      thermoModel: equilibrium
+      area: 0.003
+      thermoModel: frozen
   - id: edge_53
     source: JunctionStaticP_1
-    target: LossElement_8
-    sourceHandle: JunctionStaticP_1-port-8
-    targetHandle: LossElement_8-port-0
+    target: LossElement_14
+    sourceHandle: JunctionStaticP_1-port-14
+    targetHandle: LossElement_14-port-0
     type: flow
     attributes:
       label: e52
@@ -1082,10 +1130,10 @@ model:
       area: 0.004
       thermoModel: frozen
   - id: edge_54
-    source: LossElement_8
-    target: MassSource_19
-    sourceHandle: LossElement_8-port-1
-    targetHandle: MassSource_19-port-0
+    source: LossElement_14
+    target: MassSource_5
+    sourceHandle: LossElement_14-port-1
+    targetHandle: MassSource_5-port-0
     type: flow
     attributes:
       label: e53
@@ -1093,10 +1141,10 @@ model:
       area: 0.01
       thermoModel: frozen
   - id: edge_55
-    source: MassSource_19
-    target: EquilibriumFlame_7
-    sourceHandle: MassSource_19-port-1
-    targetHandle: EquilibriumFlame_7-port-0
+    source: MassSource_5
+    target: EquilibriumFlame_5
+    sourceHandle: MassSource_5-port-1
+    targetHandle: EquilibriumFlame_5-port-0
     type: flow
     attributes:
       label: e54
@@ -1104,10 +1152,10 @@ model:
       area: 0.01
       thermoModel: frozen
   - id: edge_56
-    source: EquilibriumFlame_7
-    target: JunctionStaticP_9
-    sourceHandle: EquilibriumFlame_7-port-1
-    targetHandle: JunctionStaticP_9-port-0
+    source: EquilibriumFlame_5
+    target: JunctionStaticP_15
+    sourceHandle: EquilibriumFlame_5-port-1
+    targetHandle: JunctionStaticP_15-port-0
     type: flow
     attributes:
       label: e55
@@ -1115,10 +1163,10 @@ model:
       area: 0.01
       thermoModel: equilibrium
   - id: edge_57
-    source: JunctionStaticP_9
-    target: MassSource_20
-    sourceHandle: JunctionStaticP_9-port-2
-    targetHandle: MassSource_20-port-0
+    source: JunctionStaticP_15
+    target: JunctionStaticP_16
+    sourceHandle: JunctionStaticP_15-port-2
+    targetHandle: JunctionStaticP_16-port-0
     type: flow
     attributes:
       label: e56
@@ -1126,10 +1174,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_58
-    source: MassSource_20
-    target: MassSource_21
-    sourceHandle: MassSource_20-port-1
-    targetHandle: MassSource_21-port-0
+    source: JunctionStaticP_16
+    target: JunctionStaticP_17
+    sourceHandle: JunctionStaticP_16-port-2
+    targetHandle: JunctionStaticP_17-port-0
     type: flow
     attributes:
       label: e57
@@ -1137,10 +1185,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_59
-    source: MassSource_21
-    target: IsentropicAreaChange_7
-    sourceHandle: MassSource_21-port-1
-    targetHandle: IsentropicAreaChange_7-port-0
+    source: JunctionStaticP_17
+    target: IsentropicAreaChange_5
+    sourceHandle: JunctionStaticP_17-port-2
+    targetHandle: IsentropicAreaChange_5-port-0
     type: flow
     attributes:
       label: e58
@@ -1148,10 +1196,10 @@ model:
       area: 0.012
       thermoModel: equilibrium
   - id: edge_60
-    source: IsentropicAreaChange_7
+    source: IsentropicAreaChange_5
     target: JunctionStaticP_2
-    sourceHandle: IsentropicAreaChange_7-port-1
-    targetHandle: JunctionStaticP_2-port-6
+    sourceHandle: IsentropicAreaChange_5-port-1
+    targetHandle: JunctionStaticP_2-port-4
     type: flow
     attributes:
       label: e59
@@ -1160,9 +1208,9 @@ model:
       thermoModel: equilibrium
   - id: edge_61
     source: JunctionStaticP_1
-    target: LossElement_9
-    sourceHandle: JunctionStaticP_1-port-9
-    targetHandle: LossElement_9-port-0
+    target: LossElement_15
+    sourceHandle: JunctionStaticP_1-port-15
+    targetHandle: LossElement_15-port-0
     type: flow
     attributes:
       label: e60
@@ -1170,179 +1218,531 @@ model:
       area: 0.004
       thermoModel: frozen
   - id: edge_62
-    source: LossElement_9
-    target: MassSource_22
-    sourceHandle: LossElement_9-port-1
-    targetHandle: MassSource_22-port-0
+    source: LossElement_15
+    target: JunctionStaticP_16
+    sourceHandle: LossElement_15-port-1
+    targetHandle: JunctionStaticP_16-port-1
     type: flow
     attributes:
       label: e61
       index: 61
-      area: 0.01
+      area: 0.004
       thermoModel: frozen
   - id: edge_63
-    source: MassSource_22
-    target: EquilibriumFlame_8
-    sourceHandle: MassSource_22-port-1
-    targetHandle: EquilibriumFlame_8-port-0
+    source: JunctionStaticP_1
+    target: LossElement_16
+    sourceHandle: JunctionStaticP_1-port-16
+    targetHandle: LossElement_16-port-0
     type: flow
     attributes:
       label: e62
       index: 62
-      area: 0.01
+      area: 0.003
       thermoModel: frozen
   - id: edge_64
-    source: EquilibriumFlame_8
-    target: JunctionStaticP_10
-    sourceHandle: EquilibriumFlame_8-port-1
-    targetHandle: JunctionStaticP_10-port-0
+    source: LossElement_16
+    target: JunctionStaticP_17
+    sourceHandle: LossElement_16-port-1
+    targetHandle: JunctionStaticP_17-port-1
     type: flow
     attributes:
       label: e63
       index: 63
-      area: 0.01
-      thermoModel: equilibrium
+      area: 0.003
+      thermoModel: frozen
   - id: edge_65
-    source: JunctionStaticP_10
-    target: MassSource_23
-    sourceHandle: JunctionStaticP_10-port-2
-    targetHandle: MassSource_23-port-0
+    source: JunctionStaticP_1
+    target: LossElement_17
+    sourceHandle: JunctionStaticP_1-port-17
+    targetHandle: LossElement_17-port-0
     type: flow
     attributes:
       label: e64
       index: 64
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.004
+      thermoModel: frozen
   - id: edge_66
-    source: MassSource_23
-    target: MassSource_24
-    sourceHandle: MassSource_23-port-1
-    targetHandle: MassSource_24-port-0
+    source: LossElement_17
+    target: MassSource_6
+    sourceHandle: LossElement_17-port-1
+    targetHandle: MassSource_6-port-0
     type: flow
     attributes:
       label: e65
       index: 65
-      area: 0.012
-      thermoModel: equilibrium
+      area: 0.01
+      thermoModel: frozen
   - id: edge_67
-    source: MassSource_24
-    target: IsentropicAreaChange_8
-    sourceHandle: MassSource_24-port-1
-    targetHandle: IsentropicAreaChange_8-port-0
+    source: MassSource_6
+    target: EquilibriumFlame_6
+    sourceHandle: MassSource_6-port-1
+    targetHandle: EquilibriumFlame_6-port-0
     type: flow
     attributes:
       label: e66
       index: 66
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_68
+    source: EquilibriumFlame_6
+    target: JunctionStaticP_18
+    sourceHandle: EquilibriumFlame_6-port-1
+    targetHandle: JunctionStaticP_18-port-0
+    type: flow
+    attributes:
+      label: e67
+      index: 67
+      area: 0.01
+      thermoModel: equilibrium
+  - id: edge_69
+    source: JunctionStaticP_18
+    target: JunctionStaticP_19
+    sourceHandle: JunctionStaticP_18-port-2
+    targetHandle: JunctionStaticP_19-port-0
+    type: flow
+    attributes:
+      label: e68
+      index: 68
       area: 0.012
       thermoModel: equilibrium
-  - id: edge_68
+  - id: edge_70
+    source: JunctionStaticP_19
+    target: JunctionStaticP_20
+    sourceHandle: JunctionStaticP_19-port-2
+    targetHandle: JunctionStaticP_20-port-0
+    type: flow
+    attributes:
+      label: e69
+      index: 69
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_71
+    source: JunctionStaticP_20
+    target: IsentropicAreaChange_6
+    sourceHandle: JunctionStaticP_20-port-2
+    targetHandle: IsentropicAreaChange_6-port-0
+    type: flow
+    attributes:
+      label: e70
+      index: 70
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_72
+    source: IsentropicAreaChange_6
+    target: JunctionStaticP_2
+    sourceHandle: IsentropicAreaChange_6-port-1
+    targetHandle: JunctionStaticP_2-port-5
+    type: flow
+    attributes:
+      label: e71
+      index: 71
+      area: 0.008
+      thermoModel: equilibrium
+  - id: edge_73
+    source: JunctionStaticP_1
+    target: LossElement_18
+    sourceHandle: JunctionStaticP_1-port-18
+    targetHandle: LossElement_18-port-0
+    type: flow
+    attributes:
+      label: e72
+      index: 72
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_74
+    source: LossElement_18
+    target: JunctionStaticP_19
+    sourceHandle: LossElement_18-port-1
+    targetHandle: JunctionStaticP_19-port-1
+    type: flow
+    attributes:
+      label: e73
+      index: 73
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_75
+    source: JunctionStaticP_1
+    target: LossElement_19
+    sourceHandle: JunctionStaticP_1-port-19
+    targetHandle: LossElement_19-port-0
+    type: flow
+    attributes:
+      label: e74
+      index: 74
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_76
+    source: LossElement_19
+    target: JunctionStaticP_20
+    sourceHandle: LossElement_19-port-1
+    targetHandle: JunctionStaticP_20-port-1
+    type: flow
+    attributes:
+      label: e75
+      index: 75
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_77
+    source: JunctionStaticP_1
+    target: LossElement_20
+    sourceHandle: JunctionStaticP_1-port-20
+    targetHandle: LossElement_20-port-0
+    type: flow
+    attributes:
+      label: e76
+      index: 76
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_78
+    source: LossElement_20
+    target: MassSource_7
+    sourceHandle: LossElement_20-port-1
+    targetHandle: MassSource_7-port-0
+    type: flow
+    attributes:
+      label: e77
+      index: 77
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_79
+    source: MassSource_7
+    target: EquilibriumFlame_7
+    sourceHandle: MassSource_7-port-1
+    targetHandle: EquilibriumFlame_7-port-0
+    type: flow
+    attributes:
+      label: e78
+      index: 78
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_80
+    source: EquilibriumFlame_7
+    target: JunctionStaticP_21
+    sourceHandle: EquilibriumFlame_7-port-1
+    targetHandle: JunctionStaticP_21-port-0
+    type: flow
+    attributes:
+      label: e79
+      index: 79
+      area: 0.01
+      thermoModel: equilibrium
+  - id: edge_81
+    source: JunctionStaticP_21
+    target: JunctionStaticP_22
+    sourceHandle: JunctionStaticP_21-port-2
+    targetHandle: JunctionStaticP_22-port-0
+    type: flow
+    attributes:
+      label: e80
+      index: 80
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_82
+    source: JunctionStaticP_22
+    target: JunctionStaticP_23
+    sourceHandle: JunctionStaticP_22-port-2
+    targetHandle: JunctionStaticP_23-port-0
+    type: flow
+    attributes:
+      label: e81
+      index: 81
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_83
+    source: JunctionStaticP_23
+    target: IsentropicAreaChange_7
+    sourceHandle: JunctionStaticP_23-port-2
+    targetHandle: IsentropicAreaChange_7-port-0
+    type: flow
+    attributes:
+      label: e82
+      index: 82
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_84
+    source: IsentropicAreaChange_7
+    target: JunctionStaticP_2
+    sourceHandle: IsentropicAreaChange_7-port-1
+    targetHandle: JunctionStaticP_2-port-6
+    type: flow
+    attributes:
+      label: e83
+      index: 83
+      area: 0.008
+      thermoModel: equilibrium
+  - id: edge_85
+    source: JunctionStaticP_1
+    target: LossElement_21
+    sourceHandle: JunctionStaticP_1-port-21
+    targetHandle: LossElement_21-port-0
+    type: flow
+    attributes:
+      label: e84
+      index: 84
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_86
+    source: LossElement_21
+    target: JunctionStaticP_22
+    sourceHandle: LossElement_21-port-1
+    targetHandle: JunctionStaticP_22-port-1
+    type: flow
+    attributes:
+      label: e85
+      index: 85
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_87
+    source: JunctionStaticP_1
+    target: LossElement_22
+    sourceHandle: JunctionStaticP_1-port-22
+    targetHandle: LossElement_22-port-0
+    type: flow
+    attributes:
+      label: e86
+      index: 86
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_88
+    source: LossElement_22
+    target: JunctionStaticP_23
+    sourceHandle: LossElement_22-port-1
+    targetHandle: JunctionStaticP_23-port-1
+    type: flow
+    attributes:
+      label: e87
+      index: 87
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_89
+    source: JunctionStaticP_1
+    target: LossElement_23
+    sourceHandle: JunctionStaticP_1-port-23
+    targetHandle: LossElement_23-port-0
+    type: flow
+    attributes:
+      label: e88
+      index: 88
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_90
+    source: LossElement_23
+    target: MassSource_8
+    sourceHandle: LossElement_23-port-1
+    targetHandle: MassSource_8-port-0
+    type: flow
+    attributes:
+      label: e89
+      index: 89
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_91
+    source: MassSource_8
+    target: EquilibriumFlame_8
+    sourceHandle: MassSource_8-port-1
+    targetHandle: EquilibriumFlame_8-port-0
+    type: flow
+    attributes:
+      label: e90
+      index: 90
+      area: 0.01
+      thermoModel: frozen
+  - id: edge_92
+    source: EquilibriumFlame_8
+    target: JunctionStaticP_24
+    sourceHandle: EquilibriumFlame_8-port-1
+    targetHandle: JunctionStaticP_24-port-0
+    type: flow
+    attributes:
+      label: e91
+      index: 91
+      area: 0.01
+      thermoModel: equilibrium
+  - id: edge_93
+    source: JunctionStaticP_24
+    target: JunctionStaticP_25
+    sourceHandle: JunctionStaticP_24-port-2
+    targetHandle: JunctionStaticP_25-port-0
+    type: flow
+    attributes:
+      label: e92
+      index: 92
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_94
+    source: JunctionStaticP_25
+    target: JunctionStaticP_26
+    sourceHandle: JunctionStaticP_25-port-2
+    targetHandle: JunctionStaticP_26-port-0
+    type: flow
+    attributes:
+      label: e93
+      index: 93
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_95
+    source: JunctionStaticP_26
+    target: IsentropicAreaChange_8
+    sourceHandle: JunctionStaticP_26-port-2
+    targetHandle: IsentropicAreaChange_8-port-0
+    type: flow
+    attributes:
+      label: e94
+      index: 94
+      area: 0.012
+      thermoModel: equilibrium
+  - id: edge_96
     source: IsentropicAreaChange_8
     target: JunctionStaticP_2
     sourceHandle: IsentropicAreaChange_8-port-1
     targetHandle: JunctionStaticP_2-port-7
     type: flow
     attributes:
-      label: e67
-      index: 67
+      label: e95
+      index: 95
       area: 0.008
       thermoModel: equilibrium
-  - id: edge_69
+  - id: edge_97
+    source: JunctionStaticP_1
+    target: LossElement_24
+    sourceHandle: JunctionStaticP_1-port-24
+    targetHandle: LossElement_24-port-0
+    type: flow
+    attributes:
+      label: e96
+      index: 96
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_98
+    source: LossElement_24
+    target: JunctionStaticP_25
+    sourceHandle: LossElement_24-port-1
+    targetHandle: JunctionStaticP_25-port-1
+    type: flow
+    attributes:
+      label: e97
+      index: 97
+      area: 0.004
+      thermoModel: frozen
+  - id: edge_99
+    source: JunctionStaticP_1
+    target: LossElement_25
+    sourceHandle: JunctionStaticP_1-port-25
+    targetHandle: LossElement_25-port-0
+    type: flow
+    attributes:
+      label: e98
+      index: 98
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_100
+    source: LossElement_25
+    target: JunctionStaticP_26
+    sourceHandle: LossElement_25-port-1
+    targetHandle: JunctionStaticP_26-port-1
+    type: flow
+    attributes:
+      label: e99
+      index: 99
+      area: 0.003
+      thermoModel: frozen
+  - id: edge_101
     source: JunctionStaticP_3
-    target: JunctionStaticP_4
-    sourceHandle: JunctionStaticP_3-port-3
-    targetHandle: JunctionStaticP_4-port-1
-    type: flow
-    attributes:
-      label: e68
-      index: 68
-      area: 0.0015
-      thermoModel: equilibrium
-  - id: edge_70
-    source: JunctionStaticP_4
-    target: JunctionStaticP_5
-    sourceHandle: JunctionStaticP_4-port-3
-    targetHandle: JunctionStaticP_5-port-1
-    type: flow
-    attributes:
-      label: e69
-      index: 69
-      area: 0.0015
-      thermoModel: equilibrium
-  - id: edge_71
-    source: JunctionStaticP_5
     target: JunctionStaticP_6
-    sourceHandle: JunctionStaticP_5-port-3
+    sourceHandle: JunctionStaticP_3-port-3
     targetHandle: JunctionStaticP_6-port-1
     type: flow
     attributes:
-      label: e70
-      index: 70
+      label: e100
+      index: 100
       area: 0.0015
       thermoModel: equilibrium
-  - id: edge_72
+  - id: edge_102
     source: JunctionStaticP_6
-    target: JunctionStaticP_7
-    sourceHandle: JunctionStaticP_6-port-3
-    targetHandle: JunctionStaticP_7-port-1
-    type: flow
-    attributes:
-      label: e71
-      index: 71
-      area: 0.0015
-      thermoModel: equilibrium
-  - id: edge_73
-    source: JunctionStaticP_7
-    target: JunctionStaticP_8
-    sourceHandle: JunctionStaticP_7-port-3
-    targetHandle: JunctionStaticP_8-port-1
-    type: flow
-    attributes:
-      label: e72
-      index: 72
-      area: 0.0015
-      thermoModel: equilibrium
-  - id: edge_74
-    source: JunctionStaticP_8
     target: JunctionStaticP_9
-    sourceHandle: JunctionStaticP_8-port-3
+    sourceHandle: JunctionStaticP_6-port-3
     targetHandle: JunctionStaticP_9-port-1
     type: flow
     attributes:
-      label: e73
-      index: 73
+      label: e101
+      index: 101
       area: 0.0015
       thermoModel: equilibrium
-  - id: edge_75
+  - id: edge_103
     source: JunctionStaticP_9
-    target: JunctionStaticP_10
+    target: JunctionStaticP_12
     sourceHandle: JunctionStaticP_9-port-3
-    targetHandle: JunctionStaticP_10-port-1
+    targetHandle: JunctionStaticP_12-port-1
     type: flow
     attributes:
-      label: e74
-      index: 74
+      label: e102
+      index: 102
       area: 0.0015
       thermoModel: equilibrium
-  - id: edge_76
-    source: JunctionStaticP_10
+  - id: edge_104
+    source: JunctionStaticP_12
+    target: JunctionStaticP_15
+    sourceHandle: JunctionStaticP_12-port-3
+    targetHandle: JunctionStaticP_15-port-1
+    type: flow
+    attributes:
+      label: e103
+      index: 103
+      area: 0.0015
+      thermoModel: equilibrium
+  - id: edge_105
+    source: JunctionStaticP_15
+    target: JunctionStaticP_18
+    sourceHandle: JunctionStaticP_15-port-3
+    targetHandle: JunctionStaticP_18-port-1
+    type: flow
+    attributes:
+      label: e104
+      index: 104
+      area: 0.0015
+      thermoModel: equilibrium
+  - id: edge_106
+    source: JunctionStaticP_18
+    target: JunctionStaticP_21
+    sourceHandle: JunctionStaticP_18-port-3
+    targetHandle: JunctionStaticP_21-port-1
+    type: flow
+    attributes:
+      label: e105
+      index: 105
+      area: 0.0015
+      thermoModel: equilibrium
+  - id: edge_107
+    source: JunctionStaticP_21
+    target: JunctionStaticP_24
+    sourceHandle: JunctionStaticP_21-port-3
+    targetHandle: JunctionStaticP_24-port-1
+    type: flow
+    attributes:
+      label: e106
+      index: 106
+      area: 0.0015
+      thermoModel: equilibrium
+  - id: edge_108
+    source: JunctionStaticP_24
     target: JunctionStaticP_3
-    sourceHandle: JunctionStaticP_10-port-3
+    sourceHandle: JunctionStaticP_24-port-3
     targetHandle: JunctionStaticP_3-port-1
     type: flow
     attributes:
-      label: e75
-      index: 75
+      label: e107
+      index: 107
       area: 0.0015
       thermoModel: equilibrium
-  - id: edge_77
+  - id: edge_109
     source: JunctionStaticP_2
     target: ChokedNozzleOutlet_1
     sourceHandle: JunctionStaticP_2-port-8
     targetHandle: ChokedNozzleOutlet_1-port-0
     type: flow
     attributes:
-      label: e76
-      index: 76
+      label: e108
+      index: 108
       area: 0.04
       thermoModel: equilibrium
 uiAttributes:
@@ -1350,7 +1750,7 @@ uiAttributes:
   - id: MassFlowInlet_1
     position:
       x: 0.0
-      y: -1820.0
+      y: -700.0
     data: {}
   - id: Duct_1
     position:
@@ -1365,32 +1765,32 @@ uiAttributes:
   - id: LossElement_1
     position:
       x: 720.0
-      y: -560.0
+      y: -1680.0
     data: {}
   - id: PressureOutlet_1
     position:
       x: 960.0
-      y: -560.0
+      y: -1680.0
     data: {}
   - id: JunctionStaticP_2
     position:
       x: 0.0
-      y: -1680.0
+      y: -560.0
     data: {}
   - id: ChokedNozzleOutlet_1
     position:
       x: 0.0
-      y: -1540.0
+      y: -420.0
     data: {}
   - id: LossElement_2
     position:
       x: 720.0
-      y: -420.0
+      y: -1540.0
     data: {}
   - id: MassSource_1
     position:
       x: 960.0
-      y: -420.0
+      y: -1540.0
     data: {}
   - id: EquilibriumFlame_1
     position:
@@ -1402,22 +1802,122 @@ uiAttributes:
       x: 1440.0
       y: -490.0
     data: {}
-  - id: MassSource_2
+  - id: LossElement_3
     position:
-      x: 0.0
+      x: 720.0
       y: -1400.0
     data: {}
-  - id: MassSource_3
+  - id: JunctionStaticP_4
     position:
-      x: 0.0
+      x: 960.0
+      y: -1400.0
+    data: {}
+  - id: LossElement_4
+    position:
+      x: 720.0
+      y: -1260.0
+    data: {}
+  - id: JunctionStaticP_5
+    position:
+      x: 960.0
       y: -1260.0
     data: {}
   - id: IsentropicAreaChange_1
     position:
       x: 0.0
+      y: -280.0
+    data: {}
+  - id: LossElement_5
+    position:
+      x: 720.0
       y: -1120.0
     data: {}
-  - id: LossElement_3
+  - id: MassSource_2
+    position:
+      x: 960.0
+      y: -1120.0
+    data: {}
+  - id: EquilibriumFlame_2
+    position:
+      x: 1200.0
+      y: -350.0
+    data: {}
+  - id: JunctionStaticP_6
+    position:
+      x: 1440.0
+      y: -350.0
+    data: {}
+  - id: LossElement_6
+    position:
+      x: 720.0
+      y: -980.0
+    data: {}
+  - id: JunctionStaticP_7
+    position:
+      x: 960.0
+      y: -980.0
+    data: {}
+  - id: LossElement_7
+    position:
+      x: 720.0
+      y: -840.0
+    data: {}
+  - id: JunctionStaticP_8
+    position:
+      x: 960.0
+      y: -840.0
+    data: {}
+  - id: IsentropicAreaChange_2
+    position:
+      x: 0.0
+      y: -140.0
+    data: {}
+  - id: LossElement_8
+    position:
+      x: 720.0
+      y: -700.0
+    data: {}
+  - id: MassSource_3
+    position:
+      x: 960.0
+      y: -700.0
+    data: {}
+  - id: EquilibriumFlame_3
+    position:
+      x: 1200.0
+      y: -210.0
+    data: {}
+  - id: JunctionStaticP_9
+    position:
+      x: 1440.0
+      y: -210.0
+    data: {}
+  - id: LossElement_9
+    position:
+      x: 720.0
+      y: -560.0
+    data: {}
+  - id: JunctionStaticP_10
+    position:
+      x: 960.0
+      y: -560.0
+    data: {}
+  - id: LossElement_10
+    position:
+      x: 720.0
+      y: -420.0
+    data: {}
+  - id: JunctionStaticP_11
+    position:
+      x: 960.0
+      y: -420.0
+    data: {}
+  - id: IsentropicAreaChange_3
+    position:
+      x: 0.0
+      y: 0.0
+    data: {}
+  - id: LossElement_11
     position:
       x: 720.0
       y: -280.0
@@ -1427,94 +1927,34 @@ uiAttributes:
       x: 960.0
       y: -280.0
     data: {}
-  - id: EquilibriumFlame_2
-    position:
-      x: 1200.0
-      y: -350.0
-    data: {}
-  - id: JunctionStaticP_4
-    position:
-      x: 1440.0
-      y: -350.0
-    data: {}
-  - id: MassSource_5
-    position:
-      x: 0.0
-      y: -980.0
-    data: {}
-  - id: MassSource_6
-    position:
-      x: 0.0
-      y: -840.0
-    data: {}
-  - id: IsentropicAreaChange_2
-    position:
-      x: 0.0
-      y: -700.0
-    data: {}
-  - id: LossElement_4
-    position:
-      x: 720.0
-      y: -140.0
-    data: {}
-  - id: MassSource_7
-    position:
-      x: 960.0
-      y: -140.0
-    data: {}
-  - id: EquilibriumFlame_3
-    position:
-      x: 1200.0
-      y: -210.0
-    data: {}
-  - id: JunctionStaticP_5
-    position:
-      x: 1440.0
-      y: -210.0
-    data: {}
-  - id: MassSource_8
-    position:
-      x: 0.0
-      y: -560.0
-    data: {}
-  - id: MassSource_9
-    position:
-      x: 0.0
-      y: -420.0
-    data: {}
-  - id: IsentropicAreaChange_3
-    position:
-      x: 0.0
-      y: -280.0
-    data: {}
-  - id: LossElement_5
-    position:
-      x: 720.0
-      y: 0.0
-    data: {}
-  - id: MassSource_10
-    position:
-      x: 960.0
-      y: 0.0
-    data: {}
   - id: EquilibriumFlame_4
     position:
       x: 1200.0
       y: -70.0
     data: {}
-  - id: JunctionStaticP_6
+  - id: JunctionStaticP_12
     position:
       x: 1440.0
       y: -70.0
     data: {}
-  - id: MassSource_11
+  - id: LossElement_12
     position:
-      x: 0.0
+      x: 720.0
       y: -140.0
     data: {}
-  - id: MassSource_12
+  - id: JunctionStaticP_13
     position:
-      x: 0.0
+      x: 960.0
+      y: -140.0
+    data: {}
+  - id: LossElement_13
+    position:
+      x: 720.0
+      y: 0.0
+    data: {}
+  - id: JunctionStaticP_14
+    position:
+      x: 960.0
       y: 0.0
     data: {}
   - id: IsentropicAreaChange_4
@@ -1522,12 +1962,12 @@ uiAttributes:
       x: 0.0
       y: 140.0
     data: {}
-  - id: LossElement_6
+  - id: LossElement_14
     position:
       x: 720.0
       y: 140.0
     data: {}
-  - id: MassSource_13
+  - id: MassSource_5
     position:
       x: 960.0
       y: 140.0
@@ -1537,150 +1977,190 @@ uiAttributes:
       x: 1200.0
       y: 70.0
     data: {}
-  - id: JunctionStaticP_7
+  - id: JunctionStaticP_15
     position:
       x: 1440.0
       y: 70.0
     data: {}
-  - id: MassSource_14
+  - id: LossElement_15
     position:
-      x: 0.0
+      x: 720.0
       y: 280.0
     data: {}
-  - id: MassSource_15
+  - id: JunctionStaticP_16
     position:
-      x: 0.0
+      x: 960.0
+      y: 280.0
+    data: {}
+  - id: LossElement_16
+    position:
+      x: 720.0
+      y: 420.0
+    data: {}
+  - id: JunctionStaticP_17
+    position:
+      x: 960.0
       y: 420.0
     data: {}
   - id: IsentropicAreaChange_5
     position:
       x: 0.0
-      y: 560.0
+      y: 280.0
     data: {}
-  - id: LossElement_7
+  - id: LossElement_17
     position:
       x: 720.0
-      y: 280.0
+      y: 560.0
     data: {}
-  - id: MassSource_16
+  - id: MassSource_6
     position:
       x: 960.0
-      y: 280.0
+      y: 560.0
     data: {}
   - id: EquilibriumFlame_6
     position:
       x: 1200.0
       y: 210.0
     data: {}
-  - id: JunctionStaticP_8
+  - id: JunctionStaticP_18
     position:
       x: 1440.0
       y: 210.0
     data: {}
-  - id: MassSource_17
+  - id: LossElement_18
     position:
-      x: 0.0
+      x: 720.0
       y: 700.0
     data: {}
-  - id: MassSource_18
+  - id: JunctionStaticP_19
     position:
-      x: 0.0
+      x: 960.0
+      y: 700.0
+    data: {}
+  - id: LossElement_19
+    position:
+      x: 720.0
+      y: 840.0
+    data: {}
+  - id: JunctionStaticP_20
+    position:
+      x: 960.0
       y: 840.0
     data: {}
   - id: IsentropicAreaChange_6
     position:
       x: 0.0
-      y: 980.0
+      y: 420.0
     data: {}
-  - id: LossElement_8
+  - id: LossElement_20
     position:
       x: 720.0
-      y: 420.0
+      y: 980.0
     data: {}
-  - id: MassSource_19
+  - id: MassSource_7
     position:
       x: 960.0
-      y: 420.0
+      y: 980.0
     data: {}
   - id: EquilibriumFlame_7
     position:
       x: 1200.0
       y: 350.0
     data: {}
-  - id: JunctionStaticP_9
+  - id: JunctionStaticP_21
     position:
       x: 1440.0
       y: 350.0
     data: {}
-  - id: MassSource_20
+  - id: LossElement_21
     position:
-      x: 0.0
+      x: 720.0
       y: 1120.0
     data: {}
-  - id: MassSource_21
+  - id: JunctionStaticP_22
     position:
-      x: 0.0
+      x: 960.0
+      y: 1120.0
+    data: {}
+  - id: LossElement_22
+    position:
+      x: 720.0
+      y: 1260.0
+    data: {}
+  - id: JunctionStaticP_23
+    position:
+      x: 960.0
       y: 1260.0
     data: {}
   - id: IsentropicAreaChange_7
     position:
       x: 0.0
-      y: 1400.0
+      y: 560.0
     data: {}
-  - id: LossElement_9
+  - id: LossElement_23
     position:
       x: 720.0
-      y: 560.0
+      y: 1400.0
     data: {}
-  - id: MassSource_22
+  - id: MassSource_8
     position:
       x: 960.0
-      y: 560.0
+      y: 1400.0
     data: {}
   - id: EquilibriumFlame_8
     position:
       x: 1200.0
       y: 490.0
     data: {}
-  - id: JunctionStaticP_10
+  - id: JunctionStaticP_24
     position:
       x: 1440.0
       y: 490.0
     data: {}
-  - id: MassSource_23
+  - id: LossElement_24
     position:
-      x: 0.0
+      x: 720.0
       y: 1540.0
     data: {}
-  - id: MassSource_24
+  - id: JunctionStaticP_25
     position:
-      x: 0.0
+      x: 960.0
+      y: 1540.0
+    data: {}
+  - id: LossElement_25
+    position:
+      x: 720.0
+      y: 1680.0
+    data: {}
+  - id: JunctionStaticP_26
+    position:
+      x: 960.0
       y: 1680.0
     data: {}
   - id: IsentropicAreaChange_8
     position:
       x: 0.0
-      y: 1820.0
+      y: 700.0
     data: {}
 uiState:
   counters:
     nodeCounters:
       MassFlowInlet: 1
       Duct: 1
-      JunctionStaticP: 10
-      LossElement: 9
+      JunctionStaticP: 26
+      LossElement: 25
       PressureOutlet: 1
       ChokedNozzleOutlet: 1
-      MassSource: 24
+      MassSource: 8
       EquilibriumFlame: 8
       IsentropicAreaChange: 8
     totalNodeCounters:
       MassFlowInlet: 1
       Duct: 1
-      JunctionStaticP: 10
-      LossElement: 9
+      JunctionStaticP: 26
+      LossElement: 25
       PressureOutlet: 1
       ChokedNozzleOutlet: 1
-      MassSource: 24
+      MassSource: 8
       EquilibriumFlame: 8
       IsentropicAreaChange: 8

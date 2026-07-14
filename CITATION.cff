@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+title: Nefes
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: Alanyalioglu
+    given-names: Cetin
+    orcid: "https://orcid.org/0000-0002-8498-3088"
+  - family-names: Nicolai
+    given-names: Hendrik
+    orcid: "https://orcid.org/0000-0002-0355-2252"
+license: BSD-3-Clause
+repository-code: "https://github.com/cetinalanyalioglu/Nefes"

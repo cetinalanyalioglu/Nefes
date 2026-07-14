@@ -17,3 +17,9 @@ repos:
     rev: 7.3.0
     hooks:
       - id: flake8
+  # Strips Jupyter output (rendered plots, printed results, execution counts) before commit,
+  # enforcing the no-notebook-output rule; leaves code cells intact.
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout

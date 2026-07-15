@@ -229,13 +229,38 @@ class Network:
         self._invalidate()
         return idx
 
-    def edge_between(self, tail: int, head: int) -> int:
+    def edge_between(self, tail, head) -> int:
         """Return the id of the directed edge from element `tail` to element `head`.
 
         A convenience for recovering an edge index after assembly (e.g. to set a dynamic source's
         ``ref_edge``) when the value returned by :meth:`connect` was not captured.  Raises if no such
         edge exists, or if more than one connects the same ordered pair.
+
+        Parameters
+        ----------
+        tail, head : int or str
+            The ordered pair of endpoints, each given as a node index (as returned by
+            :meth:`add`) or the element's display name.  Names are resolved through
+            :meth:`element_index`, so ``net.edge_between("inlet", "flame")`` reads the same
+            as passing the two node indices.
+
+        Returns
+        -------
+        int
+
+        Raises
+        ------
+        KeyError
+            Unknown element name or node index out of range (via :meth:`element_index`).
+        ValueError
+            No edge connects the pair, or more than one does.
+
+        See also
+        --------
+        edges_of : every edge incident to one element, when only one endpoint is known.
+        element_index : the name-to-index resolution applied to each endpoint.
         """
+        tail, head = self.element_index(tail), self.element_index(head)
         matches = [i for i, (t, h, _a) in enumerate(self._edges) if t == tail and h == head]
         if not matches:
             raise ValueError(f"no edge from element {tail} to element {head}")

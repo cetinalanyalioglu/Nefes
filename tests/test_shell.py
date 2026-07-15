@@ -318,16 +318,21 @@ def test_solve_verbose_failure_dumps_per_equation(capsys):
 
 def test_edge_between_lookup():
     net = Network(perfect_gas(R_AIR, GAMMA))
-    a = net.add(cat.mass_flow_inlet(5.0, 300.0))
-    b = net.add(cat.duct(0.5))
+    a = net.add(cat.mass_flow_inlet(5.0, 300.0, name="inlet"))
+    b = net.add(cat.duct(0.5, name="duct"))
     c = net.add(cat.pressure_outlet(101325.0))
     e0 = net.connect(a, b, 0.05)
     e1 = net.connect(b, c, 0.05)
     # the returned edge ids are recoverable from the element pair
     assert net.edge_between(a, b) == e0
     assert net.edge_between(b, c) == e1
+    # display names resolve like node indices, and may be mixed with them
+    assert net.edge_between("inlet", "duct") == e0
+    assert net.edge_between("duct", c) == e1
     with pytest.raises(ValueError, match="no edge"):
         net.edge_between(a, c)
+    with pytest.raises(KeyError):
+        net.edge_between("inlet", "not-a-node")
 
 
 def test_edge_between_rejects_ambiguous_pair():

@@ -3,22 +3,20 @@
 A scientific tool is only as trustworthy as the reproducibility of its results, and this document collects the practices that keep a Nefes result the same across runs, machines, and time: determinism in the numerics, pinned environments, provenance on input and output, and a testing philosophy in which every claim carries its check.
 It is the practical counterpart to the [design philosophy](philosophy.md): the principles are what make the code correct in the abstract, and these practices are what keep it correct in use.
 
-The presentation begins with determinism, then proceeds to the environment split, building on this to provenance capture, and closes with the testing philosophy that ties every claim to evidence.
-
-## Determinism
+## Determinism {#sec-repro-determinism}
 
 The numerics are deterministic by construction: the residual and Jacobian are exact functions of the state, evaluated by compiled kernels that draw on no randomness and no wall-clock time, so a given network and initial guess produce the same converged state on every run.
 The solver's only stochastic-looking ingredient, the random probe of the contour eigensolver, is drawn from a fixed seed so that even the acoustic spectrum is reproducible.
-The one hazard to determinism is operational rather than algorithmic: the compiled described in [kernel architecture](kernel-architecture.md) is cached, which can serve stale machine code after a source edit and so make a result depend on build history rather than on source alone; clearing the cache after any kernel change is therefore part of the reproducibility discipline.
+The one hazard to determinism is operational rather than algorithmic: the compiled kernel code described in [kernel architecture](kernel-architecture.md) is cached, which can serve stale machine code after a source edit and so make a result depend on build history rather than on source alone; clearing the cache after any kernel change is therefore part of the reproducibility discipline.
 
-## Pinned environments
+## Pinned environments {#sec-repro-environments}
 
 The solver and its thermochemistry share one compiled engine and are exercised in a single pinned environment built around the just-in-time compiler that the kernels depend on; the full test suite (mean-flow, acoustics, and the thermochemistry) runs there.
 A second, heavier environment adds an independent chemical-kinetics package (Cantera) used only as an *oracle*: the tests that check the equilibrium solve against it run there.
 That environment carries both the compiler and the oracle, because the equilibrium engine is compiled and the oracle package is what it is validated against.
 Keeping the oracle in a separate environment is deliberate: the dependency is heavy and is needed only to validate the engine, never to run it, so a routine solve needs only the base environment while the heavier one is reserved for validation.
 
-## Provenance on input and output
+## Provenance on input and output {#sec-repro-provenance}
 
 A network is captured in a case file, and the save/load path is written so that a case read from disk, solved, and written back yields a file that reproduces the same solve.
 This makes a result traceable to the exact network that produced it (the geometry, the boundary conditions, the gas model, and the solver settings) rather than to a setup that never left memory, so a figure or a validation number can always be regenerated from its recorded input.
@@ -30,7 +28,7 @@ Restoring offers a choice between two ways to read that record.
 The default warm-start reading feeds the stored state as the initial guess to a single artificial-resistance-free stage: a faithful state is already below tolerance, so the stage's convergence check returns before it assembles a Jacobian (a residual evaluation, not a re-solve), and a state that no longer fits an edited network simply keeps solving from an excellent start, so the returned solution always matches the network now on disk.
 The direct-restore reading returns the stored state exactly, with no solve at all, trading that consistency guarantee for zero cost, and leaves the residual norm unreported to mark that the file was trusted rather than checked.
 
-## Testing philosophy
+## Testing philosophy {#sec-repro-testing}
 
 The tests are not an afterthought but the way the framework's claims are checked, and they operate at three levels.
 At the level of the *derivative*, the smoothness contract enforces itself: every element must supply a probe, and each kernel is checked so that its complex-step derivative matches a finite-difference derivative across forward, reverse, near-zero, and near-choke states, so no element is accepted without a demonstrated analyticity (see [the smoothness contract](smoothness-contract.md)).
@@ -38,4 +36,4 @@ At the level of the *physics*, each element and analysis is checked against an i
 At the level of the *documentation*, every falsifiable claim in the theory and validation tracks names the test or example that checks it, and a claim with no check is marked as such rather than left ambiguous; the [validation map](../validation/validation-map.md) collects this link from claim to evidence into a single table.
 
 Reproducibility, in this framework, is therefore not one switch but a set of habits: deterministic numerics, isolated environments, provenance that survives save and reload, and tests in which the derivative, the physics, and the documentation each carry their own evidence.
-With the design track complete, the remaining question is the evidence itself: the verification and validation that the [validation track](../validation/validation-map.md) presents.
+The evidence itself, from every physical claim to the case that checks it, is collected in the [validation track](../validation/validation-map.md).

@@ -14,11 +14,9 @@ This saturation is *choking*, the most consequential compressible-flow phenomeno
 In this framework choking is not switched on by a regime flag; it is *emergent*.
 The either/or of "subsonic and lossless" versus "sonic and capped" is encoded once, as a complementarity condition inside the area-change and outlet rows already written in [elements](elements.md), and the network then discovers by itself which passage chokes and caps the mass flow there, with no regime declaration and no branching logic.
 This document derives that mechanism and exhibits the operating map it produces, computed directly by the solver.
-It restricts itself, in keeping with the [overview](overview.md) scope, to subsonic operation up to a sonic throat; the supersonic and shock-bearing regimes are deferred, and the closing section states precisely which part of the physics that defers and why.
+It restricts itself, in keeping with the [overview](overview.md#sec-overview-assumptions-scope) scope, to subsonic operation up to a sonic throat; the supersonic and shock-bearing regimes are deferred, and the closing section states precisely which part of the physics that defers and why.
 
-The presentation begins with the choking limit itself, then proceeds to the observation that a throat is always an edge and to the complementarity that makes choking emergent, building on this to the validated operating map, and closing with the one configuration that cannot be made emergent within the present scope.
-
-## The choking limit
+## The choking limit {#sec-choking-limit}
 
 For a given upstream stagnation state, the mass flux through a passage is bounded, and the bound is reached exactly when the passage becomes sonic.
 The maximum dimensionless mass flux and the pressure ratio at which it occurs are given as:
@@ -34,13 +32,13 @@ $$
 where $\gamma$ is the ratio of specific heats, $R$ the specific gas constant, $A$ the passage area, and $p_t$ and $T_t$ the upstream total pressure and temperature.
 The second relation is the *critical pressure ratio*: while the ratio of back pressure to total pressure stays above it the passage is subsonic and the mass flow rises as the back pressure falls, and once it drops to the critical value the passage is sonic and the mass flow can rise no further.
 
-## The throat is always an edge
+## The throat is always an edge {#sec-choking-throat-edge}
 
 A structural convention of the model makes the sonic state easy to place: **every (atomic) element is taken to be *internally monotone* in area**, interpolating between its port areas and hiding no interior extremum.
-The minimum area along any flow path is therefore an edge area, so any throat coincides with an edge, and the natural home of the sonic state is that edge — a state the recovery of [state and recovery](state-and-recovery.qmd) returns without any singularity, since the density root remains single and regular through $M = 1$.
+The minimum area along any flow path is therefore an edge area, so any throat coincides with an edge, and the natural home of the sonic state is that edge — a state the recovery of [state and recovery](state-and-recovery.qmd#sec-state-recovery-closure) returns without any singularity, since the density root remains single and regular through $M = 1$.
 Consequently the choking constraint is attached to the existing elements adjacent to their small-port edges, rather than to a special nozzle element with hidden internal geometry; the physics is expressed on the geometry the network already carries.
 
-## Emergent choking via complementarity
+## Emergent choking via complementarity {#sec-choking-complementarity}
 
 Two facts conspire to make choking invisible to the plain isentropic equation, and understanding them is what motivates the complementarity form.
 First, the choking inequality — that the dimensionless mass flux cannot exceed its sonic value — holds *identically* on the edge-state manifold, so it can never be violated and therefore cannot itself act as a limiter.
@@ -66,10 +64,10 @@ $$
 $$
 
 where $a$ and $b$ are the two non-negative quantities above and $\varepsilon$ is a small, fixed smoothing.
-On the smoothed root manifold $2ab = \varepsilon^2$, so the inactive branch is pinned to a quadratically small bias, and $\varepsilon$ must be kept small and fixed — the bias $\tfrac{1}{2}\varepsilon^2 p_t$ is a fictitious total-pressure loss that must stay far below the smallest driving pressure difference in the network, which is why $\varepsilon$ is *not* relaxed along the artificial-resistance continuation of [well-posedness](well-posedness.md).
+On the smoothed root manifold $2ab = \varepsilon^2$, so the inactive branch is pinned to a quadratically small bias, and $\varepsilon$ must be kept small and fixed — the bias $\tfrac{1}{2}\varepsilon^2 p_t$ is a fictitious total-pressure loss that must stay far below the smallest driving pressure difference in the network, which is why $\varepsilon$ is *not* relaxed along the artificial-resistance continuation of [well-posedness](well-posedness.md#sec-wellposed-zero-flow).
 The same complementarity governs a converging pressure outlet, whose exit chokes at exactly $M = 1$ and whose static pressure then detaches *upward* from the specification — the underexpanded discharge of a choked orifice, whose expansion to the ambient occurs outside the network (test: `test_choked_nozzle_outlet_critical_mass_flux`).
 
-## The validated operating map
+## The validated operating map {#sec-choking-operating-map}
 
 The whole of the subsonic-to-choked behaviour follows from these rows without any regime input, and it is best seen in the operating map of a converging nozzle as the back pressure is swept down, shown in @fig-operating-map.
 Every point is an independent converged solve of the same two-element network — a reservoir feeding an isentropic area change that discharges through a pressure outlet — so the curves are the solver's own output, not an analytic overlay.
@@ -145,4 +143,4 @@ The guard is on by default and can be turned off with `nefes.config.enforce_subs
 
 Within the subsonic scope, the choking mechanism of this document is complete: the network finds the choke point, caps the flow, and matches the classical operating map, all from the element rows written for the mean flow.
 
-With the mean-flow model complete through choking, the same rows are ready to be linearized at the operating point into the acoustic layer, where the compact choked nozzle contributes its Marble–Candel reflection (see [perturbation network](perturbation-network.md)).
+The same rows, linearized at the operating point, form the acoustic layer, where the compact choked nozzle contributes its Marble–Candel reflection, in [perturbation network](perturbation-network.md).

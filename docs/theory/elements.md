@@ -4,10 +4,10 @@ An element is the network's unit of physics: a control volume on which the gover
 This document is the constitutive library — it derives, element class by element class, the residual rows each one writes into the system, and the reasoning that makes those rows smooth, direction-safe, and thermodynamically admissible.
 The same rows are more than a mean-flow model: differentiated at the operating point they *are* the acoustic element stamps (see [perturbation network](perturbation-network.md)), so the care taken here to keep every residual complex-analytic is what later lets one operator serve both problems.
 
-Every interior element shares one structural template — a single mass balance and one pressure-type relation per additional port — so the presentation begins with that template and the two devices common to all rows, then proceeds through the two-port elements (area change with and without loss, and the loss family), building on this to the multi-port junctions and the one-port boundaries, and culminating in the blackbox transfer-matrix element and the stabilization term that guards the early solver stages.
+Every interior element shares one structural template — a single mass balance and one pressure-type relation per additional port.
 The parameter-level catalogue of constructors is the subject of the [atomic-elements](../reference/atomic-elements.md) reference; the concern here is the physics each residual encodes.
 
-## The common template
+## The common template {#sec-elements-common-template}
 
 Two conventions hold for every residual below.
 The ports of an element are numbered in connection order, and each residual is written as a smooth, complex-analytic function of the flow state, using the regularized primitives of the [complex-step](../design/complex-step.qmd) design note in place of any branch, absolute value, or min/max.
@@ -26,12 +26,12 @@ This row is exact, linear, and independent of the edge-arrow convention: flippin
 **The stabilization term.**
 Every interior *pressure-type* row additionally carries a small linear resistance $-\,\kappa\,\dot m^{\text{out}}_{P,\text{port}}$, with $\kappa$ the artificial-resistance coefficient and $\dot m^{\text{out}}_{P,\text{port}} = \sigma_{P,e}\dot m_e$ the outflow at that port.
 Its role is to regularize the early solver stages, and it is driven to exactly zero before convergence, so that the equations actually satisfied at the operating point are the exact ones.
-The term is therefore written but not repeated in the discussion of each element; its purpose and its harmlessness are the subject of [well-posedness](well-posedness.md), and it is denoted $\kappa$-term below.
+The term is therefore written but not repeated in the discussion of each element; its purpose and its harmlessness are the subject of [well-posedness](well-posedness.md#sec-wellposed-zero-flow), and it is denoted $\kappa$-term below.
 
 An interior element with $n$ ports thus supplies one mass row and $n-1$ pressure-type rows, the latter carrying the element's geometry.
 Energy continuity does not appear among these rows: the total enthalpy is delivered onto each edge by the transport relations through the element's donor (see [transport](transport.qmd)), so an interior element writes no energy row of its own.
 
-## Isentropic area change
+## Isentropic area change {#sec-elements-isentropic-area}
 
 The simplest two-port is a smooth, internally monotone contraction or diffuser that changes the flow area without loss — until its small port chokes.
 Beyond the shared mass row it supplies one pressure relation, given as:
@@ -48,7 +48,7 @@ The choked branch and the operating map it produces are the subject of [choking]
 Intuitively, this two-equation element reproduces the classical isentropic jump.
 Energy continuity $h_{t,0} = h_{t,1}$ is delivered by the edge transport, and entropy continuity in the lossless regime then follows from the entropy lemma of [state and recovery](state-and-recovery.qmd) — continuous $p_t$ and $T_t$ imply continuous $s$ — so mass, energy, and constant entropy hold across the element in subsonic operation, valid for either flow direction and regular at $\dot m = 0$ (tests: `test_subsonic_nozzle_matches_isentropic` against the analytic relations, `test_long_serial_chain_cold_start` for a chain solved from rest).
 
-## Sudden area change
+## Sudden area change {#sec-elements-sudden-area}
 
 A sudden, rather than smooth, change of area is lossy in one direction and nearly loss-free in the other, and its residual blends the two according to which way the gas flows.
 
@@ -91,7 +91,7 @@ $$
 where $R^{\text{mom}}_2$ is the expansion momentum residual scaled to pressure units and $R^{\text{contr}}_2$ the contraction residual above, both sign-normalized so that near $\dot m = 0$ their pressure content is the same $(p_0 - p_1)$ and the two halves of the blend cannot cancel there and leave the element without an effective equation.
 A subtlety worth recording is that the convective momentum flux $\dot m\,u = \dot m^2/(\varrho A)$ is *even* under an edge-arrow flip — both factors change sign together — so no $\sigma$ may multiply it; writing the momentum balance as $\sum \sigma(\dot m u + pA)$ by analogy with the mass and energy balances silently breaks the element's arrow-independence, a mistake made transiently during development and caught by `test_edge_direction_invariance`.
 
-## The loss family
+## The loss family {#sec-elements-loss-family}
 
 A number of elements share one residual shape — a total-pressure drop proportional to a head that depends on the through-flow — and differ only in how that head is formed.
 
@@ -114,7 +114,7 @@ Three siblings share this template and are named here for completeness, their re
 2. **Friction pipe**: a Darcy–Weisbach segment with the same signed quadratic head as the concentrated loss but with $K_L = f\,L/D$ formed from the friction factor $f$, length $L$, and hydraulic diameter $D$ — the mean-flow and acoustic unification of duct and loss (following Greyvenstein & Laurie).
 3. **Linear resistance**: a screen, perforate, or damper whose drop is *linear* in the through-flow, $R_2 = p_{t,0} - p_{t,1} - r_{\text{lin}}\,\dot m_{\text{through}} - \kappa\text{-term}$; unlike the quadratic head, this term does not vanish with the mean dynamic head and so remains active in the linearized problem even at zero mean flow, the resistance a quiescent network still presents to an acoustic wave.
 
-## Junctions and splitters
+## Junctions and splitters {#sec-elements-junctions-splitters}
 
 A multi-port node that merges or distributes streams supplies one mass balance and $n - 1$ pressure couplings of its remaining ports against port $0$.
 Two couplings are available, given as:
@@ -127,7 +127,7 @@ $$
 $$
 
 where the junction ties all ports to a common *static* pressure and the splitter to a common *total* pressure (each row also carrying its $\kappa$-term).
-The static-pressure junction is the classical header or manifold node, appropriate where every port runs at low Mach number so that the kinetic terms it ignores are negligible; enthalpy mixing of several inflows is automatic through the donor mechanism of [transport](transport.qmd).
+The static-pressure junction is the classical header or manifold node, appropriate where every port runs at low Mach number so that the kinetic terms it ignores are negligible; enthalpy mixing of several inflows is automatic through the donor mechanism of [transport](transport.qmd#sec-transport-donor-enthalpy).
 The lossless splitter is an isentropic distribution plenum: with $h_t$ delivered by the edge transport and $p_t$ common, entropy is continuous into every outflow branch, reproducing the classical lossless splitter of mass, energy, and constant entropy.
 
 **A selection rule that is not cosmetic.**
@@ -177,9 +177,9 @@ Because it charges a fast inflow its mixing loss instead of manufacturing free e
 A flow divider whose split is imposed rather than discovered is a variant of the splitter: with one inflow at port $0$, the first $n - 2$ outflow ports each carry a fixed fraction $\beta_i$ of the inflow rate, and the last outflow port carries the remainder while keeping total-pressure continuity with the inflow.
 Because reverse flow is disallowed, no upwind switch is needed and every row is linear in the flow state, so the complex-step Jacobian is exact without smoothing.
 
-## Boundary elements
+## Boundary elements {#sec-elements-boundary}
 
-A boundary element terminates a single edge and supplies exactly one equation; its donor enthalpy becomes active only if the flow actually enters the network there (see [transport](transport.qmd)).
+A boundary element terminates a single edge and supplies exactly one equation; its donor enthalpy becomes active only if the flow actually enters the network there (see [transport](transport.qmd#sec-transport-donor-enthalpy)).
 
 **Mass-flow inlet.**
 A prescribed inflow rate pins the outflow into the domain, given as $R = \sigma_{P,e}\dot m_e - \dot m^{\text{spec}}$, with the donor $H_P = c_p T_t^{\text{spec}}$ supplying the specified stagnation enthalpy.
@@ -224,16 +224,16 @@ Because the sonic point sits in the lumped throat rather than in the domain, the
 
 **Wall.**
 An impermeable termination sets $R = \sigma_{P,e}\dot m_e = 0$, admitting no mass across the face.
-A finite cavity shares this mean-flow residual — it is a wall to the steady flow — and differs only acoustically, where its volume enters the storage block as a compliance (see [perturbation network](perturbation-network.md)).
+A finite cavity shares this mean-flow residual — it is a wall to the steady flow — and differs only acoustically, where its volume enters the storage block as a compliance (see [perturbation network](perturbation-network.md#sec-perturb-storage-block)).
 
-## The transfer-matrix element
+## The transfer-matrix element {#sec-elements-transfer-matrix}
 
 Some components are known not by a constitutive law but by a *measured or prescribed* two-port frequency response, and the transfer-matrix element is the vehicle for embedding such a component in the network.
 To the mean flow it is passive — its steady residual is identical to that of an isentropic area change, conserving mass and energy and remaining isentropic — so it perturbs the operating point no more than a lossless duct would.
-Its distinctive behaviour is confined to the perturbation layer, where its acoustic rows are overwritten by the user-supplied transfer matrix instead of the linearized jump; that stamp, and the identification procedure that can supply the matrix from data, are the subject of the [perturbation network](perturbation-network.md) and [identification](identification.md).
+Its distinctive behaviour is confined to the perturbation layer, where its acoustic rows are overwritten by the user-supplied transfer matrix instead of the linearized jump; that stamp, and the identification procedure that can supply the matrix from data, are the subject of the [perturbation network](perturbation-network.md) and [identification](identification.md#sec-ident-two-port).
 An important remark is that the matrix is a frequency-domain relation between the two stations and **should not be interpreted as a causal input–output law**; it constrains the linearized states at a frequency, nothing more.
 
-## The stabilization term
+## The stabilization term {#sec-elements-stabilization}
 
 During the early solver stages only, every interior pressure-type row carries the artificial-resistance term noted in the common template, given as:
 
@@ -248,7 +248,7 @@ $$
 where $\kappa$ is the artificial-resistance coefficient actually stamped into the row, $\kappa_s$ the dimensionless continuation schedule, and $r_{\text{art}}$ a resistance scale built from $\Delta p_{\max}$, the span between the network's highest and lowest prescribed absolute pressure.
 Scaling by $r_{\text{art}}$ sizes the fictitious pressure drop at the reference flow as a fixed fraction $\kappa_s$ of the real driving drop; the cap at unity means it only ever *softens* the friction, for a network whose driving drop is small against its flow, and leaves a healthy one untouched at $r_{\text{art}} = 1$.
 Where no driving drop is known a priori, as in a purely mass-driven network, the scale falls back to unity.
-It is a small fictitious friction between port $0$ and port $i$, signed as the second law dictates, and its necessity (it removes a zero-flow degeneracy that would otherwise strand the solver) is argued in [well-posedness](well-posedness.md).
+It is a small fictitious friction between port $0$ and port $i$, signed as the second law dictates, and its necessity (it removes a zero-flow degeneracy that would otherwise strand the solver) is argued in [well-posedness](well-posedness.md#sec-wellposed-zero-flow).
 It is harmless because the final solver stage sets $\kappa_s = 0$, so the equations satisfied at convergence are the exact constitutive relations of this document rather than their stabilized surrogates (test: `test_long_serial_chain_cold_start`, converging from rest through the staged continuation to $\kappa = 0$).
 
-With every element's residual rows in hand, the next question is why these particular forms are chosen over the more obvious flux-form or hard-switch alternatives — the subject of [well-posedness](well-posedness.md).
+Why these particular forms are chosen over the more obvious flux-form or hard-switch alternatives is argued in [well-posedness](well-posedness.md).

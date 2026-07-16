@@ -3,7 +3,7 @@
 A loaded case (from YAML or built in code) rarely stays fixed: parameter studies, calibration and design sweeps all need the same model solved at many operating points.
 Nefes therefore gives every physical parameter a **name and a dotted address**, and one generic machinery to read and write it: `parameters()`, `get`, `set`, `update`, `with_params` and the sweep driver `parameter_study`.
 Parameter writes never touch topology, so the compiled problem keeps its layout and a previous solution remains a valid warm start.
-This page is the user guide; the internal architecture is described in [design/parameters](../design/parameters.md).
+This page is the user guide; the internal architecture is described in the [parameter schema](parameter-schema.md).
 
 ## Addresses
 
@@ -66,7 +66,7 @@ Three write paths deserve a remark:
    An area-change element carries genuinely per-edge areas; address them as `"e3.area"`.
 3. **Object-valued fields go through the same door.**
    `perturbation_bc`, `dynamic_source`, `transfer_matrix`, `composition` (paired with `basis`), `marker` and `back_pressure` are set with the same `set`/`update`, validated by type instead of bounds; `set_perturbation_bc` and `set_dynamic_source` remain as named conveniences over it.
-   On a reacting network a composition write additionally checks its species against the loaded library.
+   On a reacting network a composition write additionally checks its species against the loaded species set.
 
 ## Copies and studies: `with_params`
 
@@ -126,7 +126,7 @@ The object-valued fields are reachable by the same generic `set`, but not all of
 | `perturbation_bc` | boundary terminals | partial | rigid / open / constant specific impedance round-trip; anechoic, reflection, choked, driven and table/callable forms are code-only |
 | `transfer_matrix` | `transfer_matrix_element` | none | the loader builds the node empty; attach post-load (`net.set(node, transfer_matrix=...)`); the `UnknownTransferMatrix` identification marker is accepted |
 | `dynamic_source` | flames, mass source | none | attach post-load; `set_dynamic_source` is the named alias |
-| `composition` + `basis` | inlets, outlet backflow, mass source | yes | the prime reacting study knob; validated against the species library |
+| `composition` + `basis` | inlets, outlet backflow, mass source | yes | the prime reacting study knob; validated against the species set |
 | `marker` | inlets, outlet backflow, mass source | yes | burnt marker in $[0, 1]$; marker-gated networks only |
 | `back_pressure` | choked nozzle outlet | yes | post-solve choke diagnostic |
 | `eps` | sudden area change, loss | no | smoothing-width override (advanced) |
@@ -135,5 +135,5 @@ The object-valued fields are reachable by the same generic `set`, but not all of
 
 The network-level references `p_ref` and `T_ref` (and the advanced `mdot_ref` / `h_ref` seeds) are addressable: they are value knobs that preserve the state-vector dimension, so they are warm-start-safe.
 
-The **gas model is not**: `thermoModel`, the gas constants, the species slate, the reducer and the mechanism file determine the gas library and the number of transported scalars.
+The **gas model is not**: `thermoModel`, the gas constants, the species slate, the reducer and the mechanism file determine the species set and the number of transported scalars.
 Changing any of them reshapes the problem (`n_solve` changes) and invalidates every warm start, so it is a re-specification of the model rather than a parameter change, and it stays behind the explicit construction path (`Network(gas=...)`, the UI Model pane) that forces a cold solve.

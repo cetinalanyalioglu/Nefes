@@ -2,12 +2,10 @@
 
 A disturbance in a flowing gas travels in three distinct ways: as a pressure (sound) wave running downstream, as a pressure wave running upstream, and as a temperature or composition pattern simply convected along with the gas.
 The *characteristic variables* $f$, $g$, and $h$ are the amplitudes that book-keep these three carriers, and they are the natural language of duct acoustics and thermoacoustics.
-This document derives the exact, invertible map between the wave amplitudes and the network's own unknowns, and then explores the question of whether solving the *mean flow* in wave variables (rather than in the network variables introduced in [state-and-recovery](state-and-recovery.qmd)) improves convergence.
+This document derives the exact, invertible map between the wave amplitudes and the network's own unknowns, and then explores the question of whether solving the *mean flow* in wave variables (rather than in the network variables introduced in [state-and-recovery](state-and-recovery.qmd#sec-state-variable-set)) improves convergence.
 Or, in a more general sense, this document shows whether solving the mean flow using any other linearly dependent variable set can affect the convergence behaviour.
 
-The presentation begins with the decomposition of the one-dimensional Euler system and the definition of the amplitudes, then proceeds to the exact per-edge map to the network variables and the determinant that guarantees its invertibility, building on the "Newton-invarance", and closing with the three roles the characteristics actually play.
-
-## Decomposition of the one-dimensional Euler system
+## Decomposition of the one-dimensional Euler system {#sec-char-euler-decomposition}
 
 Written in the primitive variables $\mathbf{q} = (\varrho, u, p)$, the one-dimensional Euler equations take the quasi-linear form $\partial_t \mathbf{q} + \mathbf{A}_q\,\partial_x \mathbf{q} = \mathbf{0}$, with the flux Jacobian given as:
 
@@ -37,7 +35,7 @@ where a prime denotes a fluctuation about the mean state, so that $u'$, $p'$, an
 The relations invert to $u' = f - g$, $p' = \varrho c\,(f + g)$, and $\varrho' = h + p'/c^2$, which express the primitive fluctuations in terms of the wave amplitudes and are the form used to build the network map below (test: `test_characteristic_amplitude_relations`).
 Intuitively, $f$ and $g$ carry the pressure–velocity content of the two sound waves, while $h$ isolates the density change that is *not* explained by the pressure change — the entropy spot that the flow merely transports.
 
-## Exact maps to the network variables
+## Exact maps to the network variables {#sec-char-network-maps}
 
 The perturbation the acoustic problem actually manipulates is that of the edge state, $\widehat{\mathbf{x}}_e = (\widehat{\dot m}_e,\ \widehat{p}_e,\ \widehat{h}_{t,e})$, the complex amplitude of a time-harmonic fluctuation of the solver's own unknowns (see [nomenclature](../nomenclature.md)).
 Relating it to the wave amplitudes requires only the definitions $\dot m = \varrho u A$ and $h_t = \Gamma p/\varrho + \tfrac{1}{2}u^2$, differentiated at the mean state, given as:
@@ -70,7 +68,7 @@ $$
 so the inverse $\mathbf{L}_e = \mathbf{T}_e^{-1}$, giving $\mathbf{w} = \mathbf{L}_e\,\widehat{\mathbf{x}}_e$, exists at $M = 0$, in reversed flow, and in supersonic flow alike — the change to and from wave amplitudes never breaks down on a physical state.
 An important remark is that the entropy (third) row of the map carries the gas's *caloric coupling* through $\Gamma$, and for a reacting or variable-$\gamma$ edge this row is taken instead from a complex step of the converged closure, so that the wave maps remain consistent with the mean-flow Jacobian rather than assuming a perfect gas (see [perturbation network](perturbation-network.md)).
 
-## The Newton-invariance 
+## The Newton-invariance {#sec-char-newton-invariance}
 
 With an invertible map in hand, one can ask whether posing the *mean-flow* Newton correction in wave amplitudes would change the iteration.
 The claim is that it does not: solving the Newton system in characteristic amplitudes and mapping back yields the identical update as solving directly in the network variables.
@@ -90,13 +88,13 @@ Intuitively, a change of unknowns is a similarity transformation of the linear s
 It should be noted that casting the mean-flow correction in characteristic variables therefore **cannot, by itself, improve convergence**.
 What a change of variables *can* affect is the floating-point conditioning of the linear solve and the metric of any relaxation, both second-order effects; the genuine levers on robustness are the equation structure of [equation structure](equation-structure.md) and [transport](transport.qmd), the scaling, and the globalization of the solver (see [the solver](../design/solver.md)).
 
-## What the characteristics are actually for
+## What the characteristics are actually for {#sec-char-roles}
 
 The wave language earns its place not in the mean-flow solve but in three other roles, each of which the map above makes exact.
 
-1. **Counting and well-posedness.** The characteristic decomposition is what tells one how many boundary and jump conditions a well-posed problem needs, and on which side each belongs — an inflow carries conditions its outflow does not; the fixed per-edge split of [equation structure](equation-structure.md) is the smooth, direction-independent realization of that count.
+1. **Counting and well-posedness.** The characteristic decomposition is what tells one how many boundary and jump conditions a well-posed problem needs, and on which side each belongs — an inflow carries conditions its outflow does not; the fixed per-edge split of [equation structure](equation-structure.md#sec-eqstruct-fixed-split) is the smooth, direction-independent realization of that count.
 2. **Diagnostics.** Any residual or Newton update can be read per edge as three wave amplitudes through $\mathbf{L}_e$, which makes the state of the iteration physically legible; at the converged mean state the residual-driven wave amplitudes vanish identically, the natural statement that no unbalanced waves remain.
 3. **The acoustic network.** Linearizing the very same element equations at the converged mean state and transforming with $\mathbf{T}$ turns the base Jacobian $\overline{\mathbf{J}}$ into the acoustic scattering relations between the wave amplitudes — the reuse that is the consistency goal of the whole framework, and the subject of the [perturbation network](perturbation-network.md).
 
 The third role is the through-line of the method: the map $\mathbf{T}$ derived here is precisely the bridge by which the operator assembled for the mean flow becomes, without re-derivation, the operator of the acoustics.
-Before turning to that acoustic layer, one mean-flow phenomenon remains to be treated — the saturation of mass flow when a passage chokes, which the next document shows emerges from the element rows already written (see [choking](choking.qmd)).
+One mean-flow phenomenon remains to be treated — the saturation of mass flow when a passage chokes — which emerges from the element rows already written, in [choking](choking.qmd).

@@ -8,13 +8,12 @@ execute:
 # Dynamic sources
 
 Of all the blocks that build the acoustic operator, one carries physics that is *prescribed* rather than derived from the mean-flow residuals: the unsteady feedback an element injects into the acoustics, of which a flame's heat-release response is the archetype.
-This is the source block $\mathbf{S}(\omega)$ of the [perturbation network](perturbation-network.md), and it is what closes the loop of a thermoacoustic instability — the acoustics perturb the flame, and the flame's modulated heat release perturbs the acoustics in return.
+This is the source block $\mathbf{S}(\omega)$ of the [perturbation network](perturbation-network.md#sec-perturb-source-block), and it is what closes the loop of a thermoacoustic instability — the acoustics perturb the flame, and the flame's modulated heat release perturbs the acoustics in return.
 Whether that loop grows or decays is the stability question of [analyses](analyses.qmd); this document supplies the source models it feeds on.
 
 **A dynamic source is specified, not solved:** the analyst provides a transfer function describing how a heat-release (or mass-injection) fluctuation follows a reference fluctuation in the flow.
-The presentation begins with the general form of that response, then specializes it to the flame transfer function and to the mass-source response, proceeds to the $n$–$\tau$ model and its roll-off variant, building on this to how the source stamps into the operator and how a *measured* transfer function is continued into the complex plane for the stability solver, and closes with the one modeling caveat a reacting analysis must keep in view.
 
-## The general form of a dynamic source
+## The general form of a dynamic source {#sec-source-general-form}
 
 A dynamic source is the statement that a source quantity carried by one element — the heat release of a flame, or the injected mass flow of a fuel port — fluctuates in response to the unsteady flow elsewhere in the network.
 Neither the *quantity* that drives the response nor the *location* at which it is read is fixed by the construction: the response is a superposition of terms, each reading its own reference quantity on its own reference edge, and is given as:
@@ -40,13 +39,13 @@ Second, and more generally, the individual $\mathcal{F}_k$ acquire a separate ph
 Where two references are constrained to co-vary — the velocity and the mass flow on the same edge, say, which the linearized state relations tie together — the network response determines only their combined effect, and the split between the two terms is a modeling assumption rather than a consequence of the physics.
 The practical hazard is double counting: a gain calibrated from data in which a second reference quantity was free to co-vary already contains that second sensitivity, and adding an explicit term for it counts the same physics twice.
 
-**This distinction is exactly what makes the terms recoverable or not.** In the forward problem the degeneracy is silent, since prescribed $\mathcal{F}_k$ always assemble into a definite operator; in the inverse problem it is not, where separating several sensitivities from one measurement requires the excitation to render their reference fluctuations sufficiently independent, and the resulting condition number is the diagnostic that guards it (see [identification](identification.md)).
+**This distinction is exactly what makes the terms recoverable or not.** In the forward problem the degeneracy is silent, since prescribed $\mathcal{F}_k$ always assemble into a definite operator; in the inverse problem it is not, where separating several sensitivities from one measurement requires the excitation to render their reference fluctuations sufficiently independent, and the resulting condition number is the diagnostic that guards it (see [identification](identification.md#sec-ident-identifiability)).
 
 Working with fractional rather than absolute fluctuations is what renders each $\mathcal{F}_k$ dimensionless, and with it the model portable between operating points.
 The normalization carries one further restriction: the mean $\overline{\phi}_k$ on the reference edge must be nonzero, since the fractional fluctuation is otherwise undefined, and a source referencing a quiescent edge is rejected at assembly rather than silently producing an infinite gain.
 In practice most flames are represented adequately by the single velocity term of the next section, and the form above is the general case that admits, for example, a separate pressure sensitivity or an equivalence-ratio term read at the injector.
 
-## The flame transfer function
+## The flame transfer function {#sec-source-flame-transfer-function}
 
 The archetype of the general form, and by a wide margin its most common use, is the *flame transfer function* [@lieuwen_2012]: a single term, $K = 1$, whose reference quantity is the velocity and whose reference edge is the one immediately upstream of the flame.
 Under this specialization the heat-release fluctuation is that upstream velocity fluctuation, scaled by a frequency response, given as:
@@ -58,7 +57,7 @@ $$
 where $\widehat{u}/\overline{u}$ is the fractional velocity fluctuation on the upstream edge, and $\mathcal{F}$ is the single transfer function that remains once the term index is dropped.
 It should be noted that the restriction to a single upstream velocity term is a *modeling* choice about the flame, not a limitation of the framework; it is adopted here because the closures of the $n$–$\tau$ section below are stated for it.
 
-## The mass-source response
+## The mass-source response {#sec-source-mass-response}
 
 The second quantity a dynamic source may modulate is the mass flow delivered by an inline injector, an element that adds a stream of prescribed total temperature and composition to the through-flow without reacting it.
 Setting $q = \dot{m}_{\text{src}}$, the *injected* mass flow, the general form reads:
@@ -71,7 +70,7 @@ where $\widehat{\dot{m}}_{\text{src}}$ is the complex amplitude of the injected 
 A fuel feed whose delivery responds to the pressure fluctuation across its injection holes is the physically natural case, taking $\phi = p$ on the feed-side edge; a velocity-modulated feed is written just as readily, and is what the shipped builder assumes by default.
 
 The consequences of a modulated injector are richer than those of a modulated flame, which perturbs the acoustics through a single energy balance.
-An injected mass pulse perturbs three balances at once: it adds mass, it adds the axial momentum $\overline{\dot{m}}_{\text{src}}\,u_{\text{inj}}$ that the injected stream carries, and it modulates the mass-weighted mixing of the injected total enthalpy and composition into the outflow (the row placement is given in the [stamping section](#how-the-source-stamps-into-the-operator); test: `test_mass_source_feedback_on_node_rows`).
+An injected mass pulse perturbs three balances at once: it adds mass, it adds the axial momentum $\overline{\dot{m}}_{\text{src}}\,u_{\text{inj}}$ that the injected stream carries, and it modulates the mass-weighted mixing of the injected total enthalpy and composition into the outflow (the row placement is given in the [stamping section](#sec-source-stamping); test: `test_mass_source_feedback_on_node_rows`).
 The momentum contribution is proportional to the injection velocity $u_{\text{inj}}$ and therefore vanishes for transverse injection, $u_{\text{inj}} = 0$, which adds mass with no axial momentum.
 The mixing contribution is proportional to the *contrast* between the injected stream and the local mixture, $\phi_{\text{src}} - \overline{\phi}_{\text{out}}$, so an injector delivering a stream that already matches the outflow composition and enthalpy modulates neither, however strongly its mass flow fluctuates.
 
@@ -79,7 +78,7 @@ Intuitively, a fluctuating injector converts an acoustic fluctuation into *conve
 These are the forward path to the fuel-flow-driven instabilities in which a downstream flame burns the modulated mixture and closes the loop through its own heat release, and, when such a spot reaches a compact nozzle, the origin of indirect combustion noise.
 We emphasize that the injector itself performs no reaction: it sets the mixture that a downstream flame element subsequently burns.
 
-## The $n$–$\tau$ model and its roll-off
+## The $n$–$\tau$ model and its roll-off {#sec-source-ntau-model}
 
 The canonical closure is the interaction-index / time-lag model, due to Crocco, who introduced it as the *sensitive time-lag* theory of combustion instability in liquid-propellant rocket motors [@crocco_cheng_1956], and in which the flame responds with a fixed gain after a fixed delay, given as:
 
@@ -108,7 +107,7 @@ $$
 
 where $\zeta$ is the damping ratio: below $1/\sqrt{2}$ the gain peaks near $f_c$, and the phase swings through a further half turn on top of the pure lag.
 Both poles again lie in the upper half-plane, at $f = f_c\big(\mathrm{i}\zeta \pm \sqrt{1 - \zeta^2}\big)$, so the model stays analytically continuable for the eigenproblem as long as the search region does not reach up to the nearer of them (tests: `test_lowpass2_matches_the_delayed_second_order_filter`, `test_lowpass2_is_analytic_below_its_poles`, `test_lowpass2_overshoots_where_the_first_order_form_cannot`).
-This is the form OSCILOS prescribes for the flame of the [EM2C combustor benchmark](../validation/benchmarks.md) [@li_oscilos_2017].
+This is the form OSCILOS prescribes for the flame of the [EM2C combustor benchmark](../validation/benchmarks.md#sec-bench-em2c-oscilos) [@li_oscilos_2017].
 
 ```{python}
 #|label: setup
@@ -145,7 +144,7 @@ fig.update_yaxes(range=[0.0, 1.15], row=1, col=1)
 fig
 ```
 
-## How the source stamps into the operator
+## How the source stamps into the operator {#sec-source-stamping}
 
 The source enters the operator by *adding* to the rows the base Jacobian already populates, never overwriting them — so the element keeps its mean-flow relation and gains an unsteady term on top.
 For a flame the term lands on the downstream edge's total-enthalpy transport row with a factor $-\delta$, given as the residual contribution:
@@ -157,21 +156,21 @@ $$
 $$
 
 where $\widehat{H}_{\text{donor}}$ is the inherited donor enthalpy (see [transport](transport.qmd)), $\widehat{q}$ the heat-release fluctuation of the transfer-function form above, $\dot m$ the through-flow, and $\delta$ the mean specific enthalpy rise across the flame.
-An important consequence of the $\omega = 0$ value $\mathcal{F}(0) = n \neq 0$ is that the source block has a nonzero direct-current gain, so $\mathbf{S}(0) \neq 0$; this does not disturb the mean flow, because the steady solve ignores the source entirely and treats the flame as passive, but it means the acoustic operator at zero frequency is $\overline{\mathbf{J}} + \mathbf{S}(0)$ rather than $\overline{\mathbf{J}}$ alone (see [perturbation network](perturbation-network.md)).
+An important consequence of the $\omega = 0$ value $\mathcal{F}(0) = n \neq 0$ is that the source block has a nonzero direct-current gain, so $\mathbf{S}(0) \neq 0$; this does not disturb the mean flow, because the steady solve ignores the source entirely and treats the flame as passive, but it means the acoustic operator at zero frequency is $\overline{\mathbf{J}} + \mathbf{S}(0)$ rather than $\overline{\mathbf{J}}$ alone (see [perturbation network](perturbation-network.md#sec-perturb-one-operator)).
 A mass-injection source stamps analogously but onto the node's mass and momentum rows and onto the scalar-mixing rows, modulating the enthalpy and composition waves a fuel pulse drags with it — the forward path to fuel-flow-driven instabilities (tests: `test_heat_release_lands_on_downstream_energy_row_with_correct_sign`, `test_q_mean_override_scales_the_coupling`).
 
-## Tabulated and continued transfer functions
+## Tabulated and continued transfer functions {#sec-source-tabulated-continued}
 
 A measured or simulated flame response arrives not as a formula but as a table of complex samples $\mathcal{F}(f)$ on the real-frequency axis, and using such a table correctly requires care about *where in the complex plane* it will be evaluated.
 As a raw table it is defined only on the real axis, interpolating magnitude and phase between its samples, and it deliberately refuses a complex-frequency argument.
-This is sufficient for a forced response and for the real-axis Nyquist stability driver, both of which evaluate only on the real axis, but it is *not* sufficient for the contour eigensolver of [analyses](analyses.qmd), which searches the complex plane for the roots of $\det\mathbf{A}(\omega)$ and therefore needs an analytic function (tests: `test_tabulated_recovers_samples_and_rejects_complex`, `test_stability_rejects_nonanalytic_transfer`).
+This is sufficient for a forced response and for the real-axis Nyquist stability driver, both of which evaluate only on the real axis, but it is *not* sufficient for the contour eigensolver of [analyses](analyses.qmd#sec-analyses-modal-stability), which searches the complex plane for the roots of $\det\mathbf{A}(\omega)$ and therefore needs an analytic function (tests: `test_tabulated_recovers_samples_and_rejects_complex`, `test_stability_rejects_nonanalytic_transfer`).
 
 The bridge is analytic continuation, and its correct form follows from the physics of the response rather than from a fitting preference.
 A table of numbers does not determine its own extension off the real axis; one must first say what *kind* of function the response is, and the two physically meaningful answers give the two continuations below.
 If the response to a brief disturbance dies out after a finite time — true of a flame, which forgets a velocity disturbance after a finite convective time, and of any compact element without an internal resonator — the transfer function is a finite sum of pure delays, entire in the complex plane, and the impulse-response fit of the next subsection is the faithful continuation; this is the recommended default.
 If instead the response *rings* — a cavity damper, a resonant end plate — its transfer function genuinely has poles, and the rational fit further below is the honest description.
 
-## The impulse-response model
+## The impulse-response model {#sec-source-impulse-response}
 
 System identification from a broadband simulation or experiment delivers a flame response most naturally as the discrete impulse response $h_j$, the heat-release response to a unit velocity impulse $j\,\Delta t$ seconds earlier [@polifke_2020].
 Its frequency response is the finite sum
@@ -188,14 +187,14 @@ When the data arrive as frequency samples rather than as an impulse response, th
 By default the sample spacing is set from the top of the tabulated band, $\Delta t = 1/(2 f_{\max})$, so the fit carries no frequency content the data cannot constrain (tests: `test_fit_impulse_response_recovers_a_known_response_exactly`, `test_fit_impulse_response_continues_off_the_real_axis_exactly`, `test_fit_impulse_response_smooths_noisy_data`).
 
 Because the response is sampled, @eq-fir repeats with period $1/\Delta t$, and only frequencies below the Nyquist limit $1/(2\Delta t)$ are resolved (test: `test_fir_is_periodic_at_the_sampling_rate`).
-The [BRS combustor benchmark](../validation/benchmarks.md) uses this form: its flame response is published only as a figure, and reconstructing the impulse response behind that figure, rather than fitting a rational function to it, is what makes the intrinsic mode of the rig computable [@emmert_2017].
+The [BRS combustor benchmark](../validation/benchmarks.md#sec-bench-brs-combustor) uses this form: its flame response is published only as a figure, and reconstructing the impulse response behind that figure, rather than fitting a rational function to it, is what makes the intrinsic mode of the rig computable [@emmert_2017].
 
 The same reasoning extends to measured transfer and scattering *matrices*.
 The entries of a scattering matrix are causal responses of outgoing waves to incoming ones, so for a compact element they are finite-memory and continue entry by entry with the impulse-response fit.
 The entries of a *transfer* matrix are an algebraic rearrangement of those responses and do not share the property: they mix delays of both signs (a plain duct already has $\cosh$/$\sinh$ entries that grow off the real axis in both directions), and the rearrangement divides by the transmission response, creating genuine poles.
 Measured matrix data should therefore be converted to scattering form, continued there, and converted back — the conversions preserve analyticity (test: `test_impulse_continuation_of_a_finite_memory_scattering_matrix_is_exact`).
 
-## The rational alternative
+## The rational alternative {#sec-source-rational-alternative}
 
 For a response with a genuine resonance, the barycentric rational fit given by the AAA algorithm [@nakatsukasa_2018] represents the samples as a rational function — analytic everywhere except at its isolated poles — so that the same object serves both the real-axis sweep and the complex-plane search.
 Two refinements make the fit trustworthy near the real axis: the pure transport lag is estimated and *peeled* before fitting, since a delay $e^{-\mathrm{i}\omega\tau}$ is entire and carries no poles, and re-applied analytically on evaluation — the descriptor form of an analytic delay times a low-order rational remainder — and spurious Froissart-doublet poles introduced by the fit are detected and removed.
@@ -205,7 +204,7 @@ That warning is not a formality, and it is why the rational fit is the second ch
 A rational fit of samples taken on the real axis places its poles near the sampled interval, because that is where the data constrains it; a mode sitting ten or twenty hertz off the real axis is then read out of the region where the fit is least trustworthy, and a fit of noisy data can scatter artificial poles into the search window outright.
 A finite-memory response has no such hazard — its continuation has no poles to place — which is why the impulse-response route is preferred whenever the physics permits it.
 
-## The reacting-acoustics caveat
+## The reacting-acoustics caveat {#sec-source-reacting-caveat}
 
 One modeling gap must be kept in view when the flow carries composition, and stating it precisely is the point of this section.
 The coupling by which a composition fluctuation generates sound — the *compositional* or *indirect* noise [@magri_2016], captured by a coefficient $R_\xi$ — is retained everywhere the acoustic linearization is *inherited* from the mean-flow kernel: at a flame, an area change, a resolved nozzle, and even the compact choked-nozzle *element*, whose critical-mass-flux row is complex-stepped through its composition dependence and so carries $R_\xi$ automatically.
@@ -215,4 +214,5 @@ One further approximation of the same low-Mach character is worth recording, and
 The perfect-gas heat-release flame carries its power as an element parameter and is de-normalized exactly; every other flame falls back on the sensible-enthalpy rise $\dot m\,\overline{c}_p\,\Delta T$, which neglects the kinetic-energy difference across the flame and is therefore accurate to $\mathcal{O}(M^2)$.
 Supplying the mean heat release explicitly removes the approximation altogether.
 
-With the source models specified and, where measured, continued into the complex plane, the network's stability becomes a computable property of the operator — whether the flame–acoustic loop grows — which is the subject of [analyses](analyses.qmd); and when the flame's response is itself the unknown, it can be recovered from a measured network response by the [identification](identification.md) procedure.
+The network's stability is a computable property of the operator — whether the flame–acoustic loop grows (see [analyses](analyses.qmd)).
+When the flame's response is itself the unknown, it can be recovered from a measured network response by the [identification](identification.md#sec-ident-flame-ftf) procedure.

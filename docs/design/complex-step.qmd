@@ -11,10 +11,9 @@ The entire solver rests on having *exact* Jacobians: Newton's method advances by
 This document explains the engine that supplies those derivatives exactly and at negligible cost in accuracy and the contract it demands of every residual in return.
 The method is not a marginal improvement over finite differences; it removes their defining weakness entirely, delivering machine-precision derivatives for a step so small that the truncation error vanishes.
 
-The one price is a discipline on how residuals are written — they must be complex-analytic — which is enforced by the smoothness contract of [the smoothness contract](smoothness-contract.md) and checked by a roll-call test.
-The presentation begins with the dilemma that limits finite differences, then derives the complex-step formula and shows why it escapes that dilemma, and closes with the analyticity requirement, the seeded-path discipline, and how the whole Jacobian is validated.
+The one price is a discipline on how residuals are written — they must be complex-analytic — which is enforced by [the smoothness contract](smoothness-contract.md) and checked by a roll-call test.
 
-## The finite-difference dilemma
+## The finite-difference dilemma {#sec-cs-fd-dilemma}
 
 A derivative approximated by a finite difference must balance two errors that pull in opposite directions as the step $h$ shrinks.
 A central difference has a *truncation* error that falls as $h^2$, which argues for a small step; but it also *subtracts two nearly equal numbers*, $R(x+h) - R(x-h)$, and that subtraction amplifies floating-point round-off as $\varepsilon_{\text{mach}}/h$, which argues for a large one.
@@ -29,7 +28,7 @@ $$
 where $\varepsilon_{\text{mach}} \approx 2.2\times10^{-16}$ is the machine epsilon and $C_1, C_2$ depend on the function's derivatives.
 The best attainable relative accuracy is around $10^{-10}$ to $10^{-8}$, worse for an automated solver, and the optimal $h$ depends on the unknown magnitude of the higher derivatives, so no fixed step is safe across the whole state space.
 
-## The complex-step formula
+## The complex-step formula {#sec-cs-formula}
 
 The complex-step method removes the subtraction entirely by perturbing into the *imaginary* direction.
 For a residual $R$ that is analytic in a neighbourhood of the real axis, a Taylor expansion about the real point $x$ with an imaginary step $\mathrm{i}h_{\text{cs}}$ is given as:
@@ -95,15 +94,15 @@ fig.update_yaxes(type="log")
 fig
 ```
 
-## The analyticity requirement
+## The analyticity requirement {#sec-cs-analyticity}
 
 The formula's power comes with a precise condition: the Taylor expansion into the imaginary direction is valid only where $R$ is *complex-analytic*, so the residual must be built from operations that remain analytic in a neighbourhood of the real axis.
 Any construct that branches on the flow state, e.g. an absolute value, a sign, a minimum or maximum, an `if` on a solution variable, destroys analyticity: it takes its decision on the real part and discards or corrupts the imaginary seed travelling alongside, returning a derivative that is silently wrong.
-This is exactly why every residual kernel in the framework is assembled from the regularized primitives of [the smoothness contract](smoothness-contract.md) rather than from raw branching, and why a static detector flags any residual whose complex-step and finite-difference derivatives disagree, as this is the signature of a hidden non-analytic operation (test: `test_cs_detector_flags_nonanalytic`).
+This is exactly why every residual kernel in the framework is assembled from the regularized primitives of [the smoothness contract](smoothness-contract.md#sec-smooth-primitives) rather than from raw branching, and why a static detector flags any residual whose complex-step and finite-difference derivatives disagree, as this is the signature of a hidden non-analytic operation (test: `test_cs_detector_flags_nonanalytic`).
 
-## Validation
+## Validation {#sec-cs-validation}
 
 Because the derivative is meant to be *exact*, its validation is stringent: the assembled complex-step Jacobian is checked against a finite-difference Jacobian to tolerance, both at the operating point and away from it, and every residual is verified to be continuously differentiable through the zero-flow state on every edge (tests: `test_cs_jacobian_matches_finite_difference`, `test_cs_jacobian_matches_fd_off_operating_point`, `test_residual_c1_through_zero_flow_all_edges`).
 
 The complex-step engine is thus the reason the Jacobian is never itself a source of error.
-The contract it demands, analyticity of every residual, is the subject of [the smoothness contract](smoothness-contract.md), and the machinery that assembles the kernels evaluated on complex-stepped inputs into a sparse operator is that of [assembly](assembly.md).
+The discipline it demands, analyticity of every residual, is set out in [the smoothness contract](smoothness-contract.md); the machinery that assembles the complex-stepped kernels into a sparse operator is [assembly](assembly.md).

@@ -2,9 +2,8 @@
 
 Where [verification](verification.md) checks that the framework solves its equations correctly, this document checks that those equations reproduce established results: named cases from the literature and from analytic theory that a compressible-network and thermoacoustic solver is expected to recover.
 Each benchmark states the case, the reference it is compared against, and the quantitative agreement obtained, with the test that performs the comparison.
-The cases span the framework's main claims: a steady compressible network, a self-excited thermoacoustic instability, the separation of acoustic from intrinsic modes, indirect combustion noise, and a canonical acoustic two-port.
 
-## Greyvenstein & Laurie compressed-air network
+## Greyvenstein & Laurie compressed-air network {#sec-bench-greyvenstein-laurie}
 
 The steady mean-flow solver is benchmarked against Example 3 of [@greyvenstein_laurie_1994], a compressed-air pipe network solved in that work by an independent method and reported as a table of branch mass flows and nodal pressures.
 
@@ -13,7 +12,7 @@ The converged branch mass flows and nodal pressures match the reference table, a
 
 This case exercises the mean-flow machinery end to end (friction-pipe losses, many junction couplings, boundary conditions, and the continuation that finds the operating point) against an external result rather than an internal consistency check.
 
-## Rijke-tube thermoacoustic stability
+## Rijke-tube thermoacoustic stability {#sec-bench-rijke-tube}
 
 The acoustic and dynamic-source layers are benchmarked against the Rijke tube, the canonical thermoacoustic oscillator: a duct with a compact heat source whose unsteady heat release couples to the acoustic field and, for a destabilizing time lag, drives a self-excited instability.
 This benchmark was chosen as it has an analytic counterpart: the dispersion relation of a two-region duct with a compact flame, whose roots give the modal frequencies and growth rates in closed form, so the framework's eigenmodes can be compared against exact values rather than against another solver.
@@ -22,7 +21,7 @@ With no unsteady heat release the tube is a passive resonator and the computed m
 
 The reacting counterpart, with an equilibrium flame in place of the prescribed heat source, ignites and matches the same analytic construction, confirming that the reacting closure and the acoustic source compose correctly (tests: `test_reacting_flame_ignites_and_matches_analytic`, `test_reacting_n_tau_flame_matches_analytic_instability`).
 
-## EM2C combustor, cross-checked against OSCILOS
+## EM2C combustor, cross-checked against OSCILOS {#sec-bench-em2c-oscilos}
 
 Where the Rijke tube compares Nefes against an analytic dispersion relation, this case compares it against an independent code on a published laboratory configuration: the stable setting of the EM2C swirl-stabilized combustor of [@palies_2011], as it is set up in Sec. 5.4.1 of the OSCILOS technical report [@li_oscilos_2017], where the combustor is reduced to a plenum, an injection unit, and a chamber with a compact flame at the chamber inlet.
 This case was chosen because it is stated entirely in text: lengths, radii, the mean velocity at the injector exit, the reactant and burnt-gas temperatures, the two reflection coefficients, and a closed-form second-order low-pass flame transfer function [@dowling_1997] of the kind [dynamic sources](../theory/dynamic-sources.qmd) supplies, so no quantity has to be read off a figure.
@@ -40,7 +39,7 @@ The comparison is like-for-like only once two conventions of [@li_oscilos_2017] 
 Both are stated in its source, and nothing else about the Nefes model is fitted to it.
 The example notebook `examples/thermoacoustics/em2c_combustor.ipynb` walks the case through.
 
-## BRS combustor: acoustic and intrinsic thermoacoustic modes
+## BRS combustor: acoustic and intrinsic thermoacoustic modes {#sec-bench-brs-combustor}
 
 The two thermoacoustic cases above check frequencies and growth rates against a flame whose response is prescribed in closed form.
 This case checks something the others cannot: that the framework recovers the *kind* of each mode, separating the acoustic resonances of the geometry from the intrinsic (ITA) modes sustained by a feedback loop closing through the flame alone [@bomberg_2015].
@@ -50,7 +49,7 @@ The reference's network table fixes the mean state completely, and it is over-de
 Nefes solves the network from the mass flow and the heat power and returns $\theta = 5.5898$ against the stated $5.59$ and an inlet Mach number of $0.00110$ against $0.0011$ (test: `test_mean_flow_reproduces_the_reported_operating_point`).
 
 The one quantity the reference does not state in numbers is the flame transfer function, which it publishes only as a figure.
-The curves of that figure are traced and shipped as `examples/thermoacoustics/data/brs_ftf.csv`, and the response is reconstructed as the finite impulse response the reference says it is, using the model of [dynamic sources](../theory/dynamic-sources.qmd).
+The curves of that figure are traced and shipped as `examples/thermoacoustics/data/brs_ftf.csv`, and the response is reconstructed as the finite impulse response the reference says it is, using the model of [dynamic sources](../theory/dynamic-sources.qmd#sec-source-impulse-response).
 The recovery is confirmed against an independent record of the same quantity: the reference's dissertation prints the impulse response itself as a vector-graphics stem plot, whose exact sample values ship as `examples/thermoacoustics/data/brs_impulse_response.csv`; the two records agree in gain to an rms of $0.006$ and in phase within two printed pixels, both show the positive axial lobe followed by the negative swirl lobe that [@komarek_polifke_2010] describe for this burner, and the response peaks at the $4.8\;\mathrm{ms}$ convective delay the dissertation itself quotes (tests: `test_the_impulse_response_has_the_shape_of_a_swirl_flame`, `test_the_reconstructed_response_reproduces_the_digitized_curve`, `test_the_digitized_curve_agrees_with_the_reference_impulse_response`).
 
 The comparison targets are the eigenvalues of the reference's own figures, read from their vector twins in the dissertation, where the coordinates come from the drawing commands rather than from pixels; they ship as `examples/thermoacoustics/data/brs_published_*.csv`.
@@ -72,7 +71,7 @@ The reference's closing paradox is reproduced quantitatively: sweeping the outle
 
 The example notebook `examples/thermoacoustics/brs_combustor.ipynb` reproduces the reference's three quantitative figures — the three-system spectrum, the modulation sweep that assigns each full-system mode to its acoustic or intrinsic parent, and the reflection sweep — overlaid on the published eigenvalues, including the digitization and its uncertainty.
 
-## Indirect combustion noise
+## Indirect combustion noise {#sec-bench-indirect-noise}
 
 The entropy-coupling machinery is benchmarked against indirect noise: an entropy fluctuation generated at a flame is convected downstream and converted to sound at a compact nozzle, the mechanism by which combustion generates noise without a direct acoustic source.
 The benchmark follows the established chain: an unsteady heat release generates an entropy fluctuation, the fluctuation convects to the nozzle with the duct's entropy phase, and the nozzle converts it to a reflected acoustic wave through the Marble–Candel entropy coupling.
@@ -80,7 +79,7 @@ The framework reproduces each step (generation at the flame, convection to the n
 That is the documented limitation, stated here as a checked result rather than an unsupported claim (tests: `test_entropy_converts_to_indirect_noise_at_nozzle`, `test_isentropic_analysis_misses_the_indirect_noise`).
 The compact-orifice and nozzle two-ports underlying this chain are additionally checked against the De Domenico normalization and an independent Borda composition, confirming the scattering-matrix construction in the presence of a mean flow and composition (tests: `test_orifice_matches_independent_borda_composition`, `test_nonisentropic_nozzle_matches_composition`, `test_scattering_riemann_equals_dedomenico_normalisation`).
 
-## Canonical acoustic two-ports
+## Canonical acoustic two-ports {#sec-bench-canonical-two-ports}
 
 The transfer-matrix layer is benchmarked against cases with a known closed-form two-port.
 A lossless isentropic nozzle in a quiescent duct must transmit an acoustic wave with unit magnitude and reflect nothing, which the computed scattering matrix reproduces (test: `test_isentropic_nozzle_unit_transmission_zero_reflection`), and a straight duct must contribute exactly the lossless propagation phase $e^{-\mathrm{i}\omega L/\overline{c}}$, which the transmission coefficient matches (test: `test_duct_scattering_is_lossless_phase`).

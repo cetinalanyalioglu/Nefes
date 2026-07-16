@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 840 420" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0.4 L6.5,3 L0,5.6 Z" fill="#52606d"/>
+    </marker>
+  </defs>
+
+  <!-- white figure card so it reads on light or dark backgrounds -->
+  <rect x="1" y="1" width="838" height="418" rx="14" fill="#ffffff" stroke="#e4e7ec"/>
+
+  <!-- Python object layer: label centered above the container -->
+  <text x="210" y="90" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Python object layer</text>
+  <rect x="44" y="104" width="332" height="280" rx="10" fill="none" stroke="#2563eb" stroke-width="2"/>
+
+  <!-- Network (top-left) -->
+  <rect x="70" y="122" width="280" height="96" rx="8" fill="#eef4ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="210" y="165" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Network</text>
+  <text x="210" y="188" text-anchor="middle" font-size="13" fill="#1e3a8a">elements · connectivity · parameters</text>
+
+  <!-- Sparse solve (bottom-left) -->
+  <rect x="70" y="270" width="280" height="96" rx="8" fill="#eef4ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="210" y="313" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Sparse solve</text>
+  <text x="210" y="336" text-anchor="middle" font-size="13" fill="#1e3a8a">&amp; perturbation analysis</text>
+
+  <!-- CompiledProblem (top-right) -->
+  <rect x="490" y="122" width="300" height="96" rx="8" fill="#fff5e6" stroke="#f97316" stroke-width="1.5"/>
+  <text x="640" y="165" text-anchor="middle" font-size="15" font-weight="700" fill="#7c2d12">CompiledProblem — immutable</text>
+  <text x="640" y="188" text-anchor="middle" font-size="13" fill="#7c2d12">flat arrays · CSR/CSC sparse layout</text>
+
+  <!-- Compiled kernel (bottom-right) -->
+  <rect x="490" y="270" width="300" height="96" rx="8" fill="#e8f0fb" stroke="#1e3a8a" stroke-width="1.5"/>
+  <text x="640" y="302" text-anchor="middle" font-size="15" font-weight="700" fill="#1e3a8a">Compiled kernel · @njit</text>
+  <text x="640" y="323" text-anchor="middle" font-size="13" fill="#1e3a8a">residual + Jacobian (complex-step)</text>
+  <text x="640" y="341" text-anchor="middle" font-size="13" fill="#1e3a8a">· thermochemistry</text>
+
+  <!-- arrows (straight; boxes are row-aligned) -->
+  <!-- Network -> CompiledProblem -->
+  <path d="M350,170 L488,170" fill="none" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="419" y="160" text-anchor="middle" font-size="14" fill="#52606d">freeze</text>
+
+  <!-- CompiledProblem -> kernel -->
+  <path d="M640,218 L640,268" fill="none" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- kernel -> Sparse solve -->
+  <path d="M490,318 L352,318" fill="none" stroke="#52606d" stroke-width="3" marker-end="url(#arrow)"/>
+  <!-- R, J rendered as Computer Modern (LaTeX) glyph outlines -->
+  <g transform="translate(398.6,295.5) scale(0.52)">
+   <g style="fill:#52606d" transform="translate(1.44 29.114009) scale(0.4 -0.4)">
+    <defs>
+     <path id="CMMI12-52" d="M 2355 3917 
+C 2413 4153 2438 4166 2688 4166 
+L 3149 4166 
+C 3699 4166 4109 4000 4109 3503 
+C 4109 3177 3942 2240 2656 2240 
+L 1933 2240 
+L 2355 3917 
+z
+M 3245 2163 
+C 4038 2335 4659 2846 4659 3394 
+C 4659 3892 4154 4352 3264 4352 
+L 1530 4352 
+C 1402 4352 1344 4352 1344 4230 
+C 1344 4166 1389 4166 1510 4166 
+C 1894 4166 1894 4115 1894 4045 
+C 1894 4032 1894 3994 1869 3898 
+L 1005 475 
+C 947 253 934 190 493 190 
+C 346 190 301 190 301 69 
+C 301 6 371 6 390 6 
+C 506 6 640 19 762 19 
+L 1517 19 
+C 1632 19 1766 6 1882 6 
+C 1933 6 2003 6 2003 126 
+C 2003 190 1946 190 1850 190 
+C 1459 190 1459 241 1459 304 
+C 1459 310 1459 355 1472 405 
+L 1901 2112 
+L 2669 2112 
+C 3277 2112 3392 1731 3392 1522 
+C 3392 1426 3328 1179 3283 1014 
+C 3213 723 3194 653 3194 532 
+C 3194 82 3565 -128 3994 -128 
+C 4512 -128 4736 501 4736 589 
+C 4736 634 4704 653 4666 653 
+C 4614 653 4602 615 4589 564 
+C 4435 114 4173 0 4013 0 
+C 3853 0 3750 69 3750 355 
+C 3750 507 3827 1084 3834 1116 
+C 3866 1350 3866 1376 3866 1426 
+C 3866 1889 3488 2086 3245 2163 
+z
+" transform="scale(0.015625)"/>
+     <path id="CMMI12-3b" d="M 1248 -26 
+C 1248 345 1126 620 864 620 
+C 659 620 557 454 557 313 
+C 557 172 653 0 870 0 
+C 954 0 1024 25 1082 83 
+C 1094 96 1101 96 1107 96 
+C 1120 96 1120 6 1120 -26 
+C 1120 -233 1082 -642 710 -1051 
+C 640 -1127 640 -1140 640 -1152 
+C 640 -1184 672 -1216 704 -1216 
+C 755 -1216 1248 -749 1248 -26 
+z
+" transform="scale(0.015625)"/>
+     <path id="CMMI12-4a" d="M 3418 3911 
+C 3469 4102 3482 4166 3795 4166 
+C 3898 4166 3962 4166 3962 4281 
+C 3962 4352 3904 4352 3878 4352 
+C 3770 4352 3648 4339 3533 4339 
+L 3181 4339 
+C 2912 4339 2630 4352 2362 4352 
+C 2304 4352 2227 4352 2227 4236 
+C 2227 4172 2278 4172 2278 4166 
+L 2438 4166 
+C 2950 4166 2950 4115 2950 4019 
+C 2950 4013 2950 3968 2925 3866 
+L 2189 953 
+C 2022 304 1594 0 1286 0 
+C 1069 0 762 99 685 428 
+C 710 422 742 415 768 415 
+C 979 415 1146 601 1146 787 
+C 1146 889 1082 1024 890 1024 
+C 774 1024 506 959 506 543 
+C 506 149 838 -128 1299 -128 
+C 1882 -128 2509 304 2662 908 
+L 3418 3911 
+z
+" transform="scale(0.015625)"/>
+    </defs>
+    <use xlink:href="#CMMI12-52" transform="scale(0.996264)"/>
+    <use xlink:href="#CMMI12-3b" transform="translate(75.070962 0) scale(0.996264)"/>
+    <use xlink:href="#CMMI12-4a" transform="translate(135.376949 0) scale(0.996264)"/>
+   </g>
+  </g>
+</svg>

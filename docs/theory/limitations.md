@@ -3,21 +3,20 @@
 Stating the boundary of a method's validity is part of stating the method, and this document collects, in one place, the scope boundaries and approximations noted in passing throughout the theory.
 Each limitation below is either a *scope boundary*, a regime the present version does not attempt, or a *bounded approximation*, a model that is accurate to a stated order and has a designed path to exactness.
 None is a hidden assumption: the intent here is to draw the honest edge of the tool so that a result is trusted exactly as far as it should be.
-The presentation groups the limitations by layer (mean flow, reacting flow, and acoustics) and closes by restating plainly what is *not* approximate.
 
-## Mean-flow scope
+## Mean-flow scope {#sec-limits-mean-flow}
 
 The mean-flow model is restricted to subsonic operation, flowing or quiescent, up to a sonic throat.
 Choking to $M = 1$ at a narrowest section is fully in scope and emerges from the element rows (see [choking](choking.qmd)); what is deferred is *supersonic flow inside the domain* and the structures that accompany it.
 A normal shock standing in a diverging passage, and a declared supersonic exit, require an internal shock-position degree of freedom (the dual of the self-vacating row a supersonic inlet would carry), which is designed but not built.
 It should be noted that an emergent supersonic converging–diverging nozzle is not impossible in principle; it is deferred because it needs that additional unknown, not because the formulation forbids it, and the same enrichment is what finite-frequency acoustics of shocked nozzles will require.
 
-A second, milder bound is that the sudden-contraction and Borda-expansion pressure heads use the incompressible reduction of the momentum balance, accurate to $\mathcal{O}(M^2)$ (see [elements](elements.md)).
+A second, milder bound is that the sudden-contraction and Borda-expansion pressure heads use the incompressible reduction of the momentum balance, accurate to $\mathcal{O}(M^2)$ (see [elements](elements.md#sec-elements-sudden-area)).
 A dedicated contraction element that resolves the vena-contracta state, and so stays exact at higher Mach number, is planned but not present.
 
-## Reacting-flow scope
+## Reacting-flow scope {#sec-limits-reacting-flow}
 
-The reacting closure is equilibrium-based: the frozen, equilibrium, and marker-gated closures of [thermochemistry](thermochemistry.md) are built, but finite-rate chemistry is not.
+The reacting closure is equilibrium-based: the frozen, equilibrium, and marker-gated closures of [thermochemistry](thermochemistry.md#sec-thermo-marker-closures) are built, but finite-rate chemistry is not.
 Where equilibrium is enforced, the model assumes the local mixture has reached chemical equilibrium; for low-Mach devices that is often adequate for the major heat-release chemistry, but formation rates differ widely across species.
 Nitric oxides (NOx), for example, are kinetically slow, and equilibrium estimates of their levels may not be appropriate even when the bulk flame temperature is well captured.
 The frozen-to-burnt switch is realized through the marker gate rather than a residence-time balance, and that gate approach assumes that the flame is thin compared with the network elements.
@@ -30,7 +29,7 @@ Such a state is reachable (an equilibrium region fed only by fuel), so it is a g
 A related subtlety is that the reacting closure equilibrates at constant enthalpy (adiabatically), which is the combustion setting; the *isothermal* equilibrium a heated cracking duct would need, holding the passage at a set temperature, is not expressed as a network element.
 Pure-fuel pyrolysis is therefore outside the present reacting scope; the accompanying note in the repository records the mechanism and the path to lifting it.
 
-## Acoustic-model scope
+## Acoustic-model scope {#sec-limits-acoustic-model}
 
 Before the specific bounds, the premise beneath all of them: the acoustic layer is *linear*, and its perturbation is an infinitesimal one.
 The consequence worth recording here is one the mean flow inherits.
@@ -45,7 +44,7 @@ The compositional (indirect) noise coupling $R_\xi$ [@magri_2016] is retained ev
 
 The automatic de-normalization of a flame's mean heat release is exact for the perfect-gas heat-release flame, which carries its power as a parameter, but for every other flame it uses the sensible-enthalpy rise $\dot m\,\overline{c}_p\,\Delta T$ and is accurate only to $\mathcal{O}(M^2)$; supplying the mean heat release explicitly removes the approximation (see [dynamic sources](dynamic-sources.qmd)).
 
-## What is exact
+## What is exact {#sec-limits-what-is-exact}
 
 Against these bounded approximations it is worth restating plainly what carries *no* approximation, so the edge is not mistaken for the whole.
 **The Jacobian is exact to machine precision,** obtained by complex-step differentiation of analytic residuals rather than by finite differences (see [complex-step](../design/complex-step.qmd)).
@@ -54,4 +53,4 @@ The isentropic and choking rows reproduce the classical compressible-flow relati
 The characteristic maps that turn the base Jacobian into the acoustic operator are the exact linearization of the state definitions, invertible at every physical state (see [characteristics](characteristics.md)).
 
 The honest summary is therefore that the subsonic, equilibrium-reacting mean flow and the acoustics linearized about it form a complete and internally exact core, ringed by a small set of named, bounded approximations — each with a designed path to removal — and two firm scope boundaries: supersonic internal flow, and the finite-amplitude response beyond the linear one.
-The evidence that the core performs as claimed is the subject of the validation track.
+The validation track collects the evidence that the core performs as claimed.

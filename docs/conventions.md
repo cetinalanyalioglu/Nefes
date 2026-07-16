@@ -14,7 +14,7 @@ $$
 
 that is, the $e^{+\mathrm{i}\omega t}$ sign, not $e^{-\mathrm{i}\omega t}$.
 This choice is load-bearing, because it fixes the sign that reads growth from a complex mode frequency $\omega = \omega_r + \mathrm{i}\omega_i$: with $e^{+\mathrm{i}\omega t}$ the amplitude carries a factor $e^{-\omega_i t}$, so a mode *grows* when $\Im(\omega) < 0$.
-The modal growth rate is therefore $\sigma = -\omega_i = -\Im(\omega)$, and a mode is unstable when $\sigma > 0$ (see [analyses](theory/analyses.qmd)).
+The modal growth rate is therefore $\sigma = -\omega_i = -\Im(\omega)$, and a mode is unstable when $\sigma > 0$ (see [analyses](theory/analyses.qmd#sec-analyses-sign-convention)).
 The opposite convention $e^{-\mathrm{i}\omega t}$, common in parts of the acoustics literature, flips the sign of every imaginary part; a result stated under it is converted to ours by complex-conjugating each amplitude and reflection coefficient.
 
 ## Frequency over angular frequency
@@ -25,8 +25,8 @@ The angular frequency $\omega = 2\pi f$ is used only inside derivations, and the
 ## The imaginary unit and complex-step differentiation
 
 The symbol $\mathrm{i}$ is reserved for the imaginary unit.
-The same unit carries the complex-step derivative, in which one unknown is perturbed by a small imaginary step $x \leftarrow x + \mathrm{i}\,h_{\text{cs}}$ and the derivative is read from the imaginary part of a single evaluation, free of subtractive cancellation (see [complex-step](design/complex-step.qmd)).
-For this to hold, all residual math is kept smooth and complex-analytic: no `abs`, `min`, `max`, or branch on the flow state, so that the Jacobian the acoustics need is the exact complex-step linearization of the same residuals the mean flow solves (see [smoothness contract](design/smoothness-contract.md)).
+The same unit carries the complex-step derivative, in which one unknown is perturbed by a small imaginary step $x \leftarrow x + \mathrm{i}\,h_{\text{cs}}$ and the derivative is read from the imaginary part of a single evaluation, free of subtractive cancellation (see [complex-step](design/complex-step.qmd#sec-cs-formula)).
+For this to hold, all residual math is kept smooth and complex-analytic: no `abs`, `min`, `max`, or branch on the flow state, so that the Jacobian the acoustics need is the exact complex-step linearization of the same residuals the mean flow solves (see [smoothness contract](design/smoothness-contract.md#sec-smooth-contract)).
 
 ## Mean state, fluctuation, and amplitude
 
@@ -58,7 +58,7 @@ g = \tfrac{1}{2}\!\left(-u' + p'/\varrho c\right)\ (\lambda = u - c),
 h = \varrho' - p'/c^{2}\ (\lambda = u),
 $$
 
-with $\lambda$ the wave speed of each (see [characteristics](theory/characteristics.md)).
+with $\lambda$ the wave speed of each (see [characteristics](theory/characteristics.md#sec-char-euler-decomposition)).
 This order — $f$ first, $g$ second, $h$ third — is the order every wave vector, transfer matrix, and scattering matrix inherits below.
 
 ## Transfer-matrix convention
@@ -74,7 +74,7 @@ $$
 
 and under the isentropic reduction the entropy row and column are dropped, leaving a two-port on $(\widehat{f}, \widehat{g})$ alone.
 The other flavors keep this same ordering after their rescaling, so the primitive flavor reads $(\,\widehat{p}/\varrho c,\ \widehat{u},\ \widehat{\varrho}\,c/\varrho\,)$ with the pressure component first and the velocity second.
-A transfer matrix is a frequency-domain constraint between the two stations and is not a causal input–output law (see [perturbation network](theory/perturbation-network.md)).
+A transfer matrix is a frequency-domain constraint between the two stations and is not a causal input–output law (see [perturbation network](theory/perturbation-network.md#sec-perturb-transfer-scattering)).
 
 ## Scattering-matrix convention
 
@@ -101,5 +101,5 @@ The letters $R$ and $Z$ are reused for the specific gas constant and a mixture f
 ## Scope
 
 The present model is subsonic, flowing or quiescent, up to a sonic throat.
-Choking to $M = 1$ at a narrowest section is in scope and emerges from the element rows; what is deferred is supersonic flow inside the domain and the shock structures that accompany it (see [limitations](theory/limitations.md)).
+Choking to $M = 1$ at a narrowest section is in scope and emerges from the element rows; what is deferred is supersonic flow inside the domain and the shock structures that accompany it (see [limitations](theory/limitations.md#sec-limits-mean-flow)).
 The acoustics are linear and time-harmonic, and the disturbance on each edge is a plane wave, which assumes the frequencies of interest lie below the cut-on frequency of the ducts in the network.

@@ -10,7 +10,7 @@ A single symbol table ([`nomenclature.md`](nomenclature.md)) and a single biblio
 
 ## Where to start
 
-- **New to the method** — begin with the [theory overview](theory/overview.md): what Nefes computes, the four design decisions it rests on, and the scope of the current version.
+- **New to the method** — begin with the [theory overview](theory/overview.md): what Nefes computes, the four modeling decisions it rests on, and the scope of the current version.
 - **Building a network** — the [element reference](#reference) below, then the [modeling guide](reference/modeling-guide.md) and the [annotated example index](reference/examples.md).
 - **Contributing to the code** — the [design philosophy](design/philosophy.md) track, whose signature pieces are the complex-step derivative engine and the smoothness contract.
 
@@ -18,7 +18,7 @@ A single symbol table ([`nomenclature.md`](nomenclature.md)) and a single biblio
 
 The physics and mathematics, each document opening with its assumptions ledger and citing or deriving every claim.
 
-- `theory/overview.md` — what the method computes, the four design decisions, the subsonic scope.
+- `theory/overview.md` — what the method computes, the four modeling decisions, the subsonic scope.
 - `theory/framework.md` … `theory/choking.md` — the mean-flow formulation: graph model, governing balances, state and recovery, transport, elements, well-posedness, characteristics, and emergent choking.
 - `theory/thermochemistry.md` — mixture thermodynamics, chemical equilibrium, and the reacting closures.
 - `theory/perturbation-network.md` — linearization about the mean flow into the frequency-domain acoustic operator.
@@ -40,8 +40,10 @@ Why the code is shaped the way it is (concepts and contracts, not the API, which
 
 ## Reference
 
-- [API reference](reference/api/index.qmd) - referene for the Python API.
+- [API reference](reference/api/index.qmd) — reference for the Python API.
 - [Atomic elements](reference/atomic-elements.md) — the irreducible network elements (boundaries, area changes, losses, transport, reacting elements, manifolds), each with its residual and theory.
 - [Composite elements](reference/composite-elements.md) — convenience elements that expand to a graph of atomics at build time (orifice, lossy nozzle, sudden contraction, Helmholtz resonator, Fanno pipe, tapered duct).
+- `reference/parameters.md` — the named-parameter and modification API (user guide), with `reference/parameter-schema.md` for the implementation contract behind it.
 - `reference/modeling-guide.md` — mapping real components to network elements.
 - `reference/examples.md` — annotated index of the runnable notebooks under [`examples/`](../examples/).
+- `reference/ui-case-format.md` — the case-exchange YAML format shared with the Nemo graphical companion.

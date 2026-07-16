@@ -1,0 +1,3 @@
+# Shared front matter for the Design track.
+# Number section headings so they can be cross-referenced (e.g. @sec-solver-continuation).
+number-sections: true

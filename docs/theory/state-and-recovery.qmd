@@ -16,17 +16,15 @@ Concretely, the variable set is chosen so that the mean-flow problem has the fol
 1. **Single-valued recovery.** Each admissible triple of unknowns maps to exactly one physical state, with no subsonic/supersonic branch ambiguity.
 2. **Unconditional recovery.** That state is found by an iteration that converges from a fixed, always-admissible starting point.
 3. **Well-behaved balances.** The mass balances are exactly linear and the energy balances nearly so, the best-conditioned equations available.
-4. **Smoothness through reversal and rest.** Flow reversal is a change of sign and zero flow is an ordinary point, so the residuals stay smooth and complex-analytic (see [well-posedness](well-posedness.md)).
+4. **Smoothness through reversal and rest.** Flow reversal is a change of sign and zero flow is an ordinary point, so the residuals stay smooth and complex-analytic (see [well-posedness](well-posedness.md#sec-wellposed-zero-flow)).
 5. **Direction independence.** Quantities that must not depend on an edge's arbitrary arrow — the stagnation state in particular — do not.
 
-The presentation begins with the variable set and its motivations, then proceeds to the state recovery as a thermodynamic closure and its perfect-gas and reacting instances, building on this to the complex-step treatment and the derived state, and culminating in the contrast with total-pressure/total-temperature variables.
-
-## Standing assumptions
+## Standing assumptions {#sec-state-assumptions}
 
 The recovery assumes a thermodynamic closure that returns the density and temperature — and their derivatives — from the carried variables, and it assumes $p > 0$ and $h_t > 0$ on every edge.
 For the perfect-gas closure these two positivity conditions are exactly what the existence–uniqueness proof requires, and the solver treats a violation as a non-physical state rather than continuing.
 
-## The variable set
+## The variable set {#sec-state-variable-set}
 
 Each edge $e$ carries a state vector of three unknowns, chosen for the numerical behaviour they confer rather than for physical familiarity:
 
@@ -34,7 +32,7 @@ $$
 \mathbf{x}_e = \big(\dot m_e,\; p_e,\; h_{t,e}\big),
 $$
 
-where $\dot m_e$ is the signed mass flow rate along the edge, $p_e$ the static pressure, and $h_{t,e}$ the total enthalpy (a reacting edge additionally carries its transported composition, see [thermochemistry](thermochemistry.md)).
+where $\dot m_e$ is the signed mass flow rate along the edge, $p_e$ the static pressure, and $h_{t,e}$ the total enthalpy (a reacting edge additionally carries its transported composition, see [thermochemistry](thermochemistry.md#sec-thermo-mixture-fractions)).
 Each choice serves the robustness requirement directly:
 
 1. **Mass flow $\dot m$** enters every mass balance linearly with coefficients $\pm 1$, the best-conditioned equations in the system; flow reversal is then a change of sign and needs no special handling.
@@ -43,7 +41,7 @@ Each choice serves the robustness requirement directly:
 
 Every other quantity — density, velocity, temperature, sound speed, Mach number, total pressure — is a *dependent* quantity, recovered from this triple and the port area, and the recovery is single-valued for this choice, a property that alternative triples do not share.
 
-## State recovery as a thermodynamic closure
+## State recovery as a thermodynamic closure {#sec-state-recovery-closure}
 
 State recovery is the map from an edge's carried variables $(\dot m, p, h_t)$ and its area $A$ (and, for a reacting edge, its composition) to the full thermodynamic and kinematic state that the element residuals consume.
 Its structure is the same for every thermodynamic closure, and isolating that structure makes explicit where — and only where — a particular closure enters.
@@ -161,9 +159,9 @@ For a chemical-equilibrium mixture the same two couplings hold, and only the equ
 The scalar consistency root is then taken on the static enthalpy, wrapped around the equilibrium solve, and it likewise carries the kinetic-energy coupling exactly — so the reacting recovery returns the *exact* static state rather than the $\mathcal{O}(M^2)$ approximation $h \approx h_t$.
 The equilibrium closure, the transported mixture fractions it consumes, and the marker-gated frozen/burnt blend are the subject of [thermochemistry](thermochemistry.md); the point here is that the recovery's structure — a scalar root enforcing kinematic–thermodynamic consistency — is closure-independent, and the thermo model is confined to the equation of state and its derivatives.
 
-## Complex-step safety of the recovery
+## Complex-step safety of the recovery {#sec-state-complex-step}
 
-The recovery is the one place in the solver where an iteration is unavoidable, and an iteration is not, in general, transparent to complex-step differentiation: a safeguarded Newton loop *branches* — on the bracket, on the sign of the residual — and a branch taken on the real part discards any imaginary derivative seed carried alongside it (see [complex-step](../design/complex-step.qmd)).
+The recovery is the one place in the solver where an iteration is unavoidable, and an iteration is not, in general, transparent to complex-step differentiation: a safeguarded Newton loop *branches* — on the bracket, on the sign of the residual — and a branch taken on the real part discards any imaginary derivative seed carried alongside it (see [complex-step](../design/complex-step.qmd#sec-cs-analyticity)).
 The recovery is therefore split into a real solve and an analytic derivative.
 The root is found on the real parts of the carried variables alone; its sensitivity to a complex-step seed is then attached by the implicit function theorem applied to the consistency equation $F(\varrho; m, p, h_t) = 0$:
 
@@ -184,7 +182,7 @@ where the partial derivatives are evaluated at the converged real root and are f
 An important remark is that this introduces no approximation: the implicit-function relation is exact, so the recovered density carries the exact derivative even though the root itself was obtained by a branching iteration, and the complex-step Jacobian of the whole solver remains exact to machine precision.
 The construction is closure-independent — the reacting recovery splices its seed by the same theorem, using the equilibrium closure's derivatives — and the dtype-generic implementation returns the bare real root on the real path and adds the spliced imaginary part on the seeded path, from one source.
 
-## Derived state
+## Derived state {#sec-state-derived-state}
 
 With the density recovered, the remaining quantities follow in closed form:
 
@@ -223,7 +221,7 @@ the second equality holding because bringing a stream to rest losslessly changes
 Hence entropy is a function of $(p_t, T_t)$ alone: if total pressure and total temperature are continuous across an element, so is entropy.
 This is why no separate entropy equation appears anywhere in the mean-flow framework — an isentropic element enforces continuity of $p_t$ and $T_t$, and the second law enters as the requirement that $p_t$ never rises across a loss.
 
-## Why not total pressure and total temperature?
+## Why not total pressure and total temperature? {#sec-state-why-not-total}
 
 It is worth stating plainly why the more familiar variables of compressible-flow tables, $(\dot m, p_t, T_t)$, are *not* used, since the reason is the single-valuedness requirement in reverse.
 Recovering the static state from those variables requires inverting the dimensionless mass-flux function:
@@ -252,4 +250,4 @@ fig2
 A solver whose intermediate iterates roam freely would meet every one of these features as a trap, and a solver that must *discover* the flow regime cannot be handed this branch fork at its innermost step.
 Choosing static $p$ rather than $p_t$ collapses the fork to the single monotone root proved above, which is the whole reason for the variable set of this framework.
 
-With the state recovered on every edge, the remaining question is how the balances and transport relations are counted and assigned, which is taken up in [equation structure](equation-structure.md).
+With the state recovered on every edge, how the balances and transport relations are counted and assigned is [equation structure](equation-structure.md).

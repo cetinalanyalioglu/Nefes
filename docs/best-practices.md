@@ -200,32 +200,70 @@ net = nefes.Network(nefes.perfect_gas(R=287.0, gamma=1.33), nodes=[...], edges=[
 Heat can still be *added* to a perfect gas with `heat_release_flame(Qdot)`; you do not need the reacting model just to add heat.
 
 **Reacting (HP-equilibrium chemistry).**
-Build a species library, wrap it in `equilibrium(...)`, and pin the per-edge closures.
-Transported scalars are feed-stream mixture fractions (one per distinct injected composition), auto-discovered from the element compositions.
+Declare the feed compositions, use `equilibrium()` with no arguments, and let an `equilibrium_flame` gate the reaction.
+You never hand-curate a species list: the product slate is derived from the feeds over the packaged data when the network is built, and the transported scalars are the feed-stream mixture fractions (one per distinct injected composition), auto-discovered from the element compositions.
 
 ```python
-from nefes.thermo import ThermoInp, EQ_FROZEN, EQ_KERNEL  # closure ids sit here beside perfect_gas/EQ_KERNEL
 from nefes.chem import equivalence_ratio_mixture
 
-lib = ThermoInp().library(["CH4", "O2", "N2", "CO2", "H2O", "CO", "OH", "H2", "H", "O", "NO"])  # bundled CEA data
-mix = equivalence_ratio_mixture(lib, {"CH4": 1.0}, {"O2": 0.21, "N2": 0.79}, phi=1.0)
+mix = equivalence_ratio_mixture({"CH4": 1.0}, {"O2": 0.21, "N2": 0.79}, phi=1.0)
 
+net = nefes.Network(
+    nefes.equilibrium(),  # automatic products from the feeds, over the bundled data
+    nodes=[nefes.cat.mass_flow_inlet(1.0, 300.0, composition=mix, name="feed"),
+           nefes.cat.equilibrium_flame(name="flame"),
+           nefes.cat.pressure_outlet(101325.0, 300.0, name="out")],
+    edges=[(0, 1, 0.05), (1, 2, 0.05)],
+)
+sol = net.solve()
+# verified: converged, T 300 -> 2220 K, products (mole) N2~0.709 H2O~0.183 CO2~0.086 CO~0.009
+```
+
+`equivalence_ratio_mixture` and `equilibrium()` both fall back to the packaged NASA Glenn / CEA data when given no species set, so a premixed reacting teaser needs no imports beyond `nefes.chem`.
+The `equilibrium_flame` with no `edge_models` gates the frozen/burnt split off the transported burnt marker, labelling the edges downstream of the flame automatically, so the recipe never pins a per-edge closure by hand.
+The slate is resolved once, when the network is built, and stays inspectable afterwards:
+
+```python
+net.compile()
+net.gas.species_names           # the resolved product species
+net.gas.species_set.reduction_report  # which candidates were kept, and why
+```
+
+**Tuning the automatic slate.**
+Three keyword dials on `equilibrium()` size the automatic set without hand-listing species.
+`reducer="none"` keeps every candidate; `reduce_threshold` sets the trace mole-fraction cutoff (larger keeps fewer species, smaller keeps more); `reduce_above` sets the candidate count above which the reduction runs at all (lower it to trim a lean slate, raise it to keep a broad one whole).
+
+```python
+gas = nefes.equilibrium(reduce_threshold=1e-4)  # trim harder: drop species below 1e-4 mole fraction
+gas = nefes.equilibrium(reducer="none")          # keep the full candidate slate
+```
+
+`reduce_threshold` only bites once the candidate count exceeds `reduce_above`, so a small pool (a hydrogen/air case, say) is kept whole unless you also lower the gate.
+The same three settings exist on the case file (`speciesReducer`, `speciesReduceThreshold`, `speciesReduceAbove`).
+
+**Advanced: pin the species and the closures.**
+The automatic slate can evolve as the reduction policy improves, so pin it when you need a reproducible species set or a fixed per-edge closure.
+Pass an explicit species set (a `SpeciesSet`) and pin the edges with `edge_models`.
+A species set is drawn from a `SpeciesDatabase` (the master source) with `.select(...)`; the database is the packaged NASA Glenn / CEA `thermo.inp` by default, and `SpeciesDatabase.from_file(path)` accepts either another `thermo.inp`-format file or a Cantera-format YAML (only its species block is read).
+`SpeciesSet.from_cantera(path)` is the one-call shortcut for a Cantera-subset species set:
+
+```python
+from nefes.thermo import SpeciesDatabase, EQ_FROZEN, EQ_KERNEL  # closure ids sit here beside perfect_gas/EQ_KERNEL
+
+lib = SpeciesDatabase().select(["CH4", "O2", "N2", "CO2", "H2O", "CO", "OH", "H2", "H", "O", "NO"])  # bundled CEA data
 net = nefes.Network(
     nefes.equilibrium(lib),
     nodes=[nefes.cat.mass_flow_inlet(1.0, 300.0, composition=mix, name="feed"),
            nefes.cat.equilibrium_flame(name="flame"),
-           nefes.cat.pressure_outlet(101325.0, 300.0, composition=mix, name="out")],
+           nefes.cat.pressure_outlet(101325.0, 300.0, name="out")],
     edges=[(0, 1, 0.05), (1, 2, 0.05)],
-    edge_models=[EQ_FROZEN, EQ_KERNEL],  # unburnt | burnt closures
+    edge_models=[EQ_FROZEN, EQ_KERNEL],  # unburnt | burnt closures, pinned by hand
 )
-sol = net.solve()
-# verified: converged, T 300 -> 2220 K, products O2~0.004 N2~0.709 CO2~0.086 H2O~0.183
 ```
 
 `nefes.equilibrium` and the `EQ_*` closure ids are re-exported from `nefes.thermo` (alongside `perfect_gas` and `EQ_KERNEL`), so the reacting build needs no `nefes.thermo.api` / `nefes.thermo.configure` reach.
-`ThermoInp()` with no argument reads the packaged database (`nefes/thermo/cea.py:47`, `default_thermo_inp()`); pass a path only for a custom mechanism.
+`SpeciesDatabase()` with no argument reads the packaged database (`nefes/thermo/database.py:51`, `default_thermo_inp()`); pass a path only for a custom mechanism.
 `edge_models` pins each edge to a closure id from `nefes.thermo` (`EQ_FROZEN` unburnt, `EQ_KERNEL` burnt).
-An `equilibrium_flame` can also gate the split automatically off the transported burnt marker when `edge_models` is left unset, but pinning is the explicit, reliable form for a known topology.
 
 ---
 

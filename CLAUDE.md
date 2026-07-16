@@ -48,13 +48,10 @@ Canonical symbols live in `docs/nomenclature.md`; the high-use conventions:
 
 ## Development
 
+- For development tasks (editing the solver, kernels, or elements; package tests; or docs), invoke the `nefes-dev` skill: it holds the development playbook (the kernel and complex-step workflow, the add-an-element recipe, the numba stale-cache trap, and where each source of truth lives). This file holds the non-negotiable rules; the skill holds the how.
 - Whenever applicable, create tests. Especially for scientific implementations and claims.
 - Do NOT save the output of Jupyter notebooks (filesize concerns).
 - For notebooks, always prefer plotly for plotting.
-
-### Pitfalls
-
-- Numba caches compiled kernels. After editing an `njit` kernel a stale cache can mask the change, so if results look unchanged after an edit, clear the numba cache (delete the `__pycache__`/`*.nbi`/`*.nbc` artifacts) or run with `NUMBA_DISABLE_JIT=1` to sanity-check against pure Python.
 
 ## Coding style
 

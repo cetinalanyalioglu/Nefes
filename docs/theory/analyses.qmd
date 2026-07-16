@@ -9,9 +9,8 @@ execute:
 
 With the operator $\mathbf{A}(\omega)$ of the [perturbation network](perturbation-network.md) assembled, every acoustic question becomes a statement about that one matrix.
 Four analyses read different things from it: its resonances and their growth rates, an open-loop stability count taken on the real-frequency axis, the flux of acoustic energy and what it reveals about passivity, and the field forced by a prescribed excitation.
-This document gives each in turn, and begins by pinning the sign convention on which every stability statement depends — because the convention is easy to get backwards, and getting it backwards inverts the conclusion.
 
-## The sign convention
+## The sign convention {#sec-analyses-sign-convention}
 
 The acoustics are posed with the time dependence $X'(t) = \Re\{\widehat{X}\,e^{\mathrm{i}\omega t}\}$, and a free mode of the network has a complex frequency $\omega = \omega_r + \mathrm{i}\omega_i$.
 Its time evolution is then $e^{\mathrm{i}\omega t} = e^{\mathrm{i}\omega_r t}\,e^{-\omega_i t}$, so a positive imaginary part *decays* and a negative one *grows*.
@@ -25,7 +24,7 @@ $$
 where $\omega_r/(2\pi)$ is the modal frequency in hertz and $\sigma$ the growth rate in inverse seconds.
 It should be emphasized that this convention — growth as the *negative* imaginary part — is the authoritative one throughout the implementation, fixed by a lossy-duct test that pins a passive decaying mode to $\Im(\omega) > 0$; it is stated here once and used without further comment below.
 
-## Modal stability
+## Modal stability {#sec-analyses-modal-stability}
 
 The resonances of the network are the frequencies at which the operator is singular, so the modal problem is the nonlinear eigenproblem, given as:
 
@@ -138,7 +137,7 @@ fig.update_layout(xaxis_title="modal frequency  f = ω_r / 2π  [Hz]", yaxis_tit
 fig
 ```
 
-## Open-loop stability on the real axis
+## Open-loop stability on the real axis {#sec-analyses-open-loop-stability}
 
 The contour eigensolver is powerful but not universal, and three circumstances defeat it: a *measured* flame transfer function is defined only on the real axis and cannot be evaluated on the complex contour; a flowing network fills its spectrum with dense, near-marginal convected entropy and composition modes that overwhelm the completeness certificate; and a long convective delay makes $e^{-\mathrm{i}\omega\tau_u}$ overflow once the contour reaches into the complex plane.
 For these regimes stability is assessed on the real axis, by a Nyquist argument [@nyquist_1932] on the feedback the source introduces.
@@ -170,7 +169,7 @@ $$
 where the factor of one-half accounts for the closed contour including the negative-frequency image $D(-\omega) = \overline{D(\omega)}$, and the least value $\min_\omega|D|$ is the stability margin, vanishing at the onset of instability.
 An important qualification is that this counts unstable modes *relative to* $\mathbf{A}_0$, so it equals the absolute count only when the passive network is itself stable, a condition the driver checks with a rational fit of $D$, and the count is limited to the maximum swept frequency (tests: `test_unstable_count_matches_eigenmodes`, `test_entropy_path_is_the_sole_destabilizer`, `test_tabulated_ftf_supported_on_the_real_axis`).
 
-## Acoustic energy and passivity
+## Acoustic energy and passivity {#sec-analyses-energy-passivity}
 
 A complementary reading of the operator is energetic, through the mean-flow acoustic energy of Myers [@myers_1991].
 For a plane-wave field the downstream energy flux (intensity) and the energy density are given as:
@@ -193,7 +192,7 @@ $$
 and a reflection magnitude above this bound *adds* acoustic energy — an active boundary that behaves as a source.
 The energy view also furnishes an independent check on the eigensolver's growth rates: for a source-free mode the stored energy obeys $\mathrm{d}E/\mathrm{d}t = 2\sigma E$, which equals the net acoustic power delivered through the boundaries, so the sign of the net boundary power *must* match the sign of the growth rate — a physically grounded cross-check the code performs mode by mode (tests: `test_passive_bound_is_the_zero_flux_reflection`, `test_boundary_power_sign_matches_growth_every_mode`, `test_modal_energy_balance_recovers_growth_rate`).
 
-## Forced response
+## Forced response {#sec-analyses-forced-response}
 
 The final analysis drives the network rather than letting it oscillate freely.
 With a forcing prescribed at a driven terminal, the response is one sparse solve per frequency, given as:
@@ -207,4 +206,4 @@ From the solved nodal field one reads the per-edge wave amplitudes, the reflecti
 Because the system is linear, the response scales exactly with the forcing amplitude and superposes over several drives, and it becomes singular precisely at the resonances where $\det\mathbf{A}(\omega) = 0$ — the same modes the eigensolver locates (tests: `test_forced_response_scales_linearly_with_amplitude`, `test_forced_response_obeys_superposition`).
 
 All four analyses read the single operator $\mathbf{A}(\omega)$, and all four presume that every element in it is modeled.
-When one element is *not*, e.g. a transfer matrix or a transfer function is unknown, that dynamic response can be recovered from a measured network response by de-embedding, the subject of [identification](identification.md).
+When one element is *not*, e.g. a transfer matrix or a transfer function is unknown, that dynamic response can be recovered from a measured network response by de-embedding, which is [identification](identification.md).

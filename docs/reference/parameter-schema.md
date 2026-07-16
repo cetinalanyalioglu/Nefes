@@ -1,7 +1,7 @@
 # Parameter schema and the modification API
 
 This document records the implementation contract behind the named-parameter machinery: where parameter truth lives, how writes are validated, and why the design is shaped for nesting (composite elements today, subnetworks later).
-The user-facing guide is [reference/parameters](../reference/parameters.md).
+The user-facing guide is [parameters](parameters.md).
 
 ## The problem being designed out
 
@@ -18,7 +18,7 @@ Each fact has exactly one authoritative home.
   For every element kind it declares, once: which parameters exist, their `fparams` slot or field, SI unit, bounds, and type.
   A consistency test (`tests/test_parameters.py`) packs named values through the schema and compares against every factory's actual output, so the declared layout cannot drift from the factories.
 - **Parameter values** live where they always have: `fparams` slots and named fields on atomic specs, the `params` dict on composites, areas on the edge records, and the reference scales on the `Network`.
-  The schema adds names *over* this storage without moving it (option A of the design study; the flip that makes the named dict the canonical store and `fparams` a derived cache is step 4 below and is deliberately deferred).
+  The schema adds names *over* this storage without moving it; making the named dict the canonical store and `fparams` a derived cache is deliberately deferred (see [Planned later](#planned-later)).
 - **Everything derived stays derived.**
   A composite's `sub_elements` and `internal_edges` are factory outputs; the one legal write path is re-running the factory with merged parameters (`rebuild_composite`), never patching them, so the knob and its derivation cannot disagree.
 
@@ -76,4 +76,4 @@ Two items from the original design are deliberately left for a future release an
 - `with_params` leaves the base pristine, preserves the edge layout, and its copies warm-start from the base's solution;
 - modified values survive the YAML save/load round-trip (including composite parameters and the serializable perturbation BCs);
 - `parameter_study` shapes, warm chaining, zip mode, and fail-closed address resolution;
-- reacting composition writes validate against the species library.
+- reacting composition writes validate against the species set.

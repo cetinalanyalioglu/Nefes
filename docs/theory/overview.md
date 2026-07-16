@@ -2,11 +2,9 @@
 
 Nefes is a network solver for compressible, reacting flows and their thermoacoustics.
 It represents a fluid system as a directed graph — components joined at their ports — and solves for the steady mean flow through that graph, then for the linear acoustic behaviour of small perturbations around that flow, without ever resolving the full three-dimensional field.
-The purpose of this document is to state what the method computes, the assumptions under which it holds, and the four design decisions that shape everything downstream, and to serve as the map into the rest of the documentation.
+The purpose of this document is to state what the method computes, the assumptions under which it holds, and the four modeling decisions that shape everything downstream, and to serve as the map into the rest of the documentation.
 
-The presentation begins with what a network solve produces and the regime in which it is valid, then proceeds to the four decisions the framework rests on — where the state lives, which variables carry it, how the equations are counted, and why the whole formulation is built around smoothness — building on these to the structural observation that unifies the mean flow and its acoustics, and culminating in a guide to how the three documentation tracks are organized.
-
-## What the method computes
+## What the method computes {#sec-overview-what-computes}
 
 A *flow network* is the compressible-flow analogue of an electrical circuit: components such as nozzles, orifices, junctions, and plenums are joined at ports, and gas flows through them driven by pressure differences much as current is driven by voltage differences.
 Given the network's connectivity, its element parameters, and its boundary data, a mean-flow solve answers the questions an engineer asks of such a system — how the flow splits between branches, what pressure, temperature, and Mach number each component sees, how much flow a supply delivers — in milliseconds rather than the hours a full computational-fluid-dynamics simulation would take.
@@ -23,7 +21,7 @@ It should be emphasized that this unity is structural rather than incidental: **
 What the method does *not* compute is the spatial field inside a component.
 An element is treated as a lumped relation between the states at its ports; the interior flow, the boundary layers, and the turbulence are represented through constitutive models, not resolved.
 
-## Standing assumptions and scope
+## Standing assumptions and scope {#sec-overview-assumptions-scope}
 
 The following assumptions hold throughout the mean-flow formulation, and each is revisited where a later document depends on it:
 
@@ -39,7 +37,7 @@ The following assumptions hold throughout the mean-flow formulation, and each is
 
 The symbols, decorations, and sign conventions used here and in every other document are collected once in the [nomenclature](../nomenclature.md); the reader is referred there rather than to a redefinition in place.
 
-## The four design decisions
+## The four modeling decisions {#sec-overview-modeling-decisions}
 
 The framework rests on four decisions which mainly arise from the requirements:
 
@@ -57,7 +55,7 @@ Together they are what let the solver *discover* the flow — its directions, it
 Because the Jacobian is assembled exactly at convergence, it doubles as the algebraic content of the acoustic problem: restoring the finite-volume storage terms dropped at steady state, the lossless-duct wave phases, and any unsteady flame source turns that same Jacobian $\overline{\mathbf{J}}$ into the frequency-domain operator $\mathbf{A}(\omega) = \overline{\mathbf{J}} + \mathrm{i}\omega\mathbf{M} + \mathbf{P}(\omega) + \mathbf{S}(\omega)$, which reduces to the steady operator $\mathbf{A}(0) = \overline{\mathbf{J}}$ at $\omega = 0$ (see [perturbation network](perturbation-network.md)).
 This is the structural payoff of the design, and it is the reason a single tool serves both the steady and the acoustic question.
 
-## How the documentation is organized
+## How the documentation is organized {#sec-overview-documentation-organized}
 
 The documentation is arranged into three tracks over a shared foundation of [nomenclature](../nomenclature.md) and [references](../references.bib).
 

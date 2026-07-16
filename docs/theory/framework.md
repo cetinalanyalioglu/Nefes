@@ -4,16 +4,14 @@ The network framework is the abstraction on which everything else rests: a fluid
 This document fixes what the graph is, what the quantities carried on it represent, where the flow state lives, and the sign convention that lets the solver work without knowing in advance which way the gas flows.
 It also states what the framework requires of a thermodynamic closure, without committing to a particular one.
 
-The presentation begins with the graph model and the division of labour between elements and edges, then proceeds to the meaning of the edge quantities as area averages and the closure this entails, building on this to the orientation convention and the direction-independence it must satisfy, and culminating in the thermodynamic closure that the framework leaves open.
-
-## Standing assumptions
+## Standing assumptions {#sec-framework-assumptions}
 
 This document inherits the standing assumptions of the [overview](overview.md); the two that are specific to the framework, and are examined in the sections that follow, are stated here:
 
 1. **Port quantities are adequately described by their cross-sectional averages.** Each edge carries a single representative state standing for the average over its port; this is exact for a uniform profile can be corrected, where it matters, by a profile-shape factor.
 2. **A thermodynamic closure supplies the state relations.** The framework requires a closure that returns the thermodynamic state, and its derivatives, from the carried variables; it does not depend on whether that closure is a calorically perfect gas or a chemical-equilibrium mixture.
 
-## The network as a directed graph
+## The network as a directed graph {#sec-framework-graph}
 
 A *flow network* is a directed graph whose nodes are *elements* and whose edges represent the port cross-sections between them.
 The two carry a strict division of labour, and it is the first design decision of the framework.
@@ -21,7 +19,7 @@ The two carry a strict division of labour, and it is the first design decision o
 An *element* is a component — a nozzle, orifice, junction, plenum, boundary, or flame — modeled as a *control volume on which the governing conservation laws are applied*.
 An element owns the *equations* those laws produce for it, but no *state* of its own.
 The absence of element state is a consequence of the framework being *edge-based* rather than any statement about the element's size: the flow state is carried on the edges, and because the governing balances at an element reference only its port states, no separate volume-associated state is ever needed and none is introduced.
-This is a different matter from the *zero-volume limit*, in which an element's internal volume is additionally taken to vanish so that its balances reduce to pure jump conditions between port states; that limit is a modeling choice applied to the compact elements for which it is appropriate — a thin flame, a sudden area change — and is derived, together with the source terms that survive it, in [governing equations](governing-equations.md).
+This is a different matter from the *zero-volume limit*, in which an element's internal volume is additionally taken to vanish so that its balances reduce to pure jump conditions between port states; that limit is a modeling choice applied to the compact elements for which it is appropriate — a thin flame, a sudden area change — and is derived, together with the source terms that survive it, in [governing equations](governing-equations.md#sec-govern-zero-volume).
 
 An *edge* represents the planar port surface shared between two neighbouring elements, or between an element and the exterior, and it owns the *state vector* $\mathbf{x}_e$.
 The state vector is the minimal set of variables from which every other flow quantity on the edge — density, velocity, temperature, sound speed, Mach number, stagnation state — can be recovered; the particular choice, and the recovery, are the subject of [state and recovery](state-and-recovery.qmd).
@@ -33,7 +31,7 @@ Each element of degree $d$ numbers its incident ports $0, 1, \dots, d-1$, and th
 The connectivity is exactly a signed node–edge incidence: each edge is incident to two elements, entering one as an outgoing port and the other as an incoming port, and the sign of that incidence is the orientation factor introduced below.
 The counting and assignment of equations on this incidence, and its storage as the sparsity pattern of the Jacobian, are treated in [equation structure](equation-structure.md).
 
-## Edge quantities as section averages
+## Edge quantities as section averages {#sec-framework-averages}
 
 The state on an edge is a single set of scalars, yet the port it represents is a two-dimensional surface over which the flow is in general non-uniform.
 The reconciliation is that each edge quantity is a *cross-sectional average* over its port, and the framework's validity rests on that average being an adequate description of the port.
@@ -68,7 +66,7 @@ A second source of section-scale fluctuation is turbulence, and the framework's 
 The same assumption carries into the acoustic problem in a specific form.
 There the fluctuation on a port is decomposed into an acoustic part and a turbulent part, and the turbulent part is assumed to vanish upon section averaging, leaving the plane-acoustic response as the quantity the perturbation network propagates (see [perturbation network](perturbation-network.md)).
 
-## Orientation and the sign convention
+## Orientation and the sign convention {#sec-framework-orientation}
 
 Each edge $e$ is given a reference direction at build time, drawn from its *tail* element to its *head* element.
 An essential point is that this arrow makes no physical claim: it does **not** assert that the gas flows from tail to head, but only fixes what "positive" means for the signed edge quantities — the mass flow rate $\dot m_e$, the velocity, and the Mach number.
@@ -101,10 +99,10 @@ A core requirement follows, and it is a requirement the framework must *satisfy*
 Reversing an edge's direction negates its $\dot m_e$ and flips every $\sigma_{P,e}$ that references it, and the two negations must cancel throughout, so that the recovered pressures, temperatures, and flow magnitudes are unchanged.
 This *direction-flip invariance* is verified numerically rather than taken on faith (test: `test_edge_direction_invariance`).
 
-## The thermodynamic closure
+## The thermodynamic closure {#sec-framework-closure}
 
 The framework is independent of the gas thermodynamics: it requires only that a *thermodynamic closure* be supplied, one that returns the thermodynamic state — and, for the exact Jacobian, its derivatives — from the carried variables and the composition.
-Two closures are provided, and the element residuals see only the recovered state either produces, never the closure that produced it (see [state and recovery](state-and-recovery.qmd)).
+Two closures are provided, and the element residuals see only the recovered state either produces, never the closure that produced it (see [state and recovery](state-and-recovery.qmd#sec-state-recovery-closure)).
 
 The first, and the simplest, is the *calorically perfect gas*, for which the state relations are given as:
 

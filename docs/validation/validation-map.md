@@ -7,7 +7,7 @@ Broader consistency evidence and named literature cases appear in [verification]
 
 The test names are the routines in the codebase and can be run as written.
 
-## Mean-flow claims
+## Mean-flow claims {#sec-vmap-mean-flow}
 
 | Claim | Reference | Check |
 |---|---|---|
@@ -24,7 +24,7 @@ The test names are the routines in the codebase and can be run as written.
 | The critical pressure ratio is the knee of the operating map | $p^\ast/p_t \approx 0.528$ | `test_critical_pressure_ratio_is_the_knee` |
 | A choked orifice discharge detaches its exit pressure upward | underexpanded discharge | `test_choked_nozzle_outlet_critical_mass_flux` |
 
-## Thermochemistry claims
+## Thermochemistry claims {#sec-vmap-thermochemistry}
 
 | Claim | Reference | Check |
 |---|---|---|
@@ -36,7 +36,7 @@ The test names are the routines in the codebase and can be run as written.
 | The marker gate selects the frozen/burnt closure and self-corrects | bimodal-marker convergence | `test_auto_reacting_network_is_marker_gated`, `test_marker_self_corrects_any_seed` |
 | The marker-blended mean flow matches the hard closure | frozen/equilibrium limits | `test_mean_flow_matches_hard_closure` |
 
-## Acoustic and identification claims
+## Acoustic and identification claims {#sec-vmap-acoustic-identification}
 
 | Claim | Reference | Check |
 |---|---|---|
@@ -63,7 +63,7 @@ The test names are the routines in the codebase and can be run as written.
 | A de-embedded element reproduces its measured response | Woodbury identity | `test_identify_transfer_matrix_cascade`, `test_identify_single_input_ftf` |
 | The isentropic analysis omits indirect noise (as documented) | entropy-to-acoustic coupling | `test_isentropic_analysis_misses_the_indirect_noise` |
 
-## Coverage remarks
+## Coverage remarks {#sec-vmap-coverage-remarks}
 
 The entries above name one check per claim, not every check that backs it: many claims are tested several times, and the complete list lives in the tests themselves; this table is only a guide.
 The items left open in [limitations](../theory/limitations.md) (finite-rate chemistry, supersonic internal flow, and the compositional-noise gap at analytic terminal closures) are deliberately omitted here, because they mark what the present version does not yet cover or only approximates; where a partial check exists (for example a warning when compositional noise is dropped at a closure), it is noted in the limitations document, not counted as a proven result.

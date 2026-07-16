@@ -183,8 +183,13 @@ def test_high_recovery_distribution_is_near_isentropic():
     recovery near 1 recovers essentially all the dynamic head (near-isentropic distribution, like
     the splitter), while recovery 0 dumps it.  The ideal is reached to the smoothing tolerance,
     so the match to the splitter is close, not bit-exact.
+
+    Recovery is taken as 0.999 rather than 1 exactly: at recovery = 1 the mixer's mass-flow-dependent
+    self-resistance vanishes and, with the continuation resistance driven to zero, its node block is
+    singular in the split direction, so the converged flow is set at the smoothing noise floor.  A
+    hair of loss restores a well-posed split without moving the physics off the near-isentropic limit.
     """
-    hi = _distribution_network(cat.mixer(1.0)).solve()
+    hi = _distribution_network(cat.mixer(0.999)).solve()
     lo = _distribution_network(cat.mixer(0.0)).solve()
     spl = _distribution_network(cat.splitter()).solve()
     assert hi.converged and lo.converged and spl.converged

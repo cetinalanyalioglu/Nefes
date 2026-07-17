@@ -444,6 +444,8 @@ def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec], p_ref: fl
             reducer_name=thermo.reducer,
             threshold=thermo.reduce_threshold,
             reduce_above=thermo.reduce_above,
+            max_species=thermo.max_species,
+            must_species=thermo.must_species,
         )
         species_names = [s.name for s in species_set.species]
 
@@ -488,6 +490,8 @@ def finalize_thermo(thermo: ThermoConfig, elements: List[ElementSpec], p_ref: fl
         reducer=thermo.reducer,
         reduce_threshold=thermo.reduce_threshold,
         reduce_above=thermo.reduce_above,
+        max_species=thermo.max_species,
+        must_species=thermo.must_species,
         auto_species_set=thermo.auto_species_set,
     )
     return finalized, node_donor, stream_Y

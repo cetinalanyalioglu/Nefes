@@ -230,16 +230,28 @@ net.gas.species_set.reduction_report  # which candidates were kept, and why
 ```
 
 **Tuning the automatic slate.**
-Three keyword dials on `equilibrium()` size the automatic set without hand-listing species.
-`reducer="none"` keeps every candidate; `reduce_threshold` sets the trace mole-fraction cutoff (larger keeps fewer species, smaller keeps more); `reduce_above` sets the candidate count above which the reduction runs at all (lower it to trim a lean slate, raise it to keep a broad one whole).
+Five keyword dials on `equilibrium()` size the automatic set without hand-listing species.
+`reducer="none"` keeps every candidate; `reduce_threshold` sets the trace mole-fraction cutoff (larger keeps fewer species, smaller keeps more); `reduce_above` sets the candidate count above which the reduction runs at all (lower it to trim a lean slate, raise it to keep a broad one whole); `max_species` caps the kept count; and `must_species` keeps named species regardless of abundance.
 
 ```python
 gas = nefes.equilibrium(reduce_threshold=1e-4)  # trim harder: drop species below 1e-4 mole fraction
 gas = nefes.equilibrium(reducer="none")          # keep the full candidate slate
+gas = nefes.equilibrium(max_species=20)          # keep the 20 highest-peaking species
+gas = nefes.equilibrium(must_species=["NO"])     # keep NO even though it is trace at equilibrium
 ```
 
-`reduce_threshold` only bites once the candidate count exceeds `reduce_above`, so a small pool (a hydrogen/air case, say) is kept whole unless you also lower the gate.
-The same three settings exist on the case file (`speciesReducer`, `speciesReduceThreshold`, `speciesReduceAbove`).
+`reduce_threshold` only bites once the candidate count exceeds `reduce_above`, so a small pool (a hydrogen/air case, say) is kept whole unless you also lower the gate; setting `max_species` runs the reduction regardless, since a cap has nothing to act on otherwise.
+`max_species` is a ceiling, not a target: it keeps the highest-peaking species and only ever discards the lowest-ranked non-trace ones, so to sweep set size and see how large a slate a case needs, pair it with a loose `reduce_threshold` so the cap alone drives the count.
+
+```python
+for n in (5, 10, 20, 40):
+    T = _flame_network(nefes.equilibrium(max_species=n, reduce_threshold=1e-12)).solve().edge(1)["T"]
+    print(n, T)  # watch the flame temperature settle as the slate grows
+```
+
+The feed species and one carrier of every fed-in element always survive the cap (and count against it), so the equilibrium never loses a constituent it must balance; `max_species` cannot be combined with `reducer="none"`, and a `must_species` naming an element no feed supplies is rejected.
+`must_species` accepts a high-temperature condensed product such as graphite `"C(gr)"` (add it to keep soot in a rich slate); it rejects an ion or a feed-only condensed species such as a liquid fuel, which never appears as an equilibrium product.
+The same five settings exist on the case file (`speciesReducer`, `speciesReduceThreshold`, `speciesReduceAbove`, `speciesMax`, `speciesMust`).
 
 **Advanced: pin the species and the closures.**
 The automatic slate can evolve as the reduction policy improves, so pin it when you need a reproducible species set or a fixed per-edge closure.

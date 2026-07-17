@@ -1022,7 +1022,10 @@ class Network:
                     reducer = report.get("reducer")
                     if reducer and reducer != "none" and n_cand is not None:
                         text += f", auto-reduced from {n_cand}"
-                        if thr is not None:
+                        cap = report.get("max_species")
+                        if cap is not None:
+                            text += f", max={cap}"
+                        elif thr is not None:
                             text += f", threshold={thr:g}"
                     elif reducer == "none":
                         text += ", auto"

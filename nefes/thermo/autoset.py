@@ -17,13 +17,15 @@ Exports :func:`auto_product_set`.
 
 from __future__ import annotations
 
+import warnings
 from typing import Iterable, List
 
 import numpy as np
 
 from ..chem.composition import elemental_Z, species_mass_fractions
 from .edge_state import AUTO_REDUCE_THRESHOLD
-from .reduction import SampleState, get_reducer
+from .reduction import SampleState, SpeciesReductionWarning, get_reducer
+from .species import CONDENSED_PRODUCT_TMAX
 
 
 def _dedup(seq: Iterable[str]) -> List[str]:
@@ -100,6 +102,8 @@ def auto_product_set(
     reducer_name: str = "equilibrium_sampling",
     threshold: float = None,
     reduce_above: int = None,
+    max_species: int = None,
+    must_species: Iterable[str] = (),
 ):
     """CEA-style automatic product slate over a ``SpeciesDatabase`` database ``db``.
 
@@ -110,8 +114,11 @@ def auto_product_set(
     the enthalpy datum can be evaluated; the equilibrium kernel masks condensed species out
     of the products.
 
-    The slate size has three dials: which reducer runs (``reducer_name``), how deep it trims
-    (``threshold``), and the candidate count above which it runs at all (``reduce_above``).
+    The slate size has five dials: which reducer runs (``reducer_name``), how deep it trims
+    (``threshold``), the candidate count above which it runs at all (``reduce_above``), a
+    ceiling on the kept count (``max_species``), and species to keep regardless of their
+    abundance (``must_species``).  Setting ``max_species`` runs the reduction even when the
+    candidate count is below ``reduce_above``, since a cap has nothing to act on otherwise.
 
     Parameters
     ----------
@@ -126,7 +133,8 @@ def auto_product_set(
         Burnt-gas temperature guess [K]; sets the probe-state temperatures for reduction.
     reducer_name : str, optional
         Registry key of the slate reducer (default ``"equilibrium_sampling"``); ``"none"``
-        keeps every candidate.  Runs only when the candidate count exceeds ``reduce_above``.
+        keeps every candidate.  Runs only when the candidate count exceeds ``reduce_above``,
+        unless ``max_species`` is set.
     threshold : float, optional
         Trace mole-fraction threshold forwarded to the reducer: a species is kept when its
         peak equilibrium mole fraction across the feed-mixing samples clears it (subject to
@@ -136,6 +144,18 @@ def auto_product_set(
         Reduction runs only when the candidate count exceeds this; a smaller value forces
         reduction on a lean slate, a larger one keeps a broad slate whole.  ``None`` uses
         :data:`~nefes.thermo.edge_state.AUTO_REDUCE_THRESHOLD`.
+    max_species : int, optional
+        Ceiling on the number of kept species (``None`` for no cap).  Species are ranked by
+        peak equilibrium mole fraction and the slate filled to this many, after the declared
+        feed species, the ``must_species``, and one carrier of every fed-in element (which
+        count against the ceiling).  Not accepted together with ``reducer_name="none"``.
+    must_species : iterable of str, optional
+        Species to keep regardless of abundance, for instance a marker or pollutant that is
+        trace at equilibrium, or a high-temperature condensed product such as graphite
+        ``C(gr)``.  Each must be present in the database, buildable from the fed-in elements,
+        and an eligible equilibrium product (a gas or a condensed species whose data reaches
+        combustion temperatures); an element no feed supplies, an ion, or a feed-only condensed
+        species is rejected.
 
     Returns
     -------
@@ -146,10 +166,15 @@ def auto_product_set(
     Raises
     ------
     ValueError
-        If no feed or source declares a composition.
+        If no feed or source declares a composition, if ``max_species`` is combined with
+        ``reducer_name="none"``, or if a ``must_species`` names an element no feed supplies,
+        is an ion, or is a feed-only condensed species.
     KeyError
-        If a feed species is absent from the database.
+        If a feed species or a ``must_species`` is absent from the database.
     """
+    if max_species is not None and str(reducer_name or "equilibrium_sampling") == "none":
+        raise ValueError("max_species cannot be combined with reducer='none' (which keeps every candidate)")
+
     declared = _feed_species(feed_specs)
     if not declared:
         raise ValueError(
@@ -166,19 +191,75 @@ def auto_product_set(
     candidates = db.candidate_species(pool, gas_only=True, exclude_ions=True)
     declared_gas = [n for n in declared if db[n].phase == 0]
 
+    must = _validate_must_species(db, must_species, pool)
+    # A high-temperature condensed product (graphite C(gr), say) is a legitimate forced keep but is
+    # absent from the gas-only candidate list, so add any forced species the list misses.
+    candidates = _dedup(candidates + [m for m in must if m not in candidates])
+    always_keep = _dedup(declared_gas + must)
+
     gate = AUTO_REDUCE_THRESHOLD if reduce_above is None else int(reduce_above)
-    if len(candidates) <= gate:
+    if len(candidates) <= gate and max_species is None:
+        # Small candidate pool and no cap: keep every candidate (the must_species are already
+        # among them) plus the declared feed species.
         report = {"reducer": "none", "n_candidates": len(candidates), "n_kept": len(candidates)}
         final = _dedup(candidates + declared)
     else:
         feed_lib = db.select(_dedup(declared))
         samples = _feed_sample_states(feed_lib, feed_specs, p_ref=p_ref, T_init=T_init)
         reducer_kwargs = {} if threshold is None else {"threshold": float(threshold)}
+        if max_species is not None:
+            reducer_kwargs["max_species"] = int(max_species)
         reducer = get_reducer(str(reducer_name or "equilibrium_sampling"), **reducer_kwargs)
-        result = reducer.reduce(db.select(candidates), samples, always_keep=declared_gas)
+        result = reducer.reduce(db.select(candidates), samples, always_keep=always_keep)
         report = result.report
         final = _dedup(result.species + declared)
+        _warn_must_below_threshold(must, report)
 
     lib = db.select(final)
     lib.reduction_report = report  # auditable: which products were selected and why
     return lib
+
+
+def _validate_must_species(db, must_species, pool) -> List[str]:
+    """Check that every forced-keep species is an equilibrium product buildable from the feed elements.
+
+    Returns the de-duplicated list.  A species absent from the database raises ``KeyError``; one
+    naming an element no feed supplies, an ion, or a feed-only condensed species that does not
+    persist as a product raises ``ValueError``, so the request fails predictably rather than
+    silently doing nothing.  A gas species, or a high-temperature condensed product whose data
+    reaches combustion temperatures (graphite ``C(gr)``, say), is accepted.
+    """
+    must = _dedup(must_species)
+    for name in must:
+        if name not in db:
+            raise KeyError(f"must_species not in thermo.inp: {name!r}")
+        sp = db[name]
+        extra = {el for el in sp.composition if el != "E"} - pool
+        if extra:
+            raise ValueError(
+                f"must_species {name!r} contains element(s) {sorted(extra)} that no feed supplies; "
+                "the equilibrium cannot place an element with no feed source"
+            )
+        if "E" in sp.composition:  # the electron pseudo-element marks a charged (ionic) species
+            raise ValueError(f"must_species {name!r} is an ion; the subsonic combustion slate carries no ions")
+        if getattr(sp, "phase", 0) != 0 and float(sp.thermo.Tranges.max()) < CONDENSED_PRODUCT_TMAX:
+            raise ValueError(
+                f"must_species {name!r} is a feed-only condensed species; it does not persist as an "
+                "equilibrium product (its data does not reach combustion temperatures)"
+            )
+    return must
+
+
+def _warn_must_below_threshold(must, report) -> None:
+    """Warn (listing them) when forced-keep species were kept despite being trace at equilibrium."""
+    peaks = report.get("peak_mole_fraction")
+    floor = report.get("keep_floor")
+    if not must or peaks is None or floor is None:
+        return
+    trace = [n for n in must if peaks.get(n, 0.0) < floor]
+    if trace:
+        warnings.warn(
+            f"must_species kept below the trace threshold ({floor:g}): {trace}",
+            SpeciesReductionWarning,
+            stacklevel=2,
+        )

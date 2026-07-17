@@ -33,6 +33,8 @@ _GLOBAL_DEFAULTS = {
     "speciesReducer": "equilibrium_sampling",
     "speciesReduceThreshold": None,
     "speciesReduceAbove": None,
+    "speciesMax": None,
+    "speciesMust": "",
     "equilibriumTInit": 3000.0,
     "frozenTInit": 300.0,
     "streamMode": "auto",
@@ -303,6 +305,8 @@ def _auto_species_set(db, specs, g):
 
     thr = g.get("speciesReduceThreshold")
     above = g.get("speciesReduceAbove")
+    cap = g.get("speciesMax")
+    must = _parse_species(g.get("speciesMust")) or []
     return auto_product_set(
         db,
         specs,
@@ -311,6 +315,8 @@ def _auto_species_set(db, specs, g):
         reducer_name=str(g.get("speciesReducer") or "equilibrium_sampling"),
         threshold=float(thr) if thr else None,
         reduce_above=int(above) if above else None,
+        max_species=int(cap) if cap else None,
+        must_species=must,
     )
 
 

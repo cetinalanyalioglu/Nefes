@@ -59,6 +59,10 @@ class ThermoConfig:
     # above which reduction runs (None -> AUTO_REDUCE_THRESHOLD); the deferred-slate size dials
     reduce_threshold: float = None
     reduce_above: int = None
+    # ceiling on the kept species count (None -> uncapped) and species to keep regardless of
+    # abundance; further deferred-slate dials, applied at network build
+    max_species: int = None
+    must_species: tuple = ()
     # True for equilibrium(species_set=None): the product slate is (re)derived from the network
     # feeds at every build, so adding a feed after a solve expands the slate as expected
     auto_species_set: bool = False
@@ -147,6 +151,8 @@ def equilibrium(
     reducer: str = "equilibrium_sampling",
     reduce_threshold: float = None,
     reduce_above: int = None,
+    max_species: int = None,
+    must_species=(),
 ):
     """Reacting-gas config from a ``nefes.thermo.SpeciesSet``.
 
@@ -203,6 +209,20 @@ def equilibrium(
         Candidate count above which reduction runs; below it every candidate is kept.  Lower it
         to trim a lean slate, raise it to keep a broad slate whole.  ``None`` (default) uses the
         built-in threshold.  Applies only to the deferred automatic set.
+    max_species : int, optional
+        Ceiling on the number of species in the deferred automatic slate (``None`` for no cap).
+        Species are ranked by peak equilibrium mole fraction and the slate filled to this many,
+        after the feed species, the ``must_species``, and one carrier of every fed-in element.
+        A ceiling, not a target: it only discards the lowest-ranked non-trace species, never
+        pads the slate with trace ones, so a size sweep pairs it with a loose ``reduce_threshold``.
+        Not accepted together with ``reducer="none"``.  Applies only to the deferred automatic set.
+    must_species : iterable of str, optional
+        Species to keep in the deferred automatic slate regardless of abundance (a marker, a
+        pollutant that is trace at equilibrium, or a high-temperature condensed product such as
+        graphite ``"C(gr)"``).  Each must be in the database, buildable from the fed-in elements,
+        and an eligible equilibrium product (a gas or a condensed species whose data reaches
+        combustion temperatures); an ion or a feed-only condensed species is rejected.  Applies
+        only to the deferred automatic set.
 
     See Also
     --------
@@ -210,6 +230,9 @@ def equilibrium(
     nefes.thermo.autoset.auto_product_set : the automatic-slate policy.
     """
     from .edge_state import pack_equilibrium
+
+    if max_species is not None and str(reducer or "equilibrium_sampling") == "none":
+        raise ValueError("max_species cannot be combined with reducer='none' (which keeps every candidate)")
 
     if species_set is None:
         # Deferred automatic species set: the species set is unknown until the network's feeds are
@@ -234,6 +257,8 @@ def equilibrium(
             reducer=reducer,
             reduce_threshold=reduce_threshold,
             reduce_above=reduce_above,
+            max_species=max_species,
+            must_species=tuple(must_species),
             auto_species_set=True,
         )
 

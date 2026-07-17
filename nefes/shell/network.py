@@ -996,7 +996,12 @@ class Network:
     # -- display ------------------------------------------------------------------------------------------------------
 
     def _gas_summary(self) -> str:
-        """One-line description of the thermo model (gas, scalars/streams)."""
+        """One-line description of the thermo model (gas, scalars/streams).
+
+        For an automatic product slate the species count is annotated with the reduction
+        that selected it (candidate count and trace threshold), when a
+        ``reduction_report`` is available on the species set.
+        """
         g = self.gas
         if g.model_id == PERFECT_GAS:
             cp, R = float(g.tf[0]), float(g.tf[1])
@@ -1006,7 +1011,22 @@ class Network:
                 text += f" + {g.n_elem} passive scalar(s): {', '.join(g.element_names)}"
             return text
         if g.model_id == EQ_KERNEL:
-            text = f"equilibrium ({g.n_species} species)"
+            if g.auto_species_set and g.species_set is None:
+                text = "equilibrium (auto species, unresolved)"
+            else:
+                text = f"equilibrium ({g.n_species} species"
+                report = getattr(g.species_set, "reduction_report", None) if g.species_set is not None else None
+                if report:
+                    n_cand = report.get("n_candidates")
+                    thr = report.get("threshold")
+                    reducer = report.get("reducer")
+                    if reducer and reducer != "none" and n_cand is not None:
+                        text += f", auto-reduced from {n_cand}"
+                        if thr is not None:
+                            text += f", threshold={thr:g}"
+                    elif reducer == "none":
+                        text += ", auto"
+                text += ")"
             # Streams are discovered at build time, so the labels may not be populated yet.
             if g.element_names:
                 text += f", streams: {', '.join(g.element_names)}"
@@ -1094,19 +1114,21 @@ class Network:
         return "\n".join(lines)
 
     def _repr_html_(self) -> str:
-        """Rich HTML summary for Jupyter: header line plus element and edge listings."""
+        """Rich HTML summary for Jupyter: compact header plus element and edge listings."""
         n_el, n_ed = len(self._elements), len(self._edges)
         p, T, m, explicit = self._refs()
         mdot = "n/a" if m is None else f"{m:.4g} kg/s ({'explicit' if explicit else 'auto'})"
         parts = [
-            f"{n_el} element{'' if n_el == 1 else 's'}",
-            f"{n_ed} edge{'' if n_ed == 1 else 's'}",
+            f"{n_el} element{'' if n_el == 1 else 's'}, {n_ed} edge{'' if n_ed == 1 else 's'}",
             self._gas_summary(),
-            f"p={p:.6g} Pa, T={T:.6g} K, mdot={mdot}",
+            f"p={p:.6g} Pa &nbsp;&middot;&nbsp; T={T:.6g} K &nbsp;&middot;&nbsp; mdot={mdot}",
         ]
         header = (
-            "<div style='font-family:sans-serif;margin-bottom:4px'>"
-            "<b>Network</b> &nbsp;&middot;&nbsp; " + " &nbsp;|&nbsp; ".join(parts) + "</div>"
+            "<div style='font-family:sans-serif;margin-bottom:6px'>"
+            "<b>Network</b>"
+            "<span style='color:#888'>&nbsp;&middot;&nbsp;</span>"
+            + "<span style='color:#888'>&nbsp;|&nbsp;</span>".join(parts)
+            + "</div>"
         )
 
         # Each listing becomes one flex column so the element and edge tables sit side by side.

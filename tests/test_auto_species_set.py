@@ -65,6 +65,30 @@ def test_auto_slate_is_inspectable_after_build():
     assert report["n_kept"] <= report["n_candidates"]
 
 
+def test_network_repr_reports_auto_species_reduction():
+    """Network text/HTML summaries annotate an auto-reduced slate with candidate count and threshold."""
+    net = _flame_network(equilibrium(reduce_threshold=1e-4), CH4_AIR)
+    net.compile()
+    report = net.gas.species_set.reduction_report
+    assert report["reducer"] != "none"
+
+    text = repr(net)
+    html = net._repr_html_()
+    expected = (
+        f"equilibrium ({net.gas.n_species} species, "
+        f"auto-reduced from {report['n_candidates']}, "
+        f"threshold={report['threshold']:g})"
+    )
+    assert expected in text
+    assert expected in html
+
+    # An unreduced auto slate (gate above the candidate count) is labelled ``auto``, not reduced.
+    whole = _flame_network(equilibrium(reduce_above=10_000), CH4_AIR)
+    whole.compile()
+    assert whole.gas.species_set.reduction_report["reducer"] == "none"
+    assert f"equilibrium ({whole.gas.n_species} species, auto)" in repr(whole)
+
+
 def test_deferred_config_is_feed_driven_and_left_unmutated():
     """One deferred config, two feeds -> two feed-appropriate slates; the config itself is intact."""
     gas = equilibrium()  # a single deferred config, reused below

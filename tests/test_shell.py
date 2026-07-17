@@ -682,6 +682,7 @@ def test_network_repr_summarizes_topology_and_thermo():
     html = net._repr_html_()
     assert html.startswith("<div") and "<table" in html
     assert "<b>Network</b>" in html and "air-in" in html
+    assert "4 elements, 3 edges" in html and "perfect gas" in html
 
 
 def test_network_repr_handles_empty_and_truncates(recwarn):

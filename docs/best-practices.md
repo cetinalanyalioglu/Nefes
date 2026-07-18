@@ -365,6 +365,11 @@ Addresses are resolved and validated *before* any write, so a mistyped address l
 Composite elements are rebuilt through their factory on a write, never patched.
 Address forms: `"element.field"`, `"edge.area"`, and for a single-port or constant-area element `"element.area"` fans out to its incident edges; bare `"p_ref"`, `"T_ref"` (and advanced `"mdot_ref"`, `"h_ref"`) address the network references.
 
+**Build once; vary with addresses.**
+Construct the `Network` once, then change lengths, areas, feeds, dynamic-source knobs, and perturbation BCs with `with_params` / `set` / `set_perturbation_bc`.
+Do not wrap construction in a parameterized `build(Lm=..., drive=...)` just to pass knobs — that is what the parameter API is for.
+A second construction (or a custom `build(p)` for continuation) is warranted only when the change is structural: topology, element *kind*, or gas/species set (those reshape the problem and are outside this API).
+
 **Nested addresses.** An object attached to an element can expose its own scalar knobs (the scalar-parameter protocol): an attached flame response exposes its gain and lag, a constant reflection/impedance boundary condition its magnitude and phase, an identified impulse response an overall `gain` and bulk `delay`.
 These join the same address space and every write path:
 
@@ -416,7 +421,8 @@ grid = nefes.parameter_study(
 grid.probes["dp"].shape  # (8, 12)
 ```
 
-For the stability continuation drivers (next section), `net.builder("address")` gives the `build(p) -> Network` closure they expect.
+For stability continuation, prefer `net.eigenvalue_trajectory("address", params, ...)` (or `net.nyquist_stability_map`); it uses `with_params` internally.
+Reach for `net.builder("address")` or a hand-written `build(p)` only when the free drivers need a closure and the change is not a single address.
 
 ---
 
@@ -576,7 +582,8 @@ traj.branches  # list of TrajectoryBranch; each has .freqs, .growth, .omega
 traj.plot_vs_param().show()
 ```
 
-`net.eigenvalue_trajectory` builds each swept point from a pristine copy (via `net.builder`) and labels the sweep by the address; the free `eigenvalue_trajectory(build, ...)` remains for a custom `build(p)` closure.
+`net.eigenvalue_trajectory` builds each swept point from a pristine copy (via `net.builder`) and labels the sweep by the address.
+The free `eigenvalue_trajectory(build, ...)` accepts a custom `build(p)` only for structural changes that `with_params` cannot express (see §5).
 
 ### 7e. Nyquist stability map
 
@@ -791,6 +798,7 @@ High-pressure reacting cold-starts now converge on their own (the seed reads the
 | Found in notebooks | Use instead | Why |
 | :-- | :-- | :-- |
 | `from nefes.shell import build_problem` | `nefes.Network(gas, nodes, edges)` | the one-shot constructor supersedes it |
+| parameterized `def build(Lm=..., drive=...)` around construction | build once; `with_params` / `set` / `eigenvalue_trajectory("address", ...)` | scalar and nested knobs (including perturbation-layer) are already addressable; reserve a custom `build(p)` for topology / element-kind / gas changes (§5) |
 | `from nefes.solver import solve; solve(prob)` | `net.solve()` | Solution auto-verifies and gives named access |
 | `from nefes.solver.report import states_table` + `ES_M`/`ES_P` indexing | `sol.field("M")`, `sol.edge(i)`, `sol.print_states()` | `ES_*` are internal state indices |
 | `from nefes.perturbation.operator.boundary_bc import PerturbationBC` | `from nefes.perturbation import PerturbationBC` | it is re-exported one level up |

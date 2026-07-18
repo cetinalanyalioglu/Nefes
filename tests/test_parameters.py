@@ -158,6 +158,30 @@ def test_inventory_covers_elements_edges_and_refs():
     assert "mdot_ref" in net.parameters(advanced=True).addresses
 
 
+def test_inventory_repr_marks_layer_and_advanced():
+    """Text and HTML tables expose layer (μ/∼) and advanced (*) columns."""
+    net = _simple_network()
+    net.add(cat.cavity(volume=1e-3, name="cav"))
+    plain = net.parameters()
+    text = repr(plain)
+    assert "layer" in text.splitlines()[0]
+    assert "adv" in text.splitlines()[0]
+    assert "μ" in text
+    assert "μ mean" in text and "∼ perturbation" in text
+    assert plain["in.mdot"].layer == "mean" and not plain["in.mdot"].advanced
+    assert plain["cav.volume"].layer == "perturbation"
+
+    adv = net.parameters(advanced=True)
+    assert adv["mdot_ref"].advanced
+    assert "*" in repr(adv)
+
+    html = plain._repr_html_()
+    assert "currentColor" in html
+    assert "μ" in html
+    assert "title=" in html
+    assert "#ccc" not in html  # theme-hardcoded border color is banned
+
+
 def test_get_reads_slots_fields_composites_edges_and_refs():
     net = _simple_network()
     assert net.get("in.mdot") == pytest.approx(0.3)

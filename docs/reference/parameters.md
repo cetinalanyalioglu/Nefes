@@ -22,22 +22,27 @@ A silent no-op is designed out.
 
 ## The inventory
 
-`net.parameters()` returns every addressable parameter with its current value, SI unit and admissible range:
+`net.parameters()` returns every addressable parameter with its current value, SI unit and admissible range.
+The table marks each row's solution layer (`μ` mean, `∼` perturbation) and flags advanced knobs with `*`:
 
 ```python
 >>> net.parameters()
-address          value   unit   bounds
----------------  ------  -----  --------
-inlet.mdot       0.3     kg/s   >= 0
-inlet.Tt         700     K      > 0
-orifice.throat_area  0.001  m^2    > 0
+address              value   unit   bounds  layer  adv
+-------------------  ------  -----  ------  -----  ---
+inlet.mdot           0.3     kg/s   >= 0    μ
+inlet.Tt             700     K      > 0     μ
+orifice.throat_area  0.001   m^2    > 0     μ
+plenum.volume        0.001   m^3    >= 0    ∼
 ...
-e0.area          0.005   m^2    > 0
-p_ref            101325  Pa     > 0
+e0.area              0.005   m^2    > 0     μ
+p_ref                101325  Pa     > 0     μ
+
+  μ mean · ∼ perturbation · * advanced
 ```
 
 The result is a list of `ParameterInfo` rows with dict-style access by address (`inv["inlet.mdot"].value`).
-Advanced knobs that are usually left alone (the smoothing `eps`, the loss `ref_port`, the solver seed references) are hidden by default; pass `advanced=True` to include them.
+Advanced knobs that are usually left alone (the smoothing `eps`, the loss `ref_port`, the solver seed references) are hidden by default; pass `advanced=True` to include them (they show `*` in the `adv` column).
+Narrow to one layer with `layer="mean"` or `layer="perturbation"`.
 
 ## Reading and writing
 

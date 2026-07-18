@@ -16,6 +16,7 @@ import copy as _copy
 import difflib
 import numbers
 from dataclasses import dataclass
+from html import escape as _escape
 from typing import Dict, List, Optional, Tuple
 
 from ..elements.composite import is_composite
@@ -45,6 +46,12 @@ _NETWORK_ATTR = {"p_ref": "p_ref", "T_ref": "T_ref", "mdot_ref": "_mdot_ref", "h
 # the per-edge flow area (areas live on edges, never on elements)
 _AREA = ParamDescriptor("area", unit="m^2", lo=0.0, lo_open=True, doc="edge cross-sectional flow area")
 
+# Inventory table marks: theme-agnostic glyphs (inherit the notebook text color).
+_LAYER_MARK = {"mean": "μ", "perturbation": "∼"}
+_LAYER_LABEL = {"mean": "mean layer", "perturbation": "perturbation layer"}
+_ADV_MARK = "*"
+_INVENTORY_LEGEND = "μ mean · ∼ perturbation · * advanced"
+
 
 @dataclass(frozen=True)
 class ParameterInfo:
@@ -70,6 +77,9 @@ class ParameterInfo:
         Which solution layer the parameter touches: ``"mean"`` (reshapes the mean flow, and
         with it everything built on top) or ``"perturbation"`` (enters only the acoustic/
         perturbation operator -- the mean state is invariant to it).
+    advanced : bool
+        Whether the parameter is an advanced knob normally hidden from
+        :meth:`~nefes.shell.network.Network.parameters` (still fully addressable).
     """
 
     address: str
@@ -80,12 +90,15 @@ class ParameterInfo:
     target: str = "element"
     doc: str = ""
     layer: str = "mean"
+    advanced: bool = False
 
 
 class ParameterInventory(list):
     """The list of :class:`ParameterInfo` rows ``Network.parameters()`` returns.
 
     A plain list with table reprs and dict-style access by address.
+    The table marks each row's solution layer (``μ`` mean, ``∼`` perturbation) and
+    flags advanced knobs with ``*``.
 
     Examples
     --------
@@ -118,36 +131,94 @@ class ParameterInventory(list):
         text = repr(v) if isinstance(v, (dict, list, tuple)) else type(v).__name__ if hasattr(v, "__dict__") else str(v)
         return text if len(text) <= 40 else text[:37] + "..."
 
+    @staticmethod
+    def _layer_mark(layer: str) -> str:
+        return _LAYER_MARK.get(layer, layer)
+
+    @staticmethod
+    def _adv_mark(advanced: bool) -> str:
+        return _ADV_MARK if advanced else ""
+
     def __repr__(self) -> str:
         if not self:
             return "ParameterInventory (empty)"
-        rows = [(i.address, self._fmt_value(i.value), i.unit, i.bounds) for i in self]
-        widths = [max(len(r[c]) for r in rows + [("address", "value", "unit", "bounds")]) for c in range(4)]
-        header = "  ".join(h.ljust(w) for h, w in zip(("address", "value", "unit", "bounds"), widths)).rstrip()
+        headers = ("address", "value", "unit", "bounds", "layer", "adv")
+        rows = [
+            (
+                i.address,
+                self._fmt_value(i.value),
+                i.unit,
+                i.bounds,
+                self._layer_mark(i.layer),
+                self._adv_mark(i.advanced),
+            )
+            for i in self
+        ]
+        widths = [max(len(r[c]) for r in rows + [headers]) for c in range(len(headers))]
+        header = "  ".join(h.ljust(w) for h, w in zip(headers, widths)).rstrip()
         lines = [header, "  ".join("-" * w for w in widths)]
         for r in rows:
             lines.append("  ".join(c.ljust(w) for c, w in zip(r, widths)).rstrip())
+        lines.append("")
+        lines.append(f"  {_INVENTORY_LEGEND}")
         return "\n".join(lines)
 
     def _repr_html_(self) -> str:
-        th = "padding:2px 8px;border-bottom:1px solid #ccc;text-align:left"
+        # Borders use currentColor so the table stays legible on light and dark notebook themes.
+        th = "padding:2px 8px;border-bottom:1px solid currentColor;text-align:left"
         td = "padding:2px 8px;text-align:left"
+        col_titles = (
+            ("address", "address"),
+            ("value", "value"),
+            ("unit", "unit"),
+            ("bounds", "bounds"),
+            ("layer", "solution layer (μ mean, ∼ perturbation)"),
+            ("adv", "advanced knob (*)"),
+            ("doc", "doc"),
+        )
         head = (
             "<tr>"
-            + "".join(f"<th style='{th}'>{h}</th>" for h in ("address", "value", "unit", "bounds", "doc"))
+            + "".join(f"<th style='{th}' title='{_escape(title)}'>{_escape(h)}</th>" for h, title in col_titles)
             + "</tr>"
         )
-        body = "".join(
-            "<tr>"
-            + "".join(
-                f"<td style='{td}'>{c}</td>" for c in (i.address, self._fmt_value(i.value), i.unit, i.bounds, i.doc)
+        body_parts = []
+        for i in self:
+            layer_mark = self._layer_mark(i.layer)
+            adv_mark = self._adv_mark(i.advanced)
+            layer_title = _LAYER_LABEL.get(i.layer, i.layer)
+            adv_title = "advanced" if i.advanced else "standard"
+            cells = (
+                (_escape(i.address), None),
+                (_escape(self._fmt_value(i.value)), None),
+                (_escape(i.unit), None),
+                (_escape(i.bounds), None),
+                (_escape(layer_mark), layer_title),
+                (_escape(adv_mark), adv_title),
+                (_escape(i.doc), None),
             )
-            + "</tr>"
-            for i in self
+            body_parts.append(
+                "<tr>"
+                + "".join(
+                    (
+                        f"<td style='{td}' title='{_escape(title)}'>{content}</td>"
+                        if title is not None
+                        else f"<td style='{td}'>{content}</td>"
+                    )
+                    for content, title in cells
+                )
+                + "</tr>"
+            )
+        table = (
+            "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>"
+            + head
+            + "".join(body_parts)
+            + "</table>"
         )
-        return (
-            "<table style='border-collapse:collapse;font-family:monospace;font-size:0.9em'>" + head + body + "</table>"
+        legend = (
+            f"<div style='font-family:sans-serif;font-size:0.85em;opacity:0.75;margin-top:4px'>"
+            f"{_escape(_INVENTORY_LEGEND)}</div>"
         )
+        return table + legend
 
 
 # --------------------------------------------------------------------------- #
@@ -497,6 +568,7 @@ def inventory(net, advanced: bool = False, layer: Optional[str] = None) -> Param
                     target=target,
                     doc=d.doc,
                     layer=d.layer,
+                    advanced=d.advanced,
                 )
             )
             # the object's own scalar knobs join the address space; anything attached to
@@ -513,6 +585,7 @@ def inventory(net, advanced: bool = False, layer: Optional[str] = None) -> Param
                             target=target,
                             doc=sub.doc,
                             layer="perturbation",
+                            advanced=sub.advanced,
                         )
                     )
     for ei, (_t, _h, a) in enumerate(net._edges):
@@ -525,6 +598,8 @@ def inventory(net, advanced: bool = False, layer: Optional[str] = None) -> Param
                 kind="float",
                 target="edge",
                 doc=_AREA.doc,
+                layer=_AREA.layer,
+                advanced=_AREA.advanced,
             )
         )
     for d in _NETWORK_PARAMS:
@@ -539,6 +614,8 @@ def inventory(net, advanced: bool = False, layer: Optional[str] = None) -> Param
                 kind=d.kind,
                 target="network",
                 doc=d.doc,
+                layer=d.layer,
+                advanced=d.advanced,
             )
         )
     if layer is not None:

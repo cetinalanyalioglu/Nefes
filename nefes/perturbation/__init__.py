@@ -106,6 +106,7 @@ from .stability.nyquist import (
     nyquist_stability_map,
     open_loop_response,
 )
+from .stability.sensitivity import EigenmodeSensitivityResult, SensitivityWarning, eigenvalue_sensitivities
 from .stability.trajectory import TrajectoryBranch, TrajectoryResult, TrajectoryWarning, eigenvalue_trajectory
 
 # perturbation-network primary names (thin aliases over the original spellings)
@@ -200,6 +201,9 @@ __all__ = [
     # stability / eigenmodes (nonlinear eigenproblem det A(omega) = 0)
     "eigenmodes",
     "EigenmodeResult",
+    "EigenmodeSensitivityResult",
+    "SensitivityWarning",
+    "eigenvalue_sensitivities",
     "EigenmodeWarning",
     "build_operator",
     # eigenvalue trajectories (parameter continuation of the spectrum)

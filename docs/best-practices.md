@@ -519,6 +519,27 @@ The common uncertified cases are a mode sitting on the search-region boundary (s
 One genuine limit: at **very low mean-flow Mach** the entropy characteristic ill-conditions the operator, so a choked or near-quiescent mean flow may yield an uncertified or empty result with a warning.
 There the acoustic modes are still well-defined — recover them with `sol.eigenmodes(..., isentropic=True)` (drops the entropy wave, whose coupling is negligible at low Mach), or read the resonances off `sol.forced_response(freqs)` peaks.
 
+### 7c-bis. Eigenvalue sensitivities — what moves each mode
+
+Differentiate every found mode against the network's parameter inventory in one pass (one left eigenvector per mode, one operator re-assembly per parameter — no re-solve, no re-search).
+Both routes are captured: the parameter's direct appearance in the operator and the mean-flow shift it causes.
+
+```python
+sens = modes.sensitivities()  # every scalar parameter; assembly settings carried over
+sens = modes.sensitivities(include="*.length", exclude="*.mdot")  # glob narrowing
+sens = modes.sensitivities(params=["Duct3.length", "plenum.volume"])  # explicit list
+sens  # ranked table: growth-rate change per +1% of each parameter (positive = destabilizing)
+sens["Duct3.length"]  # d omega / d p column for one address, one entry per mode
+sens.dgrowth_dp, sens.dfreq_dp  # (n_modes, n_params) derivative matrices, per parameter unit
+sens.top(5)  # most influential addresses
+sens.failed  # parameters that could not be probed, with reasons
+sens.plot().show()  # ranked bar chart (nefes.plotting.plot_sensitivities)
+```
+
+A zero-valued parameter (an unset `volume` or `end_correction`) is probed with a small absolute step and ranked by that step's effect, so untapped geometric features still show their leverage.
+The derivatives are local slopes: confirm a finite design change with a trajectory (7d).
+A near-degenerate pair warns — such modes respond to a parameter by splitting, and their individual slopes are ill-conditioned.
+
 ### 7d. Continuation of the spectrum in a parameter
 
 Track each eigenvalue as a parameter varies, seeded once and predictor-corrector continued.

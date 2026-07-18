@@ -1689,7 +1689,9 @@ class Solution:
         """
         from ..perturbation import eigenmodes
 
-        return eigenmodes(self.problem, self.x, freq_band, **kwargs)
+        res = eigenmodes(self.problem, self.x, freq_band, **kwargs)
+        res._solution = self  # let EigenmodeResult.sensitivities() reach the network
+        return res
 
     def forced_response(self, freqs, **kwargs):
         """Perturbation field under each terminal's declared boundary condition, on this mean flow.

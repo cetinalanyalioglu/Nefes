@@ -33,6 +33,7 @@ from .complex_matrix import (
 from .continuation import plot_fit, plot_pole_map
 from .labels import detex, latex_enabled, mathify, tex, tex_text, use_latex
 from .modeshape import AnimSeries, animate_mode_shape
+from .sensitivity import plot_sensitivities
 from .spectrum import plot_mode_shape, plot_spectrum
 from .theme import COLORWAY, FONT_FAMILY, NEFES_TEMPLATE_NAME, nefes_template, use_nefes_theme
 from .topology import plot_network_topology
@@ -57,6 +58,7 @@ __all__ = [
     "plot_transfer_function",
     "plot_fit",
     "plot_pole_map",
+    "plot_sensitivities",
     "plot_spectrum",
     "plot_mode_shape",
     "animate_mode_shape",

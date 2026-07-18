@@ -142,6 +142,29 @@ fig.update_layout(xaxis_title="modal frequency  f = ω_r / 2π  [Hz]", yaxis_tit
 fig
 ```
 
+## Eigenvalue sensitivities {#sec-analyses-eigenvalue-sensitivities}
+
+Once a spectrum is in hand, the question shifts from *where the modes are* to *what moves them*: which duct length, area, or feed condition pulls a mode toward or away from the stability boundary.
+Differentiating the eigenproblem $\mathbf{A}(\omega; p)\,\mathbf{x} = \mathbf{0}$ with respect to a setup parameter $p$ and projecting onto the left eigenvector $\mathbf{y}$ (the adjoint mode, $\mathbf{y}^{\mathrm{H}}\mathbf{A} = \mathbf{0}$) eliminates the unknown eigenvector shift and leaves a closed expression, given as:
+
+$$
+\frac{\mathrm{d}\omega}{\mathrm{d}p}
+\;=\;
+-\,\frac{\mathbf{y}^{\mathrm{H}}\,\dfrac{\mathrm{d}\mathbf{A}}{\mathrm{d}p}\,\mathbf{x}}
+        {\mathbf{y}^{\mathrm{H}}\,\dfrac{\partial\mathbf{A}}{\partial\omega}\,\mathbf{x}},
+$$
+
+where the left eigenvector comes from the already-factorized operator at the eigenvalue (a transpose-conjugate solve), so every mode needs one extra triangular solve and nothing else.
+
+The parameter enters the operator along two routes, and both must be in $\mathrm{d}\mathbf{A}/\mathrm{d}p$: directly (a duct length in the phase term $e^{-\mathrm{i}\omega\tau}$, a volume in the storage block) and through the mean flow the parameter reshapes.
+The mean route needs no re-solve: the converged mean state obeys $\mathbf{R}(\overline{\mathbf{x}}; p) = \mathbf{0}$, so its shift is $\mathrm{d}\overline{\mathbf{x}}/\mathrm{d}p = -\overline{\mathbf{J}}^{-1}\,\partial\mathbf{R}/\partial p$ — one back-substitution against the mean Jacobian that the complex-step machinery already provides exactly.
+The operator derivative is then a finite difference of the re-assembled operator along the combined path $(p, \overline{\mathbf{x}}(p))$; every quantity along that path is smooth by the smoothness contract, so a small step sits at the difference-roundoff floor rather than on a kink.
+Probing a parameter therefore costs one operator re-assembly (plus one residual evaluation for its mean shift), and the full parameter inventory of a network is differentiated for a fraction of the cost of the eigenvalue search itself — against roughly one mean re-solve *and* re-search per parameter for the brute-force alternative.
+
+Two caveats bound the method's reach.
+The expression is the first term of a perturbation series: it ranks levers and gives local slopes, and a finite design change should be confirmed by continuation (`eigenvalue_trajectory`) along the chosen parameter.
+And a nearly repeated eigenvalue — a symmetric pair, an accidental degeneracy — makes the normalization $\mathbf{y}^{\mathrm{H}}(\partial\mathbf{A}/\partial\omega)\,\mathbf{x}$ small: such a pair responds to a parameter by splitting, not by moving independently, and the implementation warns rather than reporting the ill-conditioned individual slopes (tests: `test_matches_brute_force_and_analytic_laws`, `test_mean_flow_route_is_the_chain_term`, `test_zero_valued_parameter_is_probed_one_sided`).
+
 ## Open-loop stability on the real axis {#sec-analyses-open-loop-stability}
 
 The contour eigensolver is powerful but not universal, and three circumstances defeat it: a *measured* flame transfer function is defined only on the real axis and cannot be evaluated on the complex contour; a flowing network fills its spectrum with dense, near-marginal convected entropy and composition modes that overwhelm the completeness certificate; and a long convective delay makes $e^{-\mathrm{i}\omega\tau_u}$ overflow once the contour reaches into the complex plane.

@@ -897,6 +897,7 @@ def eigenmodes(
         expected=expected,
         geometry=build_geometry(prob),
         storage=storage_stamps_from_est(prob, est),
+        _assembly=dict(eps=eps, eps_fb=eps_fb, u_floor=u_floor, isentropic=bool(isentropic)),
     )
 
 
@@ -954,6 +955,10 @@ class EigenmodeResult:
     geometry: Optional[NetworkGeometry] = None
     # per-element storage stamps (stamps.storage_stamps_from_est) for the lumped-storage energy ledger
     storage: Optional[list] = None
+    # provenance for sensitivities(): the assembly settings this spectrum was built with, and
+    # (when searched through Solution.eigenmodes) the solution itself
+    _assembly: Optional[dict] = field(default=None, repr=False, compare=False)
+    _solution: Optional[object] = field(default=None, repr=False, compare=False)
 
     def __len__(self) -> int:
         return int(self.omega.size)
@@ -1173,6 +1178,51 @@ class EigenmodeResult:
             }
             for i in range(self.n_modes)
         ]
+
+    def sensitivities(self, solution=None, **kwargs):
+        """Differentiate every mode of this spectrum with respect to the network's parameters.
+
+        A bound form of :func:`sensitivity.eigenvalue_sensitivities`: the assembly settings
+        this spectrum was searched with (``isentropic``, regularizers) are re-supplied
+        automatically, and the solution is taken from the :meth:`nefes.Solution.eigenmodes`
+        call that produced this result.  One left eigenvector per mode turns each parameter
+        into a single operator re-assembly, so probing the full parameter inventory costs a
+        fraction of the original search.
+
+        Parameters
+        ----------
+        solution : Solution, optional
+            The solved network this spectrum belongs to.  Only needed when the result was
+            obtained through the low-level ``eigenmodes(problem, x_bar, ...)`` call, which
+            carries no network reference.
+        **kwargs
+            Forwarded to :func:`sensitivity.eigenvalue_sensitivities` (e.g. ``include``,
+            ``exclude``, ``params``, ``chain``, ``scheme``).
+
+        Returns
+        -------
+        EigenmodeSensitivityResult
+
+        Examples
+        --------
+        >>> eigs = sol.eigenmodes(freq_band=(100, 600), isentropic=True)
+        >>> eigs.sensitivities(include="*.length")  # doctest: +SKIP
+
+        See Also
+        --------
+        sensitivity.eigenvalue_sensitivities : the underlying routine and its full knob set.
+        """
+        from .sensitivity import eigenvalue_sensitivities
+
+        sol = solution if solution is not None else self._solution
+        if sol is None:
+            raise ValueError(
+                "this result carries no solution reference: search through Solution.eigenmodes, "
+                "or pass the solved Solution here as sensitivities(solution=...)"
+            )
+        opts = dict(self._assembly or {})
+        opts.update(kwargs)
+        return eigenvalue_sensitivities(sol, self, **opts)
 
     def plot_spectrum(self, **kwargs):
         """Plot the spectrum: growth rate vs modal frequency, with the stability boundary.

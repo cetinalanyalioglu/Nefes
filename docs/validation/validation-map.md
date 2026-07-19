@@ -1,6 +1,6 @@
 # Validation map
 
-This document records how physical claims in the theory track are checked.
+This document records how physical claims in the theory part are checked.
 Each row names the claim, the independent reference it is compared against (an analytic relation, an equilibrium calculation, or a published case), and the test or example that runs the comparison.
 The tables are grouped by mean flow, thermochemistry, and acoustics with its inverse; where no check exists, the gap is marked openly rather than left unstated.
 Broader consistency evidence and named literature cases appear in [verification](verification.md) and [benchmarks](benchmarks.md).

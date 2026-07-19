@@ -1,6 +1,6 @@
 # Design philosophy
 
-The theory documents establish *what* the framework computes; this track explains *why the software is shaped the way it is*, so that a contributor understands the load-bearing decisions before touching the code.
+The theory documents establish *what* the framework computes; this part explains *why the software is shaped the way it is*, so that a contributor understands the load-bearing decisions before touching the code.
 Four principles govern the implementation.
 Each is a response to a specific failure mode of compressible-network solvers, and each is carried by a hard constraint that the rest of the codebase upholds without exception.
 

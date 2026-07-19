@@ -53,4 +53,4 @@ The isentropic and choking rows reproduce the classical compressible-flow relati
 The characteristic maps that turn the base Jacobian into the acoustic operator are the exact linearization of the state definitions, invertible at every physical state (see [characteristics](characteristics.md)).
 
 The honest summary is therefore that the subsonic, equilibrium-reacting mean flow and the acoustics linearized about it form a complete and internally exact core, ringed by a small set of named, bounded approximations — each with a designed path to removal — and two firm scope boundaries: supersonic internal flow, and the finite-amplitude response beyond the linear one.
-The validation track collects the evidence that the core performs as claimed.
+The validation part collects the evidence that the core performs as claimed.

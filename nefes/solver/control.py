@@ -12,9 +12,17 @@ when the LU step stalls or the Jacobian is singular.  The final stage solves the
 equations (``kappa = 0``).
 
 The continuation and globalization follow standard treatments (Allgower & Georg,
-*Numerical Continuation Methods*); the artificial-resistance regularization mirrors
-Todini & Pilati's global gradient algorithm for the zero-flow singularity of
-hydraulic-network solvers.
+*Numerical Continuation Methods*).  The artificial-resistance regularization addresses
+the same zero-flow singularity that hydraulic-network solvers face: the ``|Q|^(n-1) Q``
+loss law has vanishing flow derivative at rest, so the Jacobian degenerates there and
+the global gradient algorithm of Todini & Pilati fails by division by zero.  Elhay &
+Simpson (*J. Hydraul. Eng.* 137(10):1216-1224, 2011) prove the singularity -- it bites
+when the zero-flow passages form a loop or a path between fixed-head nodes -- and
+introduce the linear-surrogate remedy.  The difference here is that ``kappa`` is a
+homotopy parameter driven to zero, so the final stage solves the unmodified equations
+and the regularization leaves no trace in the converged state; a permanent local
+surrogate instead perturbs the solution it converges to (Gorev et al., *Water Resour.
+Manage.* 36(5):1679-1691, 2022).
 """
 
 import time

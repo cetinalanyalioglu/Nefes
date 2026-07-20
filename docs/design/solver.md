@@ -70,7 +70,7 @@ The damped Newton step is still defeated by one structural trap: in a network dr
 The cure is a continuation in a physical parameter [@allgower_georg_1990]: a small fictitious friction $\kappa$ added to every pressure-type row.
 This injects first-order flow sensitivity without changing the final answer.
 With the friction active the network behaves like a resistive circuit, in which pressure differences push directly on the flows, and the solver locates the flow pattern readily.
-This is the same regularization of the zero-flow Jacobian that gradient methods for hydraulic pipe networks employ [@todini_pilati_1988].
+The same zero-flow singularity is met by hydraulic pipe-network solvers, whose loss law is likewise quadratic in the flow: the Jacobian of the global gradient algorithm [@todini_pilati_1988] degenerates at rest, and @elhay_simpson_2011 prove it is singular whenever the zero-flow pipes form a loop or a path between fixed-head nodes, introducing the same linear-surrogate cure.
 Of course, upon convergence, the artifical resistance should vanish.
 Therefore, it is applied through a sequence of stages, given as:
 
@@ -81,6 +81,8 @@ $$
 each stage warm-started from the previous solution, with a smoothing width $\varepsilon = \max(0.3\kappa,\ 10^{-4})\,\dot m_{\text{ref}}$ that rounds the transport upwind switches and the other regularized primitives (see [transport](../theory/transport.qmd) and [the smoothness contract](smoothness-contract.md#sec-smooth-primitives)).
 At $\kappa = 0.1$, $0.01$, and $0$ this gives $\varepsilon = 0.03$, $0.001$, and $10^{-4}$ times $\dot m_{\text{ref}}$ respectively, sharpening toward the exact, friction-free equations on the final stage.
 An important remark is that this is a continuation in a physical parameter rather than a numerical fudge: every intermediate problem is a well-posed resistive network, and only the limit $\kappa \to 0$ restores the original equations, reached by a path that stays nonsingular throughout (tests: `test_quiescent_cold_start_converges`, `test_long_serial_chain_cold_start`, `test_many_parallel_branches_converge`).
+This is also where the treatment here parts from the hydraulic-network practice it otherwise shares: there the linear surrogate is applied locally and kept permanently, which perturbs the solution the solver converges to, and @gorev_2022 report that the treatment in present use can converge to distinctly inaccurate results on networks containing low-resistance pipes.
+Driving $\kappa$ to zero instead leaves no trace of the regularization in the converged state.
 
 ## Warm-start caches {#sec-solver-warmstart}
 

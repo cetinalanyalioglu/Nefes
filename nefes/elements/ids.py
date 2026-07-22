@@ -24,9 +24,19 @@ CHOKED_NOZZLE_OUTLET = 16  # 1-port outlet: compact choked nozzle of throat area
 LINEAR_RESISTANCE = 17  # 2-port linear flow resistance: Pt drop proportional to mass flow (Pt0 - Pt1 = R*mdot)
 CAVITY = 18  # 1-port finite-volume cavity: mean flow is a wall (mdot = 0); acoustically a compliance (storage M)
 FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (N-1) outflow rates forced to fractions
-PIPE = 20  # 2-port length-bearing pipe: Darcy-Weisbach friction (Pt drop K = f*L/D) + the duct acoustic phase
+PIPE = 20  # 2-port length-bearing pipe: friction pressure drop (selectable closure) + duct acoustic phase
 TRANSFER_MATRIX = 21  # 2-port element: mean flow == isentropic area change; perturbation uses a user transfer matrix
 MIXER = 22  # variable-port merge: dump-mixing manifold that never manufactures total pressure (second law)
+
+# The pipe's mean-flow closure, packed as a build-time constant in its fparams slot 3.  The
+# kernel branches on it; it never depends on the flow state, so the branch is complex-step safe.
+PIPE_FORMULATION_DARCY_WEISBACH = 0  # Greyvenstein-Laurie total-pressure head, K = f*L/D
+PIPE_FORMULATION_MOMENTUM = 1  # compressible segment momentum balance (converges to Fanno flow)
+PIPE_FORMULATION_CODES = {
+    "darcy-weisbach": PIPE_FORMULATION_DARCY_WEISBACH,
+    "momentum": PIPE_FORMULATION_MOMENTUM,
+}
+PIPE_FORMULATION_NAMES = {code: name for name, code in PIPE_FORMULATION_CODES.items()}
 
 # Acoustic-stamp ids: the perturbation stamp an element uses in place of its default
 # CSD linearization.  The dynamic-source S is carried on the element's DynamicSource

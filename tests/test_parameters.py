@@ -75,8 +75,8 @@ ATOMIC_SAMPLES = [
     (cat.duct, dict(length=0.7), dict(length=0.7)),
     (
         cat.pipe,
-        dict(length=1.5, diameter=0.05, friction_factor=0.02),
-        dict(length=1.5, diameter=0.05, friction_factor=0.02),
+        dict(length=1.5, diameter=0.05, friction_factor=0.02, formulation="momentum"),
+        dict(length=1.5, diameter=0.05, friction_factor=0.02, formulation="momentum"),
     ),
 ]
 
@@ -194,6 +194,20 @@ def test_get_reads_slots_fields_composites_edges_and_refs():
     assert net.get("in.perturbation_bc") is None
 
 
+def test_pipe_formulation_is_string_addressable():
+    net = nefes.Network(
+        nodes=[
+            cat.mass_flow_inlet(0.3, 300.0),
+            cat.pipe(1.0, 0.05, 0.02, name="p"),
+            cat.pressure_outlet(101325.0),
+        ],
+        edges=[(0, 1, 2e-3), (1, 2, 2e-3)],
+    )
+    assert net.get("p.formulation") == "darcy-weisbach"
+    net.set("p", formulation="momentum")
+    assert net.get("p.formulation") == "momentum"
+
+
 def test_element_lookup_by_name_and_index():
     net = _simple_network()
     assert net.element_index("ori") == 1
@@ -226,6 +240,14 @@ def test_set_composite_rebuilds_through_factory():
     assert is_composite(el) and el.name == "ori"
     # the derived internal edge is regenerated, never patched
     assert el.internal_edges[0][2] == pytest.approx(1.2e-3)
+
+
+def test_set_fanno_formulation_rebuilds_every_segment():
+    net = nefes.Network()
+    net.add(cat.fanno_pipe(1.0, 0.05, 0.02, 4, name="fp"))
+    net.set("fp", formulation="darcy-weisbach")
+    assert net.get("fp.formulation") == "darcy-weisbach"
+    assert all(sub.fparams[3] == 0.0 for sub in net.element("fp").sub_elements)
 
 
 def test_set_composite_preserves_eps():

@@ -11,6 +11,9 @@ The network is assembled as a Nefes model with the corresponding pipe, junction,
 The converged branch mass flows and nodal pressures match the reference table, and the flow is confirmed to sit in the low-Mach regime the original analysis assumes, so the comparison is like-for-like (tests: `test_converges`, `test_mass_flows_match_table_iv`, `test_node_pressures_match_table_iv`, `test_low_mach_regime`).
 
 This case exercises the mean-flow machinery end to end (friction-pipe losses, many junction couplings, boundary conditions, and the continuation that finds the operating point) against an external result rather than an internal consistency check.
+The authoritative comparison retains the atomic pipe's default `darcy-weisbach` closure because that is the model the paper derives.
+As a separate low-Mach comparison, replacing every pipe by the compressible `momentum` closure leaves the maximum Mach number below $0.046$, keeps every branch mass flow within $1.2\%$ of both the Darcy solve and the published values, and keeps the largest nodal-pressure discrepancy from the table below $0.007\;\mathrm{bar}$ (test: `test_momentum_formulation_remains_close_in_the_low_mach_regime`).
+This secondary solve checks the common low-Mach limit without weakening the published benchmark's original tolerances.
 
 ## Rijke-tube thermoacoustic stability {#sec-bench-rijke-tube}
 

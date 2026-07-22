@@ -105,7 +105,12 @@ _UI_NODE_BUILDERS = {
     "LossElement": lambda a: cat.loss(a["lossCoefficient"], **_lengths(a)),
     "LinearResistance": lambda a: cat.linear_resistance(a["resistance"], **_lengths(a)),
     "Duct": lambda a: cat.duct(a.get("length", 0.0)),
-    "Pipe": lambda a: cat.pipe(a["length"], a["diameter"], a["frictionFactor"]),
+    "Pipe": lambda a: cat.pipe(
+        a["length"],
+        a["diameter"],
+        a["frictionFactor"],
+        formulation=a.get("formulation", "darcy-weisbach"),
+    ),
     "HeatReleaseFlame": lambda a: cat.heat_release_flame(a["heatRelease"]),
     "EquilibriumFlame": lambda a: cat.equilibrium_flame(),
     "MassSource": lambda a: cat.mass_source(
@@ -127,7 +132,11 @@ _UI_NODE_BUILDERS = {
     "SuddenContraction": lambda a: cat.sudden_contraction(cc=a.get("contractionCoefficient", 0.62)),
     "HelmholtzResonator": lambda a: cat.helmholtz_resonator(a["volume"], a["neckLength"], a["neckArea"]),
     "FannoPipe": lambda a: cat.fanno_pipe(
-        a["length"], a["diameter"], a["frictionFactor"], int(a.get("nSegments") or 8)
+        a["length"],
+        a["diameter"],
+        a["frictionFactor"],
+        int(a.get("nSegments") or 8),
+        formulation=a.get("formulation", "momentum"),
     ),
     "TaperedDuct": lambda a: cat.tapered_duct(_parse_area_profile(a.get("areaProfile"))),
 }

@@ -87,6 +87,9 @@ class ParamDescriptor:
     check : callable, optional
         Extra validator ``check(value) -> value`` run after the generic coercion
         (e.g. the forced-splitter sum rule); raises ``ValueError`` on rejection.
+    encode, decode : callable, optional
+        Conversion between the public validated value and its numeric ``fparams``
+        representation.  Unset means the value is stored directly.
     doc : str
         One-line human-readable description (inventory display).
     roundtrip : str
@@ -112,6 +115,8 @@ class ParamDescriptor:
     kind: str = "float"
     optional: bool = False
     check: Optional[Callable] = None
+    encode: Optional[Callable] = None
+    decode: Optional[Callable] = None
     doc: str = ""
     roundtrip: str = "yes"
     advanced: bool = False
@@ -206,6 +211,26 @@ def _check_perturbation_bc(value, where):
             f"got {type(value).__name__}"
         )
     return value
+
+
+def _check_pipe_formulation(value):
+    from .ids import PIPE_FORMULATION_CODES
+
+    if value not in PIPE_FORMULATION_CODES:
+        raise ValueError(f"formulation must be one of {sorted(PIPE_FORMULATION_CODES)}; got {value!r}")
+    return value
+
+
+def _encode_pipe_formulation(value):
+    from .ids import PIPE_FORMULATION_CODES
+
+    return float(PIPE_FORMULATION_CODES[value])
+
+
+def _decode_pipe_formulation(value):
+    from .ids import PIPE_FORMULATION_NAMES
+
+    return PIPE_FORMULATION_NAMES[int(value)]
 
 
 def _check_dynamic_source(value, where):
@@ -494,6 +519,15 @@ ELEMENT_PARAMS: Dict[int, Tuple[ParamDescriptor, ...]] = {
         ParamDescriptor("length", unit="m", lo=0.0, lo_open=True, slot=0, doc="pipe length"),
         ParamDescriptor("diameter", unit="m", lo=0.0, lo_open=True, slot=1, doc="hydraulic diameter (friction term)"),
         ParamDescriptor("friction_factor", lo=0.0, slot=2, doc="Darcy friction factor"),
+        ParamDescriptor(
+            "formulation",
+            slot=3,
+            kind="str",
+            check=_check_pipe_formulation,
+            encode=_encode_pipe_formulation,
+            decode=_decode_pipe_formulation,
+            doc="mean-flow closure: darcy-weisbach or momentum",
+        ),
     ),
 }
 
@@ -525,6 +559,12 @@ COMPOSITE_PARAMS: Dict[str, Tuple[ParamDescriptor, ...]] = {
             kind="int",
             doc="segment count (fidelity knob; changing it re-discretizes the interior)",
             advanced=True,
+        ),
+        ParamDescriptor(
+            "formulation",
+            kind="str",
+            check=_check_pipe_formulation,
+            doc="segment closure: momentum or darcy-weisbach",
         ),
     ),
     "tapered_duct": (
@@ -599,7 +639,8 @@ def pack_fparams(rid: int, values: Dict[str, object]):
         return [float(v) for v in values[vector[0].name]]
     out = [0.0] * len(slots)
     for d in slots:
-        out[d.slot] = float(values[d.name])
+        value = d.encode(values[d.name]) if d.encode is not None else values[d.name]
+        out[d.slot] = float(value)
     return out
 
 
@@ -652,7 +693,14 @@ def rebuild_composite(el: CompositeElementSpec, updates: Dict[str, object]) -> C
     if kind == "helmholtz_resonator":
         return cat.helmholtz_resonator(p["volume"], p["neck_length"], p["neck_area"], name=el.name)
     if kind == "fanno_pipe":
-        return cat.fanno_pipe(p["length"], p["diameter"], p["friction_factor"], p["n_segments"], name=el.name)
+        return cat.fanno_pipe(
+            p["length"],
+            p["diameter"],
+            p["friction_factor"],
+            p["n_segments"],
+            name=el.name,
+            formulation=p["formulation"],
+        )
     if kind == "tapered_duct":
         return cat.tapered_duct(p["stations"], name=el.name)
     raise KeyError(f"composite kind {kind!r} has no registered rebuild; known kinds: {sorted(COMPOSITE_PARAMS)}")

@@ -54,7 +54,7 @@ descriptor. Single-port boundaries can also carry an explicit `PerturbationBC`
 | `loss` | `LOSS` (5) | 2 | mass + $\Delta p_t = K\cdot\tfrac12\varrho u^2$ | default (+$\mathbf{M}$ if length-bearing) |
 | `linear_resistance` | `LINEAR_RESISTANCE` (17) | 2 | mass + $\Delta p_t = R\,\dot m$ | default (+$\mathbf{M}$ if length-bearing) |
 | `duct` | `DUCT` (8) | 2 | mass + equal-area $p_t$ continuity | phase $\mathbf{P}(\omega)$ |
-| `pipe` | `PIPE` (20) | 2 | mass + Darcy–Weisbach $K=fL/D$ | phase $\mathbf{P}(\omega)$ |
+| `pipe` | `PIPE` (20) | 2 | mass + Darcy–Weisbach $K=fL/D$ **or** segment momentum balance | phase $\mathbf{P}(\omega)$ |
 | `heat_release_flame` | `FLAME_HEAT_RELEASE` (12) | 2 | mass + $p_t$ continuity, $\Delta h_t=\dot Q/\dot m$ | default (+$\mathbf{S}(\omega)$ if dynamic) |
 | `equilibrium_flame` | `FLAME_EQUILIBRIUM` (13) | 2 | mass + static-$p$ + $h_t$ + $Z$ conserved | default (+$\mathbf{S}(\omega)$ if dynamic) |
 | `mass_source` | `MASS_SOURCE` (14) | 2 | mass/momentum/energy/composition injection | default |
@@ -232,21 +232,22 @@ area.
 | --- | --- | --- | --- | --- |
 | `length` | $L$ | acoustic propagation length | m | `0.0` |
 
-### `pipe(length, diameter, friction_factor)`
-The `DUCT + LOSS` unification (Greyvenstein–Laurie): one element that drops total pressure
-with the Darcy–Weisbach coefficient
+### `pipe(length, diameter, friction_factor, formulation="darcy-weisbach")`
+A length-bearing constant-area pipe with two selectable mean-flow closures and the duct acoustic phase.
+The default `darcy-weisbach` closure is the `DUCT + LOSS` unification (Greyvenstein–Laurie), dropping total pressure with
 
 $$K = \frac{f\,L}{D}, \qquad p_{t,\text{in}} - p_{t,\text{out}} = K\left(\tfrac12\varrho u^2\right),$$
 
-**and** carries its `length` for the acoustic phase stamp $\mathbf{P}(\omega)$. Constant area;
-$D$ is the hydraulic diameter (friction term only). Chain several with the [`fanno_pipe`
-composite](composite-elements.md) to resolve Fanno gradients.
+while `momentum` balances the endpoint fluxes $p+\varrho u^2$ against the segment's trapezoidally averaged Darcy wall head, the closure a refined chain needs to converge onto classical Fanno flow.
+The choice is a build-time constant carried in the element's parameters, not a separate residual id; both closures carry `length` for the acoustic phase stamp $\mathbf{P}(\omega)$.
+The diameter $D$ is hydraulic (friction only), while the equal port areas set the flow area.
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
 | `length` | $L$ | pipe length (friction and acoustic) | m | required, $>0$ |
 | `diameter` | $D$ | hydraulic diameter | m | required, $>0$ |
 | `friction_factor` | $f$ | Darcy friction factor | — | required, $\ge 0$ |
+| `formulation` | — | mean-flow closure | — | `"darcy-weisbach"`; or `"momentum"` |
 
 ## Reacting elements and sources
 

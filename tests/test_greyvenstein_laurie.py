@@ -170,7 +170,7 @@ _PAPER_NODES = sorted({n for e in PIPES.values() for n in e[:2]})
 _INTERIOR = [n for n in _PAPER_NODES if n not in _LEAVES]
 
 
-def build_network():
+def build_network(formulation="darcy-weisbach"):
     """Assemble Example 3 as an Nefes ``Network``.
 
     Each paper *pipe* is a two-port :func:`~nefes.elements.catalog.pipe` (Darcy-Weisbach,
@@ -199,7 +199,7 @@ def build_network():
     pipe_edges = {}
     for k, (u, d, D, L) in PIPES.items():
         area = np.pi * D * D / 4.0
-        pk = net.add(cat.pipe(L, D, FRICTION, name=f"p{k}"))
+        pk = net.add(cat.pipe(L, D, FRICTION, name=f"p{k}", formulation=formulation))
         e_in = net.connect(node_of[u], pk, area)  # port 0: inflow from the upstream node
         e_out = net.connect(pk, node_of[d], area)  # port 1: outflow to downstream
         pipe_edges[k] = (e_in, e_out, area)
@@ -209,6 +209,13 @@ def build_network():
 @pytest.fixture(scope="module")
 def solved():
     net, pipe_edges = build_network()
+    sol = net.solve()
+    return sol, pipe_edges
+
+
+@pytest.fixture(scope="module")
+def solved_momentum():
+    net, pipe_edges = build_network("momentum")
     sol = net.solve()
     return sol, pipe_edges
 
@@ -261,6 +268,33 @@ def test_low_mach_regime(solved):
     sol, _ = solved
     mach = sol.field("M")
     assert np.max(np.abs(mach)) < 0.06
+
+
+def test_momentum_formulation_remains_close_in_the_low_mach_regime(solved, solved_momentum):
+    darcy, darcy_edges = solved
+    momentum, momentum_edges = solved_momentum
+    assert momentum.converged
+    assert np.max(np.abs(momentum.field("M"))) < 0.06
+    flow_differences = []
+    published_flow_errors = []
+    for k in PIPES:
+        darcy_out = darcy_edges[k][1]
+        momentum_out = momentum_edges[k][1]
+        mdot_darcy = darcy.edge(darcy_out)["mdot"]
+        mdot_momentum = momentum.edge(momentum_out)["mdot"]
+        flow_differences.append(abs(mdot_momentum - mdot_darcy) / abs(mdot_darcy))
+        published_flow_errors.append(abs(mdot_momentum * 1000.0 - PUB_MDOT_GPS[k]) / abs(PUB_MDOT_GPS[k]))
+    # The distributed momentum closure is not the paper's lumped isothermal model, but at
+    # M < 0.06 its branch flows remain within 1.1% of the authoritative Darcy solve.
+    assert max(flow_differences) < 1.2e-2
+    assert max(published_flow_errors) < 1.2e-2
+
+    published_pressure_errors = []
+    for n in _INTERIOR:
+        k = next(k for k, (_u, d, _D, _L) in PIPES.items() if d == n)
+        momentum_out = momentum_edges[k][1]
+        published_pressure_errors.append(abs(momentum.edge(momentum_out)["p"] / 1e5 - PUB_PRESSURE_BAR[n]))
+    assert max(published_pressure_errors) < 7e-3
 
 
 def test_reported_density_column_is_velocity(solved):

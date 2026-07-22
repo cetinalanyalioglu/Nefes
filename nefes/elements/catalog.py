@@ -23,6 +23,7 @@ from .ids import (
     MASS_SOURCE,
     MIXER,
     P_OUTLET,
+    PIPE_FORMULATION_CODES,
     PT_INLET,
     SPLITTER,
     STAMP_DEFAULT,
@@ -916,21 +917,18 @@ def duct(length=0.0, name="duct"):
     return ElementSpec(DUCT, [float(length)], name, acoustic_stamp=STAMP_DUCT)
 
 
-def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
-    """A length-bearing pipe: Darcy-Weisbach wall friction + the duct acoustic phase.
+def pipe(length, diameter, friction_factor, name="pipe", formulation="darcy-weisbach") -> ElementSpec:
+    """A length-bearing friction pipe with a selectable mean-flow closure.
 
-    The ``DUCT (+) LOSS`` unification (Greyvenstein-Laurie): one element that drops total
-    pressure ``pt0 - pt1 = K * (1/2 rho u^2)`` with the Darcy-Weisbach loss coefficient
-    ``K = friction_factor * length / diameter`` on the mean flow, **and** carries its
-    ``length`` for the acoustic phase stamp ``P(omega)`` (so it propagates waves like a
-    duct).  Constant area -- its two ports share one flow area (set on the wired edges; for
-    a circular pipe that is ``pi * diameter^2 / 4``).  ``diameter`` is the hydraulic
-    diameter used only in the friction term, so a non-circular passage is supported by
-    passing its hydraulic diameter and matching flow area.
+    The default ``"darcy-weisbach"`` closure is the ``DUCT (+) LOSS`` unification of
+    Greyvenstein-Laurie: total-pressure head with ``K = friction_factor * length /
+    diameter``.  The ``"momentum"`` closure balances the segment's static-pressure and
+    axial-momentum flux against its distributed wall head, which is needed for convergence
+    to compressible Fanno flow.  Both carry ``length`` for the duct acoustic phase stamp.
 
-    The lumped pipe is exact in the low-Mach limit (the paper's Example 3, M ~ 0.01); a
-    long or fast pipe develops Fanno gradients -- chain several with :func:`fanno_pipe`
-    (which uses this as its atom) to resolve the Mach rise toward choke.
+    The two ports share one constant flow area, set on the wired edges.  ``diameter`` is
+    hydraulic and enters only the friction term, so a non-circular passage is represented
+    by its hydraulic diameter and its actual edge area.
 
     Parameters
     ----------
@@ -942,6 +940,8 @@ def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
         Darcy friction factor ``f`` (e.g. ``64/Re`` laminar, Haaland/Colebrook turbulent).
     name : str, optional
         Element label.
+    formulation : {"darcy-weisbach", "momentum"}, optional
+        Mean-flow pressure closure.
 
     Returns
     -------
@@ -952,7 +952,13 @@ def pipe(length, diameter, friction_factor, name="pipe") -> ElementSpec:
     L, D, f = float(length), float(diameter), float(friction_factor)
     if not L > 0.0 or not D > 0.0 or not f >= 0.0:
         raise ValueError(f"pipe {name!r}: length and diameter must be positive and friction_factor >= 0")
-    return ElementSpec(PIPE, [L, D, f], name, acoustic_stamp=STAMP_DUCT)
+    formulation = str(formulation)
+    if formulation not in PIPE_FORMULATION_CODES:
+        raise ValueError(
+            f"pipe {name!r}: formulation must be one of {sorted(PIPE_FORMULATION_CODES)}; got {formulation!r}"
+        )
+    code = float(PIPE_FORMULATION_CODES[formulation])
+    return ElementSpec(PIPE, [L, D, f, code], name, acoustic_stamp=STAMP_DUCT)
 
 
 # ---------------------------------------------------------------------------
@@ -1191,7 +1197,14 @@ def segments_for_frequency(length, sound_speed, f_max, points_per_wavelength=12)
     return max(1, int(math.ceil(points_per_wavelength * fmax * L / c)))
 
 
-def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> CompositeElementSpec:
+def fanno_pipe(
+    length,
+    diameter,
+    friction_factor,
+    n_segments,
+    name="pipe",
+    formulation="momentum",
+) -> CompositeElementSpec:
     """Distributed (Fanno) pipe: an ``n_segments`` chain of :func:`pipe` atoms.
 
     A long or fast pipe is **Fanno flow** -- wall friction drives the subsonic flow toward
@@ -1199,9 +1212,9 @@ def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> Co
     lumped ``K`` misses it.  This chains ``n_segments`` pipe atoms, each of length ``L/N``
     and the same ``diameter``/``friction_factor``, joined by single internal edges (each
     internal edge *is* the intermediate flow state -- no junctions).  As ``N`` grows the
-    chain converges to the true Fanno solution and can approach choke at the pipe exit; the
-    locally-uniform per-segment mean state also propagates acoustics through the mean
-    gradient far better than one lumped duct stamp.
+    chain with the default ``"momentum"`` closure converges to the classical Fanno solution
+    and can approach choke at the pipe exit.  The locally-uniform per-segment mean state also
+    propagates acoustics through the mean gradient far better than one lumped duct stamp.
 
     Parameters
     ----------
@@ -1213,6 +1226,9 @@ def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> Co
         :func:`segments_for_frequency` and :func:`grid_refine`).
     name : str, optional
         Display name.
+    formulation : {"momentum", "darcy-weisbach"}, optional
+        Segment pressure closure. The default ``"momentum"`` converges to classical
+        Fanno flow; ``"darcy-weisbach"`` retains the lumped total-pressure-head chain.
 
     Returns
     -------
@@ -1223,17 +1239,28 @@ def fanno_pipe(length, diameter, friction_factor, n_segments, name="pipe") -> Co
         raise ValueError(f"fanno_pipe {name!r}: length and diameter must be positive, friction_factor >= 0")
     if N < 1:
         raise ValueError(f"fanno_pipe {name!r}: n_segments must be >= 1; got {n_segments}")
+    formulation = str(formulation)
+    if formulation not in PIPE_FORMULATION_CODES:
+        raise ValueError(
+            f"fanno_pipe {name!r}: formulation must be one of {sorted(PIPE_FORMULATION_CODES)}; got {formulation!r}"
+        )
     if N == 1:
-        return pipe(L, D, f, name=name)  # the lumped (N=1) limit is a single pipe atom, no composite
+        return pipe(L, D, f, name=name, formulation=formulation)
     area = math.pi * D * D / 4.0  # the constant flow area shared by every segment
-    subs = [pipe(L / N, D, f, name=f"{name}.seg{i}") for i in range(N)]
+    subs = [pipe(L / N, D, f, formulation=formulation, name=f"{name}.seg{i}") for i in range(N)]
     internal = [(i, i + 1, area) for i in range(N - 1)]  # one edge between consecutive segments
     return CompositeElementSpec(
         name=name,
         sub_elements=subs,
         internal_edges=internal,
         kind="fanno_pipe",
-        params={"length": L, "diameter": D, "friction_factor": f, "n_segments": N},
+        params={
+            "length": L,
+            "diameter": D,
+            "friction_factor": f,
+            "n_segments": N,
+            "formulation": formulation,
+        },
     )
 
 

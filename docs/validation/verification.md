@@ -20,6 +20,30 @@ This is checked directly, because the invariance is easy to break; writing a con
 The second is characteristic Newton-invariance: because the per-edge map between network variables and wave amplitudes is an invertible change of coordinates, solving the Newton system in either representation must yield the identical update.
 The map's exactness and invertibility are verified as the premise of that result (tests: `test_characteristic_maps_are_inverse`, `test_characteristic_amplitude_relations`), and the update itself follows as an algebraic identity rather than a numerical check (see [characteristics](../theory/characteristics.md#sec-char-newton-invariance)).
 
+## Fanno-flow convergence {#sec-verif-fanno-flow}
+
+The momentum formulation of a pipe segment is checked against the independent classical Fanno relation
+
+$$
+\mathcal F(M)
+=
+\frac{1-M^2}{\gamma M^2}
++
+\frac{\gamma+1}{2\gamma}
+\ln\!\left[
+\frac{(\gamma+1)M^2}{2+(\gamma-1)M^2}
+\right],
+\qquad
+\frac{f_D\Delta x}{D}
+=
+\mathcal F(M_1)-\mathcal F(M_2).
+$$
+
+SciPy's bracketing root solver inverts this relation at every station without calling Nefes, and the pressure and temperature profiles use the exact starred-state ratios.
+Grid refinement from 8 to 64 segments reduces the worst relative profile error monotonically for a moderate subsonic case, reaching below $10^{-3}$ at 64 segments with an observed order above 1.8.
+A separate near-choke case ends at $M=0.95$ and reaches a worst relative error below $3\times10^{-3}$ at 64 segments.
+The same oracle is exercised in reverse flow, and zero friction reduces both pipe formulations to the lossless relation (tests: `test_momentum_fanno_converges_to_analytic_profile`, `test_momentum_fanno_near_choke_converges_to_analytic_profile`, `test_momentum_fanno_is_orientation_safe_in_reverse_flow`, `test_zero_friction_pipe_is_lossless`).
+
 ## The thermochemistry closure {#sec-verif-thermochemistry-closure}
 
 The reacting closure is verified against an independent chemical-kinetics package (Cantera), run in an environment that carries both Cantera and numba (see [reproducibility](../design/reproducibility.md#sec-repro-environments)).

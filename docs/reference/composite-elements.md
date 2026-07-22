@@ -117,7 +117,7 @@ main line: --> (tee) -->
 | `neck_length` | $l_n$ | neck length (acoustic inertance) | m | required, $>0$ |
 | `neck_area` | $A_n$ | neck cross-sectional area | m² | required, $>0$ |
 
-### `fanno_pipe(length, diameter, friction_factor, n_segments)`
+### `fanno_pipe(length, diameter, friction_factor, n_segments, formulation="momentum")`
 $N$ equal `pipe` friction segments, each length $L/N$ and constant area $A=\pi D^2/4$:
 
 $$(A) \;\text{--seg}_0\text{--}\; [A] \;\text{--seg}_1\text{--}\; [A] \;\cdots\; [A] \;\text{--seg}_{N-1}\text{--}\; (A).$$
@@ -125,6 +125,8 @@ $$(A) \;\text{--seg}_0\text{--}\; [A] \;\text{--seg}_1\text{--}\; [A] \;\cdots\;
 Friction drives the subsonic flow toward $M=1$; as $N$ grows the chain converges to the true
 Fanno solution and can approach exit choke. `n_segments = 1` degenerates to a single `pipe`
 (not a composite).
+The default `momentum` closure carries the compressible axial-momentum flux required for that convergence.
+Set `formulation="darcy-weisbach"` only when the chain should retain the low-Mach lumped total-pressure-head closure.
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
@@ -132,6 +134,7 @@ Fanno solution and can approach exit choke. `n_segments = 1` degenerates to a si
 | `diameter` | $D$ | hydraulic diameter | m | required, $>0$ |
 | `friction_factor` | $f$ | Darcy friction factor | — | required, $\ge 0$ |
 | `n_segments` | $N$ | segment count (fidelity knob) | — | required, $\ge 1$ |
+| `formulation` | — | segment mean-flow closure | — | `"momentum"`; or `"darcy-weisbach"` |
 
 ### `tapered_duct(area, length, n_segments=None)`
 An area-varying passage / horn / con-di nozzle from a profile $A(x)$ or a station table. Each

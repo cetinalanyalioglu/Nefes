@@ -80,6 +80,7 @@ from ..elements.ids import (
     MIXER,
     P_OUTLET,
     PIPE,
+    PIPE_FORMULATION_NAMES,
     PT_INLET,
     SPLITTER,
     STREAM_INTRODUCING,
@@ -1180,6 +1181,7 @@ _COMPOSITE_TO_UI = {
             "diameter": float(p["diameter"]),
             "frictionFactor": float(p["friction_factor"]),
             "nSegments": int(p["n_segments"]),
+            "formulation": str(p["formulation"]),
         },
     ),
     "tapered_duct": (
@@ -1245,7 +1247,12 @@ def _spec_to_ui(spec):
     if rid == DUCT:
         return "Duct", {"length": float(fp[0]) if fp else 0.0}
     if rid == PIPE:
-        return "Pipe", {"length": float(fp[0]), "diameter": float(fp[1]), "frictionFactor": float(fp[2])}
+        return "Pipe", {
+            "length": float(fp[0]),
+            "diameter": float(fp[1]),
+            "frictionFactor": float(fp[2]),
+            "formulation": PIPE_FORMULATION_NAMES[int(fp[3])],
+        }
     if rid == WALL:
         return "Wall", {}
     if rid == CAVITY:

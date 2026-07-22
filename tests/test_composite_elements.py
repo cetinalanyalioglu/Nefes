@@ -298,7 +298,11 @@ def test_fanno_pipe_chain_converges_in_n():
     # the lumped pipe atom is the N=1 limit
     pp = build_problem(
         CFG,
-        [cat.mass_flow_inlet(0.55, T0), cat.pipe(8.0, 0.05, 0.03), cat.pressure_outlet(P0, T0)],
+        [
+            cat.mass_flow_inlet(0.55, T0),
+            cat.pipe(8.0, 0.05, 0.03, formulation="momentum"),
+            cat.pressure_outlet(P0, T0),
+        ],
         [(0, 1, np.pi * 0.05**2 / 4), (1, 2, np.pi * 0.05**2 / 4)],
         0.55,
         P0,

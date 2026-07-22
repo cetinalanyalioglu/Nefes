@@ -108,11 +108,40 @@ where $K_L$ is the loss coefficient, $\varrho_{\text{avg}}$ the port-average den
 The signed head $q_{\text{signed}}$ is a smooth form of $\tfrac{1}{2}\varrho_{\text{avg}}\,u|u|$, so the loss always *opposes* the flow whichever way it runs — the second law holds in both directions — and it passes smoothly through $u = 0$.
 
 **Length-bearing and lossless variants.**
-Three siblings share this template and are named here for completeness, their residuals differing only in the head:
+Three siblings carry a length and are named here for completeness:
 
 1. **Lossless duct**: a length-bearing but loss-free segment enforcing total-pressure continuity, $R_2 = p_{t,0} - p_{t,1} - \kappa\text{-term}$; the length it carries matters only to the acoustics, where it supplies the propagation phase.
-2. **Friction pipe**: a Darcy–Weisbach segment with the same signed quadratic head as the concentrated loss but with $K_L = f\,L/D$ formed from the friction factor $f$, length $L$, and hydraulic diameter $D$ — the mean-flow and acoustic unification of duct and loss (following Greyvenstein & Laurie).
+2. **Friction pipe**: a constant-area segment with a selectable mean-flow closure and the duct acoustic phase described below.
 3. **Linear resistance**: a screen, perforate, or damper whose drop is *linear* in the through-flow, $R_2 = p_{t,0} - p_{t,1} - r_{\text{lin}}\,\dot m_{\text{through}} - \kappa\text{-term}$; unlike the quadratic head, this term does not vanish with the mean dynamic head and so remains active in the linearized problem even at zero mean flow, the resistance a quiescent network still presents to an acoustic wave.
+
+The pipe's default `darcy-weisbach` formulation is the mean-flow and acoustic unification of duct and concentrated loss following Greyvenstein & Laurie, with $K_L=fL/D$ in the total-pressure relation above.
+This closure is exact in the incompressible limit and is retained for low-Mach hydraulic networks and their literature comparisons.
+The alternative `momentum` formulation integrates the static-pressure and axial-momentum balance over the segment:
+
+$$
+R_2
+=
+\left(p+\varrho u^2\right)_0
+-
+\left(p+\varrho u^2\right)_1
+-
+\frac{fL}{D}\,q_{w,\text{signed}}
+-
+\kappa\text{-term},
+\qquad
+q_{w,\text{signed}}
+=
+\frac{1}{2}
+\left[
+\left(\tfrac12\varrho u|u|\right)_0
++
+\left(\tfrac12\varrho u|u|\right)_1
+\right],
+$$
+
+where the absolute value is the same analytic regularization used by the loss family, the velocity is oriented from port 0 to port 1, and $q_{w,\text{signed}}$ is the endpoint (trapezoidal) approximation to the wall head distributed along the segment.
+Together with constant mass flow and total enthalpy, refinement of this formulation converges to the classical perfect-gas Fanno relations; the `fanno_pipe` composite uses it by default.
+Both formulations become the ordinary Darcy pressure drop at low Mach number, but they are not interchangeable near a sonic state.
 
 ## Junctions and splitters {#sec-elements-junctions-splitters}
 

@@ -84,7 +84,13 @@ COMPOSITES = [
     (
         cat.fanno_pipe(2.0, 0.062, 0.02, 4, name="fanno"),
         "FannoPipe",
-        {"length": 2.0, "diameter": 0.062, "frictionFactor": 0.02, "nSegments": 4},
+        {
+            "length": 2.0,
+            "diameter": 0.062,
+            "frictionFactor": 0.02,
+            "nSegments": 4,
+            "formulation": "momentum",
+        },
     ),
     (
         cat.tapered_duct(TAPER_TABLE, name="taper"),
@@ -155,8 +161,43 @@ def test_lumped_fanno_pipe_serializes_as_pipe(tmp_path):
     """n_segments=1 short-circuits to a plain pipe atom, hence a Pipe node."""
     a = np.pi * 0.05**2 / 4.0
     net = _inline_net(cat.fanno_pipe(1.0, 0.05, 0.02, 1, name="lp"), area_in=a, area_out=a)
-    _sol, _net2, _sol2, doc = _roundtrip(net, tmp_path)
-    _node_of_type(doc, "Pipe")
+    _sol, net2, _sol2, doc = _roundtrip(net, tmp_path)
+    node = _node_of_type(doc, "Pipe")
+    assert node["attributes"]["formulation"] == "momentum"
+    assert net2.get("lp.formulation") == "momentum"
+
+
+def test_fanno_pipe_darcy_override_roundtrips(tmp_path):
+    a = np.pi * 0.05**2 / 4.0
+    net = _inline_net(
+        cat.fanno_pipe(1.0, 0.05, 0.02, 4, name="fp", formulation="darcy-weisbach"),
+        area_in=a,
+        area_out=a,
+    )
+    _sol, net2, _sol2, doc = _roundtrip(net, tmp_path)
+    assert _node_of_type(doc, "FannoPipe")["attributes"]["formulation"] == "darcy-weisbach"
+    assert net2.get("fp.formulation") == "darcy-weisbach"
+
+
+@pytest.mark.parametrize(
+    "element,ui_type,expected",
+    [
+        (cat.pipe(1.0, 0.05, 0.02, name="p"), "Pipe", "darcy-weisbach"),
+        (cat.fanno_pipe(1.0, 0.05, 0.02, 4, name="p"), "FannoPipe", "momentum"),
+    ],
+)
+def test_legacy_pipe_yaml_uses_kind_specific_formulation_default(tmp_path, element, ui_type, expected):
+    a = np.pi * 0.05**2 / 4.0
+    net = _inline_net(element, area_in=a, area_out=a)
+    path = os.path.join(tmp_path, f"legacy-{ui_type}.yaml")
+    save_case(net, path)
+    with open(path) as fh:
+        doc = yaml.safe_load(fh)
+    _node_of_type(doc, ui_type)["attributes"].pop("formulation")
+    with open(path, "w") as fh:
+        yaml.safe_dump(doc, fh, sort_keys=False)
+    loaded = load_case(path)
+    assert loaded.get("p.formulation") == expected
 
 
 def test_unknown_composite_kind_rejected(tmp_path):

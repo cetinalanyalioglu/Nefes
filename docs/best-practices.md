@@ -154,7 +154,7 @@ Internal (2-port and manifolds):
 | `loss(K, ref_port=0, ...)` | concentrated total-pressure loss `K * ½ρu²` |
 | `linear_resistance(R, ...)` | linear loss `R * mdot` (survives zero mean flow) |
 | `duct(length=0.0, name="duct")` | lossless constant-area duct (acoustic phase) |
-| `pipe(length, diameter, friction_factor, ...)` | duct + Darcy-Weisbach friction |
+| `pipe(length, diameter, friction_factor, formulation="darcy-weisbach", ...)` | length-bearing pipe; low-Mach Darcy head by default, compressible segment momentum when requested |
 | `junction(name="junction", volume=0.0)` | static-pressure manifold (optional plenum); low-Mach ports only |
 | `splitter(volume=0.0)` | total-pressure manifold |
 | `mixer(recovery=1.0, ...)` | second-law merge for non-slow ports (never manufactures total pressure); default = least-dissipative ideal, pin each inflow or lower `recovery` |
@@ -177,7 +177,7 @@ Composites (present as one element, expand to a sub-graph at build time):
 | `lossy_nozzle(throat_area, beta, ...)` | general lossy nozzle (De Domenico) |
 | `sudden_contraction(*, cc=0.62, ...)` | contraction resolving the vena-contracta state |
 | `helmholtz_resonator(volume, neck_length, neck_area, ...)` | tee + neck duct + backing cavity |
-| `fanno_pipe(length, diameter, friction_factor, n_segments, ...)` | distributed friction pipe (chain of `pipe`) |
+| `fanno_pipe(length, diameter, friction_factor, n_segments, formulation="momentum", ...)` | distributed friction pipe converging to classical Fanno flow |
 | `tapered_duct(area, length=None, n_segments=None, ...)` | horn / con-di nozzle from an (x, A) profile |
 | `transfer_matrix_element(tm=None, ...)` | 2-port with a user-supplied acoustic transfer matrix |
 

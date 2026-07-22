@@ -293,6 +293,8 @@ def _read(el, d: ParamDescriptor):
         return list(el.fparams)
     if d.slot is not None:
         v = el.fparams[d.slot]
+        if d.decode is not None:
+            return d.decode(v)
         return int(v) if d.kind == "int" else float(v)
     return getattr(el, d.field)
 
@@ -471,7 +473,8 @@ def set_params(net, target, params: Dict[str, object]) -> int:
                 )
             el.fparams[:] = [float(x) for x in v]
         elif d.slot is not None:
-            el.fparams[d.slot] = float(v) if d.kind != "int" else float(int(v))
+            stored = d.encode(v) if d.encode is not None else v
+            el.fparams[d.slot] = float(stored) if d.kind != "int" else float(int(stored))
         else:
             setattr(el, d.field, v)
     for ei in area_edges:

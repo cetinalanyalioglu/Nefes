@@ -192,6 +192,16 @@ Each notebook opens with its network topology drawn by the **Nemo** UI, then bui
 - **`greyvenstein_laurie_network.ipynb`** — verifies Nefes against Greyvenstein & Laurie
   (1994), Example 3: a **29-pipe compressed-air distribution network** (their only
   compressible case).
+- **`tfaws07_gfssp_compressible.ipynb`** — verifies the length-bearing elements against the
+  classical one-dimensional compressible-flow theory, following the five GFSSP verification cases
+  of Majumdar & Bandyopadhyay (TFAWS07-1016, 2007): **Fanno**, **Rayleigh**, the two combined, and
+  both again in a converging–diverging passage. References are the closed-form Fanno relations and
+  the generalized one-dimensional flow equation, integrated independently. Each case is run across
+  segment counts, so what comes out is an **order of accuracy**, not just an overlay: Rayleigh flow
+  is exact to solver tolerance (the compact flame's momentum jump *is* the Rayleigh relation), the
+  momentum-closure pipe reaches the exact Fanno profile at second order while the Darcy–Weisbach
+  closure settles on a different answer, and every case that splits two effects across a segment
+  converges at first order.
 - **`entropy_generator.ipynb`** — replicates De Domenico, Rolland & Hochgreb (2019, *JSV* 440),
   "nozzles with losses", at the Cambridge Entropy Generator geometry: the mean-flow pressure
   rise (their Fig. 5) and the compact acoustic + entropic transfer functions (their Fig. 6).

@@ -72,7 +72,7 @@ The residual id is the spine; every table below is keyed on it. Touch, in order:
 
 ### The numba stale-cache trap
 
-Numba caches compiled kernels. After editing an `@njit` kernel a stale cache can mask the change, so if results look unchanged after an edit, clear the numba artifacts (the `__pycache__` / `*.nbi` / `*.nbc` files) or run with `NUMBA_DISABLE_JIT=1`. This is a productivity trap, not a correctness one, but it wastes real time when unrecognized.
+Numba caches compiled kernels. After editing an `@njit` kernel a stale cache can mask the change, so if results look unchanged after an edit, clear the numba artifacts under `nefes/**/__pycache__/` (both `*.nbi` / `*.nbc` in `assembly/` and `elements/` — the assembly layer caches calls into the element kernels) or run with `NUMBA_DISABLE_JIT=1`. This is a productivity trap, not a correctness one, but it wastes real time when unrecognized.
 
 ## Test and verify
 

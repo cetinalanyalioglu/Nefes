@@ -16,6 +16,8 @@ The test names are the routines in the codebase and can be run as written.
 | An isentropic area change reproduces the classical jump | analytic compressible-flow relations | `test_subsonic_nozzle_matches_isentropic` |
 | A sudden expansion loses the Borda–Carnot total pressure | momentum balance | `test_expansion_unaffected_by_cc` |
 | A sudden contraction loss follows $K_c = (1/C_c - 1)^2$ | vena-contracta model | `test_contraction_loss_matches_Kc`, `test_contraction_lossless_default_conserves_pt` |
+| A refined momentum-pipe chain converges to the subsonic Fanno profile, including near choke and reverse flow | exact Fanno length, pressure, and temperature relations | `test_momentum_fanno_converges_to_analytic_profile`, `test_momentum_fanno_near_choke_converges_to_analytic_profile`, `test_momentum_fanno_is_orientation_safe_in_reverse_flow` |
+| The two pipe closures approach the same hydraulic behavior at low Mach number | Greyvenstein–Laurie pipe network | `test_momentum_formulation_remains_close_in_the_low_mach_regime` |
 | Element residuals are invariant to an edge-arrow flip | direction-convention algebra | `test_edge_direction_invariance` |
 | A long chain converges from exactly zero flow | continuation well-posedness | `test_long_serial_chain_cold_start` |
 | A pressure-driven quiescent network converges | artificial-resistance continuation | `test_quiescent_cold_start_converges` |

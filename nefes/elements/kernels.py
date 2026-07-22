@@ -460,18 +460,33 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, eps
         return
 
     if rid == PIPE:
-        # Length-bearing pipe (the DUCT + LOSS unification): the Darcy-Weisbach friction
-        # total-pressure drop plus the duct acoustic phase and length.  fparams =
-        # [length, diameter, friction_factor], loss coefficient K = f * L / D.  Constant area,
-        # so a0 normalizes the through-flow; same smooth signed quadratic head as LOSS.
+        # Length-bearing constant-area friction pipe.  fparams =
+        # [length, diameter, friction_factor, formulation], with the Darcy coefficient
+        # K = f * L / D.  The formulation slot is a build-time constant (never a function of the
+        # flow state), so branching on it does not break the complex-step Jacobian.
         K = npar_f[pb + 2] * npar_f[pb + 0] / npar_f[pb + 1]  # f * L / D
-        rho_avg = 0.5 * (est[ES_RHO, e0] + est[ES_RHO, e1])
-        denom = rho_avg * a0
         mdot_through = -s0 * est[ES_MDOT, e0]  # +ve in the e0 -> e1 sense
-        u_ref = mdot_through / denom
-        u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
-        q_signed = 0.5 * rho_avg * u_ref * u_abs
-        R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - kappa_term
+        if npar_f[pb + 3] < 0.5:
+            # Darcy-Weisbach (Greyvenstein-Laurie): the total-pressure head, the same smooth
+            # signed quadratic as LOSS.  Constant area, so a0 normalizes the through-flow.
+            rho_avg = 0.5 * (est[ES_RHO, e0] + est[ES_RHO, e1])
+            denom = rho_avg * a0
+            u_ref = mdot_through / denom
+            u_abs = (u_ref * u_ref + (eps / denom) ** 2) ** 0.5
+            q_signed = 0.5 * rho_avg * u_ref * u_abs
+            R[r0 + 1] = est[ES_PT, e0] - est[ES_PT, e1] - K * q_signed - kappa_term
+            return
+        # Momentum: the segment balance of the static-pressure and axial-momentum flux
+        # (p + rho u^2) against the distributed wall head, the latter approximated by the
+        # endpoint average of the signed (1/2) rho u|u|.  Written entirely in port indices, so
+        # it is invariant to how the two edges were wired.  Refining a chain of these segments
+        # converges to compressible Fanno flow, which the lumped head cannot reach.
+        flux0 = est[ES_P, e0] + est[ES_MDOT, e0] * est[ES_U, e0] / a0
+        flux1 = est[ES_P, e1] + est[ES_MDOT, e1] * est[ES_U, e1] / a1
+        mdot_abs = smooth_abs(mdot_through, eps)
+        q0 = 0.5 * mdot_through * mdot_abs / (est[ES_RHO, e0] * a0 * a0)
+        q1 = 0.5 * mdot_through * mdot_abs / (est[ES_RHO, e1] * a1 * a1)
+        R[r0 + 1] = flux0 - flux1 - K * 0.5 * (q0 + q1) - kappa_term
         return
 
     if rid == LINEAR_RESISTANCE:

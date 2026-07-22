@@ -11,6 +11,24 @@ The network is assembled as a Nefes model with the corresponding pipe, junction,
 The converged branch mass flows and nodal pressures match the reference table, and the flow is confirmed to sit in the low-Mach regime the original analysis assumes, so the comparison is like-for-like (tests: `test_converges`, `test_mass_flows_match_table_iv`, `test_node_pressures_match_table_iv`, `test_low_mach_regime`).
 
 This case exercises the mean-flow machinery end to end (friction-pipe losses, many junction couplings, boundary conditions, and the continuation that finds the operating point) against an external result rather than an internal consistency check.
+The authoritative comparison retains the atomic pipe's default `darcy-weisbach` closure because that is the model the paper derives.
+As a separate low-Mach comparison, replacing every pipe by the compressible `momentum` closure leaves the maximum Mach number below $0.046$, keeps every branch mass flow within $1.2\%$ of both the Darcy solve and the published values, and keeps the largest nodal-pressure discrepancy from the table below $0.007\;\mathrm{bar}$ (test: `test_momentum_formulation_remains_close_in_the_low_mach_regime`).
+This secondary solve checks the common low-Mach limit without weakening the published benchmark's original tolerances.
+
+## Compressible flow with friction, heat, and area change {#sec-bench-tfaws-gfssp}
+
+Where the Greyvenstein & Laurie network exercises many lumped pipes at low Mach number, this case exercises a single passage across the compressible regime, against the classical one-dimensional theory a network model must reduce to.
+It follows the five verification cases Majumdar & Bandyopadhyay used for GFSSP (TFAWS07-1016, 2007): Fanno flow, Rayleigh flow, the two combined, and both combined again in a converging–diverging passage.
+Two independent references are used, neither sharing code with the solver: the closed-form Fanno relations inverted station by station, and the generalized one-dimensional flow equation integrated with SciPy.
+
+The interest is not that the profiles overlap but what each chain converges *to*, and how fast, so every case is run across a range of segment counts (example: `examples/validation/tfaws07_gfssp_compressible.ipynb`).
+Three outcomes separate.
+Rayleigh flow is reproduced to solver tolerance ($\sim 3\times10^{-9}$) at every segment count, because the compact flame's constant-area momentum jump *is* the Rayleigh relation and there is nothing left to resolve.
+The momentum-closure friction pipe converges on the exact Fanno profile at second order, reaching $\sim 6\times10^{-6}$ at $N = 128$, while the Darcy–Weisbach closure settles at a fixed $\sim 7\times10^{-2}$: it is the low-Mach limit rather than a coarse version of the same model, so refinement cannot recover it.
+The remaining cases split two effects across a segment — friction then heat, or an area change then friction — and that staggering costs an order, giving first-order convergence, the same rate the tapered duct shows against the Webster horn.
+
+The paper's heated cases choke exactly at the duct exit, where the $(1 - M^2)$ denominator makes the reference singular; the comparison therefore runs over the first $90\%$ of the duct, where the reference is well conditioned, at the paper's inlet Mach, diameter, and volumetric heat rate.
+The same convergence onto classical Fanno flow is asserted without a notebook in `tests/test_fanno.py`.
 
 ## Rijke-tube thermoacoustic stability {#sec-bench-rijke-tube}
 

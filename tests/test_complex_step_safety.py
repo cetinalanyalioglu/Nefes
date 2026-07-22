@@ -300,11 +300,15 @@ def _probe_linear_resistance():
     return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
-def _probe_pipe():
+def _probe_pipe(formulation="darcy-weisbach"):
     # length-bearing pipe (DUCT + LOSS): the Darcy-Weisbach friction head q ~ u*|u| with
     # the smooth-abs floor must stay analytic through forward / reverse / near-zero /
     # near-choke flow (the same signed quadratic as LOSS, here with K = f*L/D).
-    els = [cat.total_pressure_inlet(PT_BC, TT), cat.pipe(0.5, 0.3, 0.02), cat.pressure_outlet(P_OUT)]
+    els = [
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.pipe(0.5, 0.3, 0.02, formulation=formulation),
+        cat.pressure_outlet(P_OUT),
+    ]
     return build_problem(perfect_gas(R_AIR, GAMMA), els, [(0, 1, PA), (1, 2, PA)], 30.0, PT_BC, H_REF)
 
 
@@ -478,9 +482,8 @@ def test_every_element_kernel_is_swept():
     assert not missing, "no complex-step sweep covers: " + ", ".join(ELEMENT_TYPE_NAMES[r] for r in sorted(missing))
 
 
-@pytest.mark.parametrize("rid", sorted(PROBES), ids=lambda r: ELEMENT_TYPE_NAMES[r])
-def test_kernel_complex_step_safe_across_regimes(rid):
-    prob = PROBES[rid]()
+def _assert_complex_step_matches_fd(prob, label):
+    """Sweep a probe network and require the complex-step Jacobian to equal central FD."""
     peak_subsonic_M = 0.0
     for x in _sweep_states(prob):
         M = np.abs(states_table(prob, x)[ES_M])
@@ -492,11 +495,22 @@ def test_kernel_complex_step_safe_across_regimes(rid):
 
         Jcs = _scaled(prob, jacobian(prob, x, EPS, EPS_FB).toarray())
         Jfd = _scaled(prob, _fd_jacobian(prob, x, EPS, EPS_FB))
-        assert np.allclose(Jcs, Jfd, rtol=1e-5, atol=1e-6), f"{ELEMENT_TYPE_NAMES[rid]} CS!=FD at mdot={x[0]}"
+        assert np.allclose(Jcs, Jfd, rtol=1e-5, atol=1e-6), f"{label} CS!=FD at mdot={x[0]}"
 
     # the sweep must actually have reached a high-subsonic (choke-sensitive)
     # state, else "passing" would just mean we never stressed the kernel
-    assert peak_subsonic_M > 0.8, f"{ELEMENT_TYPE_NAMES[rid]} sweep never near-choke (maxM={peak_subsonic_M:.2f})"
+    assert peak_subsonic_M > 0.8, f"{label} sweep never near-choke (maxM={peak_subsonic_M:.2f})"
+
+
+@pytest.mark.parametrize("rid", sorted(PROBES), ids=lambda r: ELEMENT_TYPE_NAMES[r])
+def test_kernel_complex_step_safe_across_regimes(rid):
+    _assert_complex_step_matches_fd(PROBES[rid](), ELEMENT_TYPE_NAMES[rid])
+
+
+def test_momentum_pipe_kernel_complex_step_safe_across_regimes():
+    # The pipe carries two closures behind one residual id, so the roll-call sweep above
+    # (keyed on the id) reaches only the default one; the momentum branch is swept here.
+    _assert_complex_step_matches_fd(_probe_pipe("momentum"), "Pipe (momentum)")
 
 
 # --------------------------------------------------------------------------

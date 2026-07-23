@@ -121,11 +121,17 @@ _UI_NODE_BUILDERS = {
         basis=_basis(a),
         marker=_marker(a),
     ),
-    "Junction": lambda a: cat.junction(
-        recovery=a.get("recovery", 1.0) if a.get("recovery") is not None else 1.0,
-        K=a.get("K"),
-        volume=a.get("volume", 0.0) or 0.0,
-        static_pressure=bool(a.get("staticPressure", False)),
+    # The static-pressure header ignores recovery / K (they are mutually exclusive), so a stale
+    # value carried alongside staticPressure from the UI must not reach the factory; an empty K
+    # (unset in the UI) reads as None, the recovery closure.
+    "Junction": lambda a: (
+        cat.junction(static_pressure=True, volume=a.get("volume", 0.0) or 0.0)
+        if a.get("staticPressure")
+        else cat.junction(
+            recovery=a.get("recovery") if a.get("recovery") is not None else 1.0,
+            K=(a.get("K") if a.get("K") not in (None, "", []) else None),
+            volume=a.get("volume", 0.0) or 0.0,
+        )
     ),
     "ForcedSplitter": lambda a: cat.forced_splitter(_parse_fractions(a.get("fractions"))),
     # Composite elements: each expands at build time into its atomic recipe (see

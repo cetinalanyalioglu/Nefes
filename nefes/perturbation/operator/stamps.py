@@ -45,7 +45,6 @@ from ...elements.ids import (
     JUNCTION,
     LINEAR_RESISTANCE,
     LOSS,
-    SPLITTER,
     SUDDEN_AREA_CHANGE,
 )
 from ...solver.report import states_table
@@ -922,12 +921,13 @@ def _inline_storage(prob, est, n):
 
 def _manifold_storage(prob, est, n):
     """Chamber compliance of a finite-volume manifold (a
-    :func:`~nefes.elements.catalog.junction` or :func:`~nefes.elements.catalog.splitter` plenum).
+    :func:`~nefes.elements.catalog.junction` plenum).
 
-    The manifold's ``fparams = [volume]`` (catalog ``_manifold_block``) give it one store:
-    a non-zero chamber ``volume`` is the lumped ``C = V/(rho c^2)``.  All ports share one
-    pressure (the ``p_0 = p_i`` coupling rows tie them), so it is a single ``+ V/c^2`` on the
-    mass row at the port-0 pressure column -- the cavity rule with through-flow.
+    The manifold's ``fparams = [volume, recovery, *K]`` (catalog ``_manifold_block``) carry the
+    chamber ``volume`` in slot 0: a non-zero volume is the lumped ``C = V/(rho c^2)``.  All ports
+    share one node total pressure (the effective-``p_t`` coupling rows tie them), so it is a
+    single ``+ V/c^2`` on the mass row at the port-0 pressure column -- the cavity rule with
+    through-flow.
 
     A branch's neck inertance is not a manifold parameter: model it as an explicit neck duct
     on the branch (its inertance then rides ``P(omega)``).  ``volume = 0`` (the default) ->
@@ -939,7 +939,7 @@ def _manifold_storage(prob, est, n):
     r0 = int(prob.node_row_ptr[n])  # the manifold's mass-balance row
 
     # compliance: chamber volume on the common (port-0) pressure column
-    V = float(prob.npar_f[pb])  # junction/splitter chamber volume (catalog _manifold_block fparams[0])
+    V = float(prob.npar_f[pb])  # junction chamber volume (catalog _manifold_block fparams[0])
     if V <= 0.0:
         return None
     e0 = int(prob.col_edge[base])
@@ -962,7 +962,6 @@ _STORAGE_BUILDERS = {
     LOSS: _inline_storage,
     LINEAR_RESISTANCE: _inline_storage,
     JUNCTION: _manifold_storage,
-    SPLITTER: _manifold_storage,
 }
 
 

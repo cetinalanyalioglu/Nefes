@@ -57,7 +57,7 @@ def test_ports_auto_assigned_in_attachment_order():
     # a 3-branch splitter: port 0 is the inflow (first attached), then the outflows.
     nodes = [
         cat.total_pressure_inlet(1.1e5, 300.0),
-        cat.splitter(),
+        cat.junction(),
         cat.pressure_outlet(1.0e5, 300.0),
         cat.pressure_outlet(1.0e5, 300.0),
     ]

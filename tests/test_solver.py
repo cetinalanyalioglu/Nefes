@@ -102,7 +102,7 @@ def test_branch_network_conserves_mass():
     cfg = perfect_gas(R_AIR, GAMMA)
     elements = [
         cat.mass_flow_inlet(20.0, 300.0),
-        cat.splitter(),
+        cat.junction(),
         cat.loss(1.5),
         cat.loss(4.0),
         cat.junction(),

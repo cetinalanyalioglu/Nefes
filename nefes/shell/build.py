@@ -28,13 +28,11 @@ from ..elements.ids import (
     KIND_PRESSURE,
     MASS_FLOW_INLET,
     MASS_SOURCE,
-    MIXER,
     P_OUTLET,
     PORT_ANY,
     PORT_SOURCE,
     PORT_TARGET,
     PT_INLET,
-    SPLITTER,
     STREAM_INTRODUCING,
     port_kinds,
     row_kind_tags,
@@ -130,7 +128,7 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
 
     * every edge area is finite and strictly positive;
     * each element's wired port count is admissible -- exactly ``FIXED_NPORTS`` for
-      an element with a fixed port count, ``>= 2`` for the variable junction/splitter;
+      an element with a fixed port count, ``>= 2`` for the variable-port junction;
     * elements that do not permit an area change (``ALLOWS_AREA_CHANGE`` is
       ``False`` -- the constant-area duct) carry one shared area across all their
       incident edges.  An intended area change at an element indifferent to area (e.g. a
@@ -176,9 +174,17 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
         if expected is not None:
             if deg != expected:
                 raise ValueError(f"{label} expects {expected} port(s) but is connected to {deg} edge(s)")
-        elif rid in (JUNCTION, SPLITTER, MIXER):
+        elif rid == JUNCTION:
             if deg < 2:
                 raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
+            # per-branch loss coefficients (fparams = [volume, recovery, *K]) list one K per port
+            n_k = len(el.fparams) - 2
+            if n_k >= 2 and n_k != deg:
+                raise ValueError(
+                    f"{label}: a junction with per-branch loss coefficients needs one K per port "
+                    f"({deg} ports) but {n_k} were given -- pass a single float to broadcast one "
+                    f"coefficient to every branch"
+                )
         elif rid == FORCED_SPLITTER:
             if deg < 3:
                 raise ValueError(

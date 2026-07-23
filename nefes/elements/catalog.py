@@ -21,11 +21,9 @@ from .ids import (
     MASS_FLOW_INLET,
     MASS_FLOW_OUTLET,
     MASS_SOURCE,
-    MIXER,
     P_OUTLET,
     PIPE_FORMULATION_CODES,
     PT_INLET,
-    SPLITTER,
     STAMP_DEFAULT,
     STAMP_DUCT,
     STAMP_VOLUME,
@@ -693,119 +691,121 @@ def mass_source(mdot, T, composition=None, u_inj=0.0, basis="mole", name="source
     )
 
 
-def _manifold_block(name, volume):
-    """Validate + pack a manifold's chamber ``volume`` into its float params.
+# Sentinel stored in the junction's recovery slot to select the common-static-pressure header.
+# recovery is otherwise validated to [0, 1], so a negative value is an unambiguous marker.
+_STATIC_P_MARKER = -1.0
 
-    Packs ``fparams = [volume]``.  ``volume`` is the plenum compliance (default 0 -> no
-    storage, a lengthless common-pressure node).  Read by
-    :func:`nefes.perturbation.operator.stamps._manifold_storage`, which turns a non-zero
-    volume into the chamber compliance ``C = V / (rho c^2)``.
+
+def _manifold_block(name, recovery, K, volume, static_pressure):
+    """Validate + pack a manifold's parameters into its float params.
+
+    Packs ``fparams = [volume, recovery, *K]``, whose length and the sign of ``recovery`` select
+    the closure the kernel applies:
+
+    * ``volume`` -- the plenum compliance [m^3] (0 -> no storage, a lengthless node).  Read by
+      :func:`nefes.perturbation.operator.stamps._manifold_storage`, which turns a non-zero
+      volume into the chamber compliance ``C = V / (rho c^2)``.  Inert in the mean flow.
+    * ``recovery`` -- the geometry-free dynamic-head recovery ``sigma`` in ``[0, 1]``, used only
+      when ``K is None`` (no trailing coefficients).  ``static_pressure`` stores the sentinel
+      ``-1`` here, selecting the classical common-static-pressure header instead.
+    * ``K`` -- the loss coefficient(s): absent (length 2, the recovery closure), one value
+      (length 3, broadcast to every branch), or one per port (length ``2 + deg``, local order).
     """
     V = float(volume)
     if V < 0.0:
         raise ValueError(f"{name}: volume must be non-negative (a chamber volume in m^3); got {volume}")
-    return [V]
+    if static_pressure:
+        if K is not None or float(recovery) != 1.0:
+            raise ValueError(
+                f"{name}: static_pressure ties a common static pressure and is mutually exclusive with "
+                f"recovery and K; leave both at their defaults"
+            )
+        return [V, _STATIC_P_MARKER]
+    sigma = float(recovery)
+    if not (0.0 <= sigma <= 1.0):
+        raise ValueError(
+            f"{name}: recovery must lie in [0, 1] (1 = the least-dissipative ideal, 0 = full dump loss); "
+            f"got {recovery}"
+        )
+    if K is None:
+        return [V, sigma]
+    if hasattr(K, "__len__"):
+        ks = [float(k) for k in K]
+        if len(ks) < 2:
+            raise ValueError(
+                f"{name}: a per-branch loss-coefficient list needs one entry per port (>= 2); got "
+                f"{len(ks)}. Pass a single float to broadcast one coefficient to every branch"
+            )
+        if any(k < 0.0 for k in ks):
+            raise ValueError(f"{name}: every loss coefficient K must be non-negative; got {list(K)}")
+        return [V, sigma, *ks]
+    k = float(K)
+    if k < 0.0:
+        raise ValueError(f"{name}: loss coefficient K must be non-negative; got {K}")
+    return [V, sigma, k]
 
 
-def junction(name="junction", volume=0.0):
-    """A static-pressure manifold (header node) tying all ports to a common pressure.
-
-    Optionally a **plenum**: a non-zero chamber ``volume`` [m^3] gives it the acoustic
-    compliance ``C = V / (rho c^2)`` (populating the storage block ``M`` on the common
-    pressure), so a header with a real internal volume resonates -- a junction with a
-    volume is a cavity with through-flow.  The compliance is inert in the mean flow.
-
-    A manifold branch's inertance (the "neck" of a Helmholtz element) is not a property of
-    the junction itself -- it belongs to the passage attached to that branch.  Model it as
-    an explicit neck :func:`duct` on the branch, which is exactly what
-    :func:`helmholtz_resonator` assembles.
-
-    Parameters
-    ----------
-    name : str, optional
-        Display name.
-    volume : float, optional
-        Chamber volume [m^3] (default 0 -> no compliance).
-
-    Returns
-    -------
-    ElementSpec
-    """
-    return ElementSpec(JUNCTION, _manifold_block("junction", volume), name)
-
-
-def splitter(name="splitter", volume=0.0):
-    """A lossless (total-pressure) manifold; optionally a finite-volume plenum.
-
-    As :func:`junction`, a non-zero ``volume`` adds the chamber compliance to ``M`` (inert in
-    the mean flow); a branch neck is modeled as an explicit neck :func:`duct`, not here.
-
-    Parameters
-    ----------
-    name : str, optional
-        Element label.
-    volume : float, optional
-        Chamber volume [m^3] for the acoustic compliance (default ``0.0``, a lengthless split).
-
-    Returns
-    -------
-    ElementSpec
-    """
-    return ElementSpec(SPLITTER, _manifold_block("splitter", volume), name)
-
-
-def mixer(recovery=1.0, name="mixer"):
+def junction(recovery=1.0, K=None, volume=0.0, static_pressure=False, name="junction"):
     """A variable-port manifold that merges and distributes while respecting the second law.
 
-    The general alternative to :func:`junction` and :func:`splitter`.  The static-pressure
-    junction ties every port to a common static pressure, which at a fast port hands the branch
-    its full velocity head as extra total pressure (more than the feed carries), a manufacture
-    of free energy that the second law forbids; the lossless splitter ties every port to a
-    common total pressure, which is right for distribution but cannot merge streams of unequal
-    total pressure.  The mixer ties every port to a common *effective* total pressure:
-    each inflow gives up a loss on entering the mix and each outflow leaves at the resulting
-    node total pressure.  That node total pressure stays at or below every inflow's, so no
-    branch gains total pressure and the mass-averaged outflow entropy is at or above the feed
-    mean (entropy production is non-negative by construction).  Total enthalpy and composition
-    mix by mass through the same donor as the junction, so mass, energy and species are
-    conserved exactly.
+    The manifold ties every port to a common *effective* total pressure: each branch gives up a
+    loss on entering the mix (a combining branch) or leaving it (a dividing branch), and the node
+    total pressure stays at or below every inflow's, so no branch gains total pressure and the
+    mass-averaged outflow entropy is at or above the feed mean (entropy production is non-negative
+    by construction, whatever the port Mach numbers).  Total enthalpy and composition mix by mass
+    through the edge donor, so mass, energy and species are conserved exactly.  The element accepts
+    any number of ports (``>= 2``) with directions discovered by the solve.
 
-    The inflow loss is set by ``recovery`` between two bounds:
+    The loss is set one of two ways, and they are **mutually exclusive**:
 
-    * ``recovery = 1`` (the default) removes only each inflow's excess over the *weakest* feed, so
-      the outlet leaves at the minimum inflow total pressure -- the least dissipation the second law
-      allows (an isentropic split when distributing a single inflow).  At this limit the element
-      adds no flow resistance of its own; it imposes total-pressure equalities alone, exactly like
-      the :func:`splitter`, so **the flow split must be pinned by the network**.  Each inflow branch
-      must carry either a prescribed rate (a :func:`mass_flow_inlet`) or a real resistance (a
-      :func:`loss`, an :func:`orifice`, a pipe); two :func:`total_pressure_inlet` feeds attached
-      straight to the node with nothing between leave the split under-determined and will not
-      converge, exactly as the splitter's own well-posedness requirement, not a limitation of this
-      element.  Distributing a single inflow the requirement is met automatically and ``recovery =
-      1`` is the lossless :func:`splitter`.  The solve warns when it detects an under-pinned high
-      recovery merge.
-    * ``recovery = 0`` removes each inflow's whole dynamic head -- the plenum or sudden-dump limit,
-      the most dissipative merge and the best conditioned, so the most robust to converge.  Each
-      inflow then keeps a dump term ``(1 - sigma)(p_t - p)`` that grows with its own dynamic head, a
-      self-supplied resistance that pins the split with no help from the network, so it converges on
-      any wiring (two bare total-pressure feeds included).  At low Mach the dynamic head vanishes and
-      this reduces to the common-pressure :func:`junction`.
+    * ``K is None`` (default) -- a geometry-free closure set by ``recovery`` in ``[0, 1]``.  At
+      ``recovery = 1`` (the default) each inflow gives up only its excess over the *weakest* feed,
+      so the outlet leaves at the minimum inflow total pressure, the least dissipation the second
+      law allows (an isentropic split when distributing a single inflow).  At this limit the
+      element adds no flow resistance of its own, so **the flow split must be pinned by the
+      network** (each inflow branch carries a prescribed rate or a real resistance), exactly the
+      well-posedness requirement of a lossless split.  ``recovery = 0`` gives up each inflow's
+      whole dynamic head -- the plenum / full-dump limit, the most dissipative merge and the best
+      conditioned (it self-pins the split, so it converges on any wiring).
+    * ``K`` given -- per-branch loss coefficients from tabulated junction data.  Each branch is
+      charged a total-pressure loss ``K_e * (p_t,e - p_e)`` on its own dynamic head, sign-symmetric
+      in the flow direction so that both the combining and dividing branches dissipate.  Pass a
+      single float to use one coefficient on every branch, or a list (one entry per port, in the
+      order the branches are wired) for distinct combining/dividing coefficients.  The tabulated
+      value must be referenced to the branch's own dynamic head; a handbook coefficient given
+      against the combined-branch velocity is converted by the squared velocity (area) ratio.
 
-    So ``recovery`` trades dissipation for conditioning: the default ``1`` is the ideal least-loss
-    merge and needs each inflow pinned; lower it toward ``0`` for the robust dump when the feeds are
-    not otherwise pinned (roughly ``0.9`` and below is safe on any wiring).  The element accepts any
-    number of ports (>= 2) with directions discovered by the solve, so it is the general manifold;
-    unlike the junction and splitter it carries no acoustic chamber compliance (a lengthless mixing
-    node, model a resonating plenum with a :func:`junction` or :func:`cavity` volume).
+    Supplying ``K`` selects the tabulated-loss closure and ``recovery`` is then ignored.
+
+    ``static_pressure=True`` selects a third closure: the classical common-static-pressure header
+    ``p_i = p_0``, the exactly-linear node of incompressible pipe-network practice.  It is provided
+    for cross-comparison with such tools; it is *not* second-law-consistent at a fast port (it can
+    hand a branch more total pressure than the feed carries), so it must be used only where every
+    port runs at low Mach number.  It is mutually exclusive with ``recovery`` and ``K``.
+
+    Optionally a **plenum**: a non-zero chamber ``volume`` [m^3] gives it the acoustic compliance
+    ``C = V / (rho c^2)`` (populating the storage block ``M``), so a manifold with a real internal
+    volume resonates.  A branch's inertance (a Helmholtz "neck") is not a property of the junction;
+    model it as an explicit neck :func:`duct` on the branch.
 
     Parameters
     ----------
     recovery : float, optional
-        Dynamic-head recovery in ``[0, 1]`` (default ``1.0``, the least-dissipative ideal).  At
-        ``recovery = 1`` a merge is well posed only if the network pins every inflow's rate (a
-        mass-flow inlet or a branch resistance); lower it toward ``0`` (the robust full dump loss)
-        when the feeds are otherwise unpinned.  The endpoints are reached to the solver's smoothing
+        Geometry-free dynamic-head recovery in ``[0, 1]`` (default ``1.0``, the least-dissipative
+        ideal).  Ignored when ``K`` is given.  At ``recovery = 1`` a merge is well posed only if
+        the network pins every inflow's rate; lower it toward ``0`` (the robust full dump) when the
+        feeds are otherwise unpinned.  The endpoints are reached to the solver's smoothing
         tolerance, not bit-exactly.
+    K : float or sequence of float, optional
+        Per-branch loss coefficient(s) referenced to each branch's own dynamic head (default
+        ``None``, the ``recovery`` closure).  A scalar broadcasts one coefficient to every branch;
+        a sequence gives one per port in wired order (its length must equal the port count) and
+        must be non-negative.
+    volume : float, optional
+        Chamber volume [m^3] for the acoustic compliance (default ``0.0``, a lengthless node).
+    static_pressure : bool, optional
+        Select the common-static-pressure header (default ``False``); mutually exclusive with
+        ``recovery`` and ``K``, and valid only where every port is low-Mach.
     name : str, optional
         Display name.
 
@@ -815,28 +815,23 @@ def mixer(recovery=1.0, name="mixer"):
 
     See Also
     --------
-    junction : the common-static-pressure header (valid only when every port is low-Mach).
-    splitter : the lossless common-total-pressure manifold (the ``recovery = 1`` distribution limit).
+    forced_splitter : a flow divider whose branch split is prescribed rather than discovered.
 
     Examples
     --------
     >>> import nefes.elements.catalog as cat
-    >>> ideal = cat.mixer()  # least-dissipative merge (recovery = 1); pin each inflow
-    >>> plenum = cat.mixer(recovery=0.0)  # robust full-dump plenum, converges on any wiring
+    >>> node = cat.junction()  # least-dissipative merge / isentropic split; pin each inflow
+    >>> plenum = cat.junction(recovery=0.0, volume=2.0e-3)  # robust full-dump plenum with compliance
+    >>> tee = cat.junction(K=[0.1, 0.9, 0.4])  # a 3-port tee with tabulated branch losses
+    >>> header = cat.junction(static_pressure=True)  # classical common-static-pressure header
     """
-    sigma = float(recovery)
-    if not (0.0 <= sigma <= 1.0):
-        raise ValueError(
-            f"mixer: recovery must lie in [0, 1] (1 = the least-dissipative ideal, "
-            f"0 = full dump loss); got {recovery}"
-        )
-    return ElementSpec(MIXER, [sigma], name)
+    return ElementSpec(JUNCTION, _manifold_block("junction", recovery, K, volume, static_pressure), name)
 
 
 def forced_splitter(fractions, name="splitter"):
     """A flow divider: one inflow split into N outflows at prescribed mass fractions.
 
-    This is a :func:`splitter` whose branch flows are *controlled* rather than set
+    This is a :func:`junction` whose branch flows are *controlled* rather than set
     by downstream resistance.  Exactly one edge is the inflow (port 0) and the rest
     are outflows; ``fractions[k]`` pins outflow port ``k + 1`` to that fraction of
     the port-0 inflow rate (``mdot_out = beta_k * mdot_in``).  With ``N`` outflows
@@ -846,7 +841,7 @@ def forced_splitter(fractions, name="splitter"):
 
     Reverse flow is not modelled -- the inflow direction is taken as fixed, so the
     constraint is linear in the flow state (hence complex-step-exact and inherited
-    unchanged by the perturbation network).  Replacing the splitter's pressure
+    unchanged by the perturbation network).  Replacing the manifold's pressure
     couplings on the controlled branches means those branch total pressures float;
     the downstream elements must absorb the resulting pressure jump (a
     control-valve / ideal flow-divider idealization).
@@ -873,14 +868,14 @@ def forced_splitter(fractions, name="splitter"):
     node, whose ``fractions`` string carries the betas in port order.
 
     Because the controlled branches float in pressure, the manifold has weaker
-    pressure coupling than a plain splitter and is harder to converge as the inflow
+    pressure coupling than a plain junction and is harder to converge as the inflow
     nears choke; with the default continuation it is robust to roughly inflow ``M ~ 0.6``.
     """
     betas = [float(b) for b in fractions]
     if len(betas) < 1:
         raise ValueError(
             "forced_splitter needs at least one split fraction (>= 2 outflow ports); got none -- "
-            "use splitter() for an uncontrolled manifold"
+            "use junction() for an uncontrolled manifold"
         )
     for b in betas:
         if not (0.0 < b < 1.0):

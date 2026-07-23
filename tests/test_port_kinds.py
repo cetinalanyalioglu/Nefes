@@ -64,10 +64,9 @@ def test_two_port_through_elements_are_target_then_source(rid):
     assert ids.port_kinds(rid, 2) == [ids.PORT_TARGET, ids.PORT_SOURCE]
 
 
-@pytest.mark.parametrize("rid", [ids.JUNCTION, ids.SPLITTER])
 @pytest.mark.parametrize("deg", [2, 3, 5])
-def test_symmetric_manifolds_are_all_any(rid, deg):
-    assert ids.port_kinds(rid, deg) == [ids.PORT_ANY] * deg
+def test_symmetric_manifolds_are_all_any(deg):
+    assert ids.port_kinds(ids.JUNCTION, deg) == [ids.PORT_ANY] * deg
 
 
 @pytest.mark.parametrize("deg", [3, 4, 6])

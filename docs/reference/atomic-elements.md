@@ -33,7 +33,7 @@ $$\mathbf{A}(\omega) = \overline{\mathbf{J}} + \mathrm{i}\omega\, \mathbf{M} + \
 
 Most elements contribute only through $\overline{\mathbf{J}}$ (the complex-step linearization of their
 mean residual). Three add blocks beyond that default: `duct`/`pipe` add the phase-propagation
-stamp $\mathbf{P}(\omega)$; `cavity` (and a plenum `junction`/`splitter`) add the storage block $\mathbf{M}$;
+stamp $\mathbf{P}(\omega)$; `cavity` (and a plenum `junction`) add the storage block $\mathbf{M}$;
 the flames carry an unsteady heat-release source $\mathbf{S}(\omega)$ on their `DynamicSource`
 descriptor. Single-port boundaries can also carry an explicit `PerturbationBC`
 (reflection/impedance); left at `None` they inherit the linearization of their own mean row.
@@ -58,9 +58,7 @@ descriptor. Single-port boundaries can also carry an explicit `PerturbationBC`
 | `heat_release_flame` | `FLAME_HEAT_RELEASE` (12) | 2 | mass + $p_t$ continuity, $\Delta h_t=\dot Q/\dot m$ | default (+$\mathbf{S}(\omega)$ if dynamic) |
 | `equilibrium_flame` | `FLAME_EQUILIBRIUM` (13) | 2 | mass + static-$p$ + $h_t$ + $Z$ conserved | default (+$\mathbf{S}(\omega)$ if dynamic) |
 | `mass_source` | `MASS_SOURCE` (14) | 2 | mass/momentum/energy/composition injection | default |
-| `junction` | `JUNCTION` (6) | variable | common **static** pressure $p_i=p_0$ | default (+$\mathbf{M}$ if plenum) |
-| `splitter` | `SPLITTER` (7) | variable | common **total** pressure $p_{t,i}=p_{t,0}$ | default (+$\mathbf{M}$ if plenum) |
-| `mixer` | `MIXER` (22) | variable | common **effective total** pressure $p_{t,i}^{\text{eff}}=p_{t,0}^{\text{eff}}$ (second law) | default |
+| `junction` | `JUNCTION` (6) | variable | mass + common **effective total** pressure $p_{t,i}^{\text{eff}}=p_{t,0}^{\text{eff}}$ (second law) | default (+$\mathbf{M}$ if plenum) |
 | `forced_splitter` | `FORCED_SPLITTER` (19) | variable | $\dot m_{\text{out},k}=\beta_k\dot m_\text{in}$ | default |
 | *supersonic inlet/outlet* | (9 / 10) | 1 | **reserved — deferred** (v1 is subsonic) | — |
 
@@ -298,50 +296,51 @@ with a fuel `composition`; it performs no reaction (ignition is the flame's job)
 
 ## Manifolds (variable port count)
 
-### `junction(volume=0.0)`
-Ties all incident ports to a **common static pressure**: a mass balance $\sum_i \dot m_i = 0$
-plus $d-1$ rows $p_i = p_0$. A plenum `volume` adds the compliance $C = V/(\varrho c^2)$ to $\mathbf{M}$
-(inert in the mean flow) — a junction with a volume is a cavity with through-flow. A branch's
-neck inertance is **not** a manifold parameter; model it as an explicit neck `duct` on that
-branch (exactly what `helmholtz_resonator` assembles).
+### `junction(recovery=1.0, K=None, volume=0.0)`
+The variable-port manifold that merges and distributes while obeying the second law at any port
+Mach number. It ties the ports to a **common effective total pressure**
+$p_{t,i}^{\text{eff}} = p_{t,0}^{\text{eff}}$, removing from each branch a loss $\ell_k$ set by one
+of two mutually exclusive closures. The node total pressure never rises above the feeds, so the
+mass-averaged outflow entropy never falls below the feed mean (entropy production $\ge 0$). Total
+enthalpy and composition are mass-averaged by the edge donor, so mass, energy, and species are
+conserved exactly.
 
-| Argument | Symbol | Meaning | Units | Default / constraint |
-| --- | --- | --- | --- | --- |
-| `volume` | $V$ | chamber volume (plenum compliance) | m³ | `0.0`, $\ge 0$ |
+With `K` unset, the loss is the **geometry-free recovery** closure
+$\ell_k = \chi_k\big[(1-\sigma)(p_{t,k}-p_k) + \sigma\,w_k\,\mathrm{pos}(p_{t,k}-p_t^{\min})\big]$,
+where $\chi_k$ is the smooth inflow indicator, $\sigma$ is `recovery`, $p_t^{\min}$ is the smooth
+minimum of the inflow total pressures, and $w_k = q_k/(q_k+\delta)$ (on the branch dynamic head
+$q_k = p_{t,k}-p_k$) is the flow envelope that switches the ideal loss off at a stagnant (dead-leg)
+branch so it stays clean in the perturbation network. `recovery` sets the loss between two limits: $1$ (the default) removes only
+each inflow's excess over the weakest feed, so the outlet leaves at the minimum inflow total
+pressure, the least dissipation the second law allows (an isentropic split when distributing a
+single inflow); $0$ is the full dump loss of a plenum (each inflow gives up its whole dynamic head),
+the most dissipative and best-conditioned merge, which at low Mach ties a common static pressure —
+the classical header. At $\sigma = 1$ the element adds no flow resistance of its own, so the flow
+split must be pinned by the network (a `mass_flow_inlet` or a branch resistance); two bare
+`total_pressure_inlet` feeds on the node leave the split under-determined, and the solve warns when
+it detects this. Lower `recovery` toward $0$ for the robust dump when the feeds are not otherwise
+pinned.
 
-### `splitter(volume=0.0)`
-As `junction`, but ties the ports to a **common total pressure** ($p_{t,i} = p_{t,0}$,
-lossless) — the idealization when the manifold recovers dynamic head. Same optional `volume`.
-
-### `mixer(recovery=1.0)`
-The general merge that obeys the second law at any port Mach number. It ties the ports to a
-**common effective total pressure** $p_{t,i}^{\text{eff}} = p_{t,0}^{\text{eff}}$, removing from
-each inflow a loss
-$\ell_k = \chi_k\big[(1-\sigma)(p_{t,k}-p_k) + \sigma(p_{t,k}-p_t^{\min})\big]$, where $\chi_k$
-is the smooth inflow indicator, $\sigma$ is `recovery`, and $p_t^{\min}$ is the smooth minimum of
-the inflow total pressures. The node total pressure never rises above the feeds, so the
-mass-averaged outflow entropy never falls below the feed mean (entropy production $\ge 0$). Use it
-instead of `junction` where a merging port is not slow: the `junction` would there hand a fast
-branch more total pressure than the feed carries (free energy, a second-law violation and often no
-steady solution at all). `recovery` sets the loss between two limits: $1$ (the default) removes
-only each inflow's excess over the weakest feed, so the outlet leaves at the minimum inflow total
-pressure, the least dissipation the second law allows; $0$ is the full dump loss of a plenum (each
-inflow gives up its whole dynamic head), the most dissipative and best-conditioned merge. At the
-default $\sigma = 1$ the element adds no flow resistance of its own (pressure equalities only, like
-the `splitter`), so the flow split must be pinned by the network: distributing one inflow this is
-automatic and $\sigma = 1$ is the lossless (isentropic) `splitter`; merging, it is well posed only
-when every inflow's rate is pinned by a `mass_flow_inlet` or a branch resistance (a `loss`,
-`orifice`, or pipe) -- two bare `total_pressure_inlet` feeds on the node leave the split
-under-determined, the splitter's own requirement, and the solve warns when it detects this. Lower
-`recovery` toward $0$ for the robust dump when the feeds are not otherwise pinned: each inflow's
-dump term is then a self-supplied resistance that pins the split unaided, so it converges on any
-topology and reduces to `junction` at low Mach. Unlike `junction`/`splitter` it carries no chamber
-compliance (a lengthless mixing node); model a resonating plenum with a `junction` or `cavity`
-volume.
+With `K` given, the loss is the **per-branch coefficient** closure
+$\ell_k = (2\chi_k-1)\,K_k\,(p_{t,k}-p_k)$, charging each branch a total-pressure loss on its own
+dynamic head, sign-symmetric so that both the combining (inflow) and dividing (outflow) branches
+dissipate. Pass a single float to broadcast one coefficient to every branch, or a list (one entry
+per port, in wired order) for distinct combining/dividing values from tabulated junction data
+([@idelchik2007handbook]); a handbook coefficient referenced to the combined-branch velocity head
+must be converted to the branch's own head by the squared velocity (area) ratio. `K = 0` is exact
+total-pressure continuity (the lossless splitter, with no smoothing floor). A third closure,
+`static_pressure=True`, ties a **common static pressure** $p_i = p_0$ (the classical incompressible
+pipe-network header, exactly linear); it is not second-law-consistent at a fast port, so use it only
+where every port is low-Mach, chiefly to cross-compare with such tools. A plenum `volume` adds
+the compliance $C = V/(\varrho c^2)$ to $\mathbf{M}$ (inert in the mean flow); a branch's neck
+inertance is **not** a manifold parameter — model it as an explicit neck `duct` on that branch.
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
 | `recovery` | $\sigma$ | dynamic-head recovery: $1$ = least-dissipative ideal, $0$ = full dump loss | — | `1.0`, $\in[0,1]$ |
+| `K` | $K_k$ | per-branch loss coefficient(s) on the own dynamic head (scalar broadcast, or one per port) | — | `None`, each $\ge 0$ |
+| `static_pressure` | — | tie a common static pressure (mutually exclusive with `recovery` / `K`; low-Mach only) | — | `False` |
+| `volume` | $V$ | chamber volume (plenum compliance) | m³ | `0.0`, $\ge 0$ |
 
 ### `forced_splitter(fractions)`
 One inflow (port 0) split into $N$ outflows at **prescribed mass fractions**:

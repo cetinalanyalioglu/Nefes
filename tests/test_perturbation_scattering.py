@@ -69,7 +69,7 @@ def _tree_3term(pt_in=110000.0, p_out=101325.0, a_branch=0.03):
     net = [
         cat.total_pressure_inlet(pt_in, 300.0),
         cat.duct(1.0),
-        cat.splitter(),
+        cat.junction(),
         cat.pressure_outlet(p_out, 300.0),
         cat.pressure_outlet(p_out, 300.0),
     ]
@@ -90,7 +90,7 @@ def _wall_branch(pt_in=110000.0, p_out=101325.0):
     net = [
         cat.total_pressure_inlet(pt_in, 300.0),
         cat.duct(0.6),
-        cat.splitter(),
+        cat.junction(),
         cat.duct(0.7),
         cat.pressure_outlet(p_out, 300.0),
         cat.duct(0.4),
@@ -104,18 +104,21 @@ def _wall_branch(pt_in=110000.0, p_out=101325.0):
 
 
 def _diamond(pt_in=110000.0, p_out=101325.0):
-    """Inlet -> duct -> splitter -> (two ducts) -> junction -> duct -> outlet.
+    """Inlet -> duct -> junction -> (two ducts) -> junction -> duct -> outlet.
 
     One inlet, one outlet, but the two parallel branches recombine -> an internal
-    acoustic loop; two excitations still fully determine its 2x2 terminal matrix.
+    acoustic loop; two excitations still fully determine its 2x2 terminal matrix.  The
+    manifolds tie a common static pressure (``recovery = 0``), which pins the parallel split;
+    at this low Mach the merge loss is negligible, so the loop stays effectively non-dissipative,
+    the regime the scattering bound assumes.
     """
     net = [
         cat.total_pressure_inlet(pt_in, 300.0),
         cat.duct(0.5),
-        cat.splitter(),
+        cat.junction(recovery=0.0),
         cat.duct(0.7),
         cat.duct(1.1),
-        cat.junction(),
+        cat.junction(recovery=0.0),
         cat.duct(0.5),
         cat.pressure_outlet(p_out, 300.0),
     ]
@@ -481,7 +484,7 @@ def test_branched_reversal_well_posed():
     net = [
         cat.mass_flow_inlet(0.05, 300.0),
         cat.duct(0.6),
-        cat.splitter(),
+        cat.junction(),
         cat.duct(0.7),
         cat.pressure_outlet(101325.0, 300.0),
         cat.duct(0.9),

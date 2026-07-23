@@ -32,7 +32,7 @@ model:
       impedanceMagnitude: 1
       impedancePhase: 0
   - id: LosslessSplitter2-vwz
-    type: LosslessSplitter
+    type: Junction
     attributes:
       label: dome-split
       index: 2
@@ -114,7 +114,7 @@ model:
       height: 52
       index: 20
   - id: Mixer2-444
-    type: Mixer
+    type: Junction
     attributes:
       label: mix-cool-1
       index: 22
@@ -164,7 +164,7 @@ model:
       index: 27
       length: 0.07
   - id: Mixer3-jzl
-    type: Mixer
+    type: Junction
     attributes:
       label: mix-dil
       index: 30
@@ -183,7 +183,7 @@ model:
       impedanceMagnitude: 1
       impedancePhase: 0
   - id: LosslessSplitter3-am1
-    type: LosslessSplitter
+    type: Junction
     attributes:
       label: split-inner-1
       index: 13
@@ -206,7 +206,7 @@ model:
       index: 33
       length: 0.06
   - id: LosslessSplitter4-hgj
-    type: LosslessSplitter
+    type: Junction
     attributes:
       label: split-inner-2
       index: 21
@@ -223,7 +223,7 @@ model:
       lengthDownstream: 0
       endCorrection: 0
   - id: LosslessSplitter5-76i
-    type: LosslessSplitter
+    type: Junction
     attributes:
       label: split-outer-1
       index: 14
@@ -270,7 +270,7 @@ model:
       index: 28
       throatArea: 0.00032
   - id: LosslessSplitter6-58j
-    type: LosslessSplitter
+    type: Junction
     attributes:
       label: split-outer-2
       index: 23
@@ -293,7 +293,7 @@ model:
       index: 26
       length: 0.05
   - id: Mixer5-4dy
-    type: Mixer
+    type: Junction
     attributes:
       label: mix-cool-2
       index: 34
@@ -1007,8 +1007,7 @@ uiState:
       FannoPipe: 0
       TaperedDuct: 0
       JunctionStaticP: 0
-      Mixer: 3
-      LosslessSplitter: 5
+      Junction: 8
       ForcedSplitter: 0
     totalNodeCounters:
       MassFlowInlet: 1
@@ -1035,6 +1034,5 @@ uiState:
       FannoPipe: 0
       TaperedDuct: 1
       JunctionStaticP: 1
-      Mixer: 5
-      LosslessSplitter: 6
+      Junction: 11
       ForcedSplitter: 1

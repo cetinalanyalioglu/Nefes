@@ -175,8 +175,10 @@ def build_network(formulation="darcy-weisbach"):
 
     Each paper *pipe* is a two-port :func:`~nefes.elements.catalog.pipe` (Darcy-Weisbach,
     ``K = f L / D``, circular area ``pi D^2 / 4``); each interior paper *node* is a
-    static-pressure :func:`~nefes.elements.catalog.junction`; each supply/demand leaf is a
-    :func:`~nefes.elements.catalog.total_pressure_inlet` / :func:`~nefes.elements.catalog.pressure_outlet`.
+    :func:`~nefes.elements.catalog.junction` on its ``recovery = 0`` limit, which at low Mach
+    ties the incident static pressures equal -- the static-pressure header the paper assumes;
+    each supply/demand leaf is a :func:`~nefes.elements.catalog.total_pressure_inlet` /
+    :func:`~nefes.elements.catalog.pressure_outlet`.
 
     Returns
     -------
@@ -190,7 +192,7 @@ def build_network(formulation="darcy-weisbach"):
     net = Network(gas=perfect_gas(R_AIR, GAMMA), p_ref=4.5e5, T_ref=T_ISO, mdot_ref=0.033)
     node_of = {}
     for n in _INTERIOR:
-        node_of[n] = net.add(cat.junction(name=f"n{n}"))
+        node_of[n] = net.add(cat.junction(recovery=0.0, name=f"n{n}"))
     for n in SUPPLY_NODES:
         node_of[n] = net.add(cat.total_pressure_inlet(P_SUPPLY, T_ISO, name=f"supply{n}"))
     for n in DEMAND_NODES:
@@ -284,17 +286,21 @@ def test_momentum_formulation_remains_close_in_the_low_mach_regime(solved, solve
         mdot_momentum = momentum.edge(momentum_out)["mdot"]
         flow_differences.append(abs(mdot_momentum - mdot_darcy) / abs(mdot_darcy))
         published_flow_errors.append(abs(mdot_momentum * 1000.0 - PUB_MDOT_GPS[k]) / abs(PUB_MDOT_GPS[k]))
-    # The distributed momentum closure is not the paper's lumped isothermal model, but at
-    # M < 0.06 its branch flows remain within 1.1% of the authoritative Darcy solve.
+    # The distributed momentum closure is not the paper's lumped isothermal model, and the
+    # header nodes are junctions on the recovery = 0 limit (common static pressure only to
+    # O(M^2)); at M < 0.06 the combined departure keeps branch flows within 1.2% of the
+    # authoritative Darcy solve and 1.3% of the published values.
     assert max(flow_differences) < 1.2e-2
-    assert max(published_flow_errors) < 1.2e-2
+    assert max(published_flow_errors) < 1.3e-2
 
     published_pressure_errors = []
     for n in _INTERIOR:
         k = next(k for k, (_u, d, _D, _L) in PIPES.items() if d == n)
         momentum_out = momentum_edges[k][1]
         published_pressure_errors.append(abs(momentum.edge(momentum_out)["p"] / 1e5 - PUB_PRESSURE_BAR[n]))
-    assert max(published_pressure_errors) < 7e-3
+    # The header nodes tie the incident static pressures only to O(M^2) (the recovery = 0 limit,
+    # not an exact static-pressure junction), which combines with the momentum-closure departure.
+    assert max(published_pressure_errors) < 8.5e-3
 
 
 def test_reported_density_column_is_velocity(solved):

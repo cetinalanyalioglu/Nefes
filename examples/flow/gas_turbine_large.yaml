@@ -3,11 +3,11 @@
 # verbatim on the current Nefes.
 #
 #   HP bleed (total-P) --\
-#                         JunctionStaticP (mix-plenum) --> IsentropicAreaChange
+#                         Junction (mix-plenum) --> IsentropicAreaChange
 #   LP bleed (mass-flow) /                                  (main-feed) --> ...
 #
-#       ... --> LosslessSplitter (main-manifold) --> 3 sub-manifold legs,
-#               each a JunctionStaticP feeding several cooling circuits:
+#       ... --> Junction (main-manifold) --> 3 sub-manifold legs,
+#               each a Junction feeding several cooling circuits:
 #                 * orifice  : IsentropicAreaChange + LossElement     --> sink
 #                 * nozzle   : IsentropicAreaChange + SuddenAreaChange
 #                              (dump) + LossElement                   --> sink
@@ -70,8 +70,8 @@ model:
       index: 1
       massFlowRate: 3.0
       totalTemperature: 480.0
-  - id: JunctionStaticP_1
-    type: JunctionStaticP
+  - id: Junction_1
+    type: Junction
     attributes:
       label: mix-plenum
       index: 2
@@ -82,8 +82,8 @@ model:
     attributes:
       label: main-feed
       index: 3
-  - id: LosslessSplitter_1
-    type: LosslessSplitter
+  - id: Junction_5
+    type: Junction
     attributes:
       label: main-manifold
       index: 4
@@ -94,8 +94,8 @@ model:
       label: sub-feed-0
       index: 5
       lossCoefficient: 0.8
-  - id: JunctionStaticP_2
-    type: JunctionStaticP
+  - id: Junction_2
+    type: Junction
     attributes:
       label: sub-manifold-0
       index: 6
@@ -199,8 +199,8 @@ model:
       label: sub-feed-1
       index: 22
       lossCoefficient: 1.2000000000000002
-  - id: JunctionStaticP_3
-    type: JunctionStaticP
+  - id: Junction_3
+    type: Junction
     attributes:
       label: sub-manifold-1
       index: 23
@@ -299,8 +299,8 @@ model:
       label: sub-feed-2
       index: 38
       lossCoefficient: 1.6
-  - id: JunctionStaticP_4
-    type: JunctionStaticP
+  - id: Junction_4
+    type: Junction
     attributes:
       label: sub-manifold-2
       index: 39
@@ -468,9 +468,9 @@ model:
       area: 0.015
       label: edge_2
   - id: edge_3
-    source: JunctionStaticP_1
+    source: Junction_1
     target: IsentropicAreaChange_1
-    sourceHandle: JunctionStaticP_1-port-2
+    sourceHandle: Junction_1-port-2
     targetHandle: IsentropicAreaChange_1-port-0
     type: flow
     attributes:
@@ -488,9 +488,9 @@ model:
       area: 0.025
       label: edge_4
   - id: edge_5
-    source: LosslessSplitter_1
+    source: Junction_5
     target: LossElement_1
-    sourceHandle: LosslessSplitter_1-port-1
+    sourceHandle: Junction_5-port-1
     targetHandle: LossElement_1-port-0
     type: flow
     attributes:
@@ -508,9 +508,9 @@ model:
       area: 0.012
       label: edge_6
   - id: edge_7
-    source: JunctionStaticP_2
+    source: Junction_2
     target: IsentropicAreaChange_2
-    sourceHandle: JunctionStaticP_2-port-1
+    sourceHandle: Junction_2-port-1
     targetHandle: IsentropicAreaChange_2-port-0
     type: flow
     attributes:
@@ -538,9 +538,9 @@ model:
       area: 0.002
       label: edge_9
   - id: edge_10
-    source: JunctionStaticP_2
+    source: Junction_2
     target: LossElement_3
-    sourceHandle: JunctionStaticP_2-port-2
+    sourceHandle: Junction_2-port-2
     targetHandle: LossElement_3-port-0
     type: flow
     attributes:
@@ -558,9 +558,9 @@ model:
       area: 0.004
       label: edge_11
   - id: edge_12
-    source: JunctionStaticP_2
+    source: Junction_2
     target: IsentropicAreaChange_3
-    sourceHandle: JunctionStaticP_2-port-3
+    sourceHandle: Junction_2-port-3
     targetHandle: IsentropicAreaChange_3-port-0
     type: flow
     attributes:
@@ -598,9 +598,9 @@ model:
       area: 0.006
       label: edge_15
   - id: edge_16
-    source: JunctionStaticP_2
+    source: Junction_2
     target: LossElement_5
-    sourceHandle: JunctionStaticP_2-port-4
+    sourceHandle: Junction_2-port-4
     targetHandle: LossElement_5-port-0
     type: flow
     attributes:
@@ -628,9 +628,9 @@ model:
       area: 0.004
       label: edge_18
   - id: edge_19
-    source: JunctionStaticP_2
+    source: Junction_2
     target: IsentropicAreaChange_4
-    sourceHandle: JunctionStaticP_2-port-5
+    sourceHandle: Junction_2-port-5
     targetHandle: IsentropicAreaChange_4-port-0
     type: flow
     attributes:
@@ -658,9 +658,9 @@ model:
       area: 0.002
       label: edge_21
   - id: edge_22
-    source: LosslessSplitter_1
+    source: Junction_5
     target: LossElement_8
-    sourceHandle: LosslessSplitter_1-port-2
+    sourceHandle: Junction_5-port-2
     targetHandle: LossElement_8-port-0
     type: flow
     attributes:
@@ -678,9 +678,9 @@ model:
       area: 0.012
       label: edge_23
   - id: edge_24
-    source: JunctionStaticP_3
+    source: Junction_3
     target: LossElement_9
-    sourceHandle: JunctionStaticP_3-port-2
+    sourceHandle: Junction_3-port-2
     targetHandle: LossElement_9-port-0
     type: flow
     attributes:
@@ -698,9 +698,9 @@ model:
       area: 0.004
       label: edge_25
   - id: edge_26
-    source: JunctionStaticP_3
+    source: Junction_3
     target: IsentropicAreaChange_5
-    sourceHandle: JunctionStaticP_3-port-3
+    sourceHandle: Junction_3-port-3
     targetHandle: IsentropicAreaChange_5-port-0
     type: flow
     attributes:
@@ -738,9 +738,9 @@ model:
       area: 0.006
       label: edge_29
   - id: edge_30
-    source: JunctionStaticP_3
+    source: Junction_3
     target: LossElement_11
-    sourceHandle: JunctionStaticP_3-port-4
+    sourceHandle: Junction_3-port-4
     targetHandle: LossElement_11-port-0
     type: flow
     attributes:
@@ -768,9 +768,9 @@ model:
       area: 0.004
       label: edge_32
   - id: edge_33
-    source: JunctionStaticP_3
+    source: Junction_3
     target: IsentropicAreaChange_6
-    sourceHandle: JunctionStaticP_3-port-5
+    sourceHandle: Junction_3-port-5
     targetHandle: IsentropicAreaChange_6-port-0
     type: flow
     attributes:
@@ -798,9 +798,9 @@ model:
       area: 0.002
       label: edge_35
   - id: edge_36
-    source: JunctionStaticP_3
+    source: Junction_3
     target: LossElement_14
-    sourceHandle: JunctionStaticP_3-port-6
+    sourceHandle: Junction_3-port-6
     targetHandle: LossElement_14-port-0
     type: flow
     attributes:
@@ -818,9 +818,9 @@ model:
       area: 0.004
       label: edge_37
   - id: edge_38
-    source: LosslessSplitter_1
+    source: Junction_5
     target: LossElement_15
-    sourceHandle: LosslessSplitter_1-port-3
+    sourceHandle: Junction_5-port-3
     targetHandle: LossElement_15-port-0
     type: flow
     attributes:
@@ -838,9 +838,9 @@ model:
       area: 0.012
       label: edge_39
   - id: edge_40
-    source: JunctionStaticP_4
+    source: Junction_4
     target: IsentropicAreaChange_7
-    sourceHandle: JunctionStaticP_4-port-1
+    sourceHandle: Junction_4-port-1
     targetHandle: IsentropicAreaChange_7-port-0
     type: flow
     attributes:
@@ -878,9 +878,9 @@ model:
       area: 0.006
       label: edge_43
   - id: edge_44
-    source: JunctionStaticP_4
+    source: Junction_4
     target: LossElement_17
-    sourceHandle: JunctionStaticP_4-port-2
+    sourceHandle: Junction_4-port-2
     targetHandle: LossElement_17-port-0
     type: flow
     attributes:
@@ -908,9 +908,9 @@ model:
       area: 0.004
       label: edge_46
   - id: edge_47
-    source: JunctionStaticP_4
+    source: Junction_4
     target: IsentropicAreaChange_8
-    sourceHandle: JunctionStaticP_4-port-3
+    sourceHandle: Junction_4-port-3
     targetHandle: IsentropicAreaChange_8-port-0
     type: flow
     attributes:
@@ -938,9 +938,9 @@ model:
       area: 0.002
       label: edge_49
   - id: edge_50
-    source: JunctionStaticP_4
+    source: Junction_4
     target: LossElement_20
-    sourceHandle: JunctionStaticP_4-port-4
+    sourceHandle: Junction_4-port-4
     targetHandle: LossElement_20-port-0
     type: flow
     attributes:
@@ -958,9 +958,9 @@ model:
       area: 0.004
       label: edge_51
   - id: edge_52
-    source: JunctionStaticP_4
+    source: Junction_4
     target: IsentropicAreaChange_9
-    sourceHandle: JunctionStaticP_4-port-5
+    sourceHandle: Junction_4-port-5
     targetHandle: IsentropicAreaChange_9-port-0
     type: flow
     attributes:
@@ -998,9 +998,9 @@ model:
       area: 0.006
       label: edge_55
   - id: edge_56
-    source: JunctionStaticP_2
+    source: Junction_2
     target: LossElement_22
-    sourceHandle: JunctionStaticP_2-port-6
+    sourceHandle: Junction_2-port-6
     targetHandle: LossElement_22-port-0
     type: flow
     attributes:
@@ -1009,9 +1009,9 @@ model:
       label: edge_56
   - id: edge_57
     source: LossElement_22
-    target: JunctionStaticP_3
+    target: Junction_3
     sourceHandle: LossElement_22-port-1
-    targetHandle: JunctionStaticP_3-port-1
+    targetHandle: Junction_3-port-1
     type: flow
     attributes:
       index: 56
@@ -1019,9 +1019,9 @@ model:
       label: edge_57
   - id: edge_58
     source: Duct_1
-    target: JunctionStaticP_1
+    target: Junction_1
     sourceHandle: Duct_1-port-1
-    targetHandle: JunctionStaticP_1-port-0
+    targetHandle: Junction_1-port-0
     type: flow
     attributes:
       index: 57
@@ -1029,9 +1029,9 @@ model:
       label: edge_58
   - id: edge_59
     source: Duct_2
-    target: JunctionStaticP_1
+    target: Junction_1
     sourceHandle: Duct_2-port-1
-    targetHandle: JunctionStaticP_1-port-1
+    targetHandle: Junction_1-port-1
     type: flow
     attributes:
       index: 58
@@ -1039,9 +1039,9 @@ model:
       label: edge_59
   - id: edge_60
     source: Duct_3
-    target: LosslessSplitter_1
+    target: Junction_5
     sourceHandle: Duct_3-port-1
-    targetHandle: LosslessSplitter_1-port-0
+    targetHandle: Junction_5-port-0
     type: flow
     attributes:
       index: 59
@@ -1049,9 +1049,9 @@ model:
       label: edge_60
   - id: edge_61
     source: Duct_4
-    target: JunctionStaticP_2
+    target: Junction_2
     sourceHandle: Duct_4-port-1
-    targetHandle: JunctionStaticP_2-port-0
+    targetHandle: Junction_2-port-0
     type: flow
     attributes:
       index: 60
@@ -1059,9 +1059,9 @@ model:
       label: edge_61
   - id: edge_62
     source: Duct_5
-    target: JunctionStaticP_3
+    target: Junction_3
     sourceHandle: Duct_5-port-1
-    targetHandle: JunctionStaticP_3-port-0
+    targetHandle: Junction_3-port-0
     type: flow
     attributes:
       index: 61
@@ -1069,9 +1069,9 @@ model:
       label: edge_62
   - id: edge_63
     source: Duct_6
-    target: JunctionStaticP_4
+    target: Junction_4
     sourceHandle: Duct_6-port-1
-    targetHandle: JunctionStaticP_4-port-0
+    targetHandle: Junction_4-port-0
     type: flow
     attributes:
       index: 62
@@ -1089,7 +1089,7 @@ uiAttributes:
       x: 0.0
       y: 260.0
     data: {}
-  - id: JunctionStaticP_1
+  - id: Junction_1
     position:
       x: 240.0
       y: 160.0
@@ -1099,7 +1099,7 @@ uiAttributes:
       x: 480.0
       y: 160.0
     data: {}
-  - id: LosslessSplitter_1
+  - id: Junction_5
     position:
       x: 720.0
       y: 160.0
@@ -1109,7 +1109,7 @@ uiAttributes:
       x: 960.0
       y: -360.0
     data: {}
-  - id: JunctionStaticP_2
+  - id: Junction_2
     position:
       x: 1200.0
       y: -360.0
@@ -1194,7 +1194,7 @@ uiAttributes:
       x: 960.0
       y: 360.0
     data: {}
-  - id: JunctionStaticP_3
+  - id: Junction_3
     position:
       x: 1200.0
       y: 360.0
@@ -1274,7 +1274,7 @@ uiAttributes:
       x: 960.0
       y: 1080.0
     data: {}
-  - id: JunctionStaticP_4
+  - id: Junction_4
     position:
       x: 1200.0
       y: 1080.0
@@ -1399,9 +1399,8 @@ uiState:
     nodeCounters:
       TotalPressureInlet: 1
       MassFlowInlet: 1
-      JunctionStaticP: 4
+      Junction: 5
       IsentropicAreaChange: 9
-      LosslessSplitter: 1
       LossElement: 22
       PressureOutlet: 15
       SuddenAreaChange: 4
@@ -1409,9 +1408,8 @@ uiState:
     totalNodeCounters:
       TotalPressureInlet: 1
       MassFlowInlet: 1
-      JunctionStaticP: 4
+      Junction: 5
       IsentropicAreaChange: 9
-      LosslessSplitter: 1
       LossElement: 22
       PressureOutlet: 15
       SuddenAreaChange: 4

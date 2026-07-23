@@ -370,7 +370,7 @@ def _splitting_network():
     """inlet -> splitter -> two branches -> two outlets, with named elements."""
     net = Network(perfect_gas(R_AIR, GAMMA))
     a = net.add(cat.mass_flow_inlet(5.0, 300.0, name="in"))
-    s = net.add(cat.splitter(name="split"))
+    s = net.add(cat.junction(name="split"))
     b = net.add(cat.duct(0.5, name="d1"))
     c = net.add(cat.duct(0.5, name="d2"))
     o1 = net.add(cat.pressure_outlet(101325.0, name="out1"))
@@ -614,16 +614,16 @@ def _ui_case(tmp_path, name, nodes, edges, glob=None):
 
 
 def test_load_multiport_case_conserves_mass(tmp_path):
-    # A UI export with a splitter and a junction (multi-port elements) must load with
-    # the right ports and conserve mass: a fixed feed splits through two unequal area
-    # changes and remerges, so the two branches sum back to the feed and the outlet.
+    # A UI export with two junctions (multi-port elements) must load with the right ports and
+    # conserve mass: a fixed feed splits through two unequal area changes and remerges, so the
+    # two branches sum back to the feed and the outlet.
     # Per-node ports are one 0..d-1 run (left ports then right ports).
     nodes = [
         ("feed", "MassFlowInlet", 0, {"massFlowRate": 10.0, "totalTemperature": 300.0}),
-        ("split", "LosslessSplitter", 1, {}),
+        ("split", "Junction", 1, {"recovery": 0.0}),
         ("oa", "IsentropicAreaChange", 2, {}),
         ("ob", "IsentropicAreaChange", 3, {}),
-        ("merge", "JunctionStaticP", 4, {}),
+        ("merge", "Junction", 4, {"recovery": 0.0}),
         ("out", "PressureOutlet", 5, {"pressure": 101325.0, "backflowTotalTemperature": 300.0}),
     ]
     edges = [

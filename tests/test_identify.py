@@ -73,7 +73,7 @@ def _branched(mid, A=0.02):
         cat.mass_flow_inlet(0.03, 300.0),
         cat.duct(0.6),
         mid,
-        cat.splitter(),
+        cat.junction(),
         cat.duct(0.7),
         cat.pressure_outlet(1.0e5),
         cat.duct(1.0),

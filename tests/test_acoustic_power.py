@@ -108,7 +108,7 @@ def _rig(inlet_R):
     els = [
         cat.total_pressure_inlet(2.5e5, 300.0, name="reservoir", perturbation_bc=PerturbationBC.reflection(inlet_R)),
         cat.duct(0.6, name="feed"),
-        cat.splitter(name="manifold"),
+        cat.junction(name="manifold"),
         cat.duct(0.4, name="core"),
         cat.choked_nozzle_outlet(0.015, name="nozzle"),
         cat.duct(0.5, name="bleedpipe"),

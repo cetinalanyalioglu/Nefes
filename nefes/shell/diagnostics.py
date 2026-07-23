@@ -2,12 +2,12 @@
 
 These checks read the topology only (never a solved state) to catch setups that compile but
 have no unique steady flow, so the cause is reported up front rather than surfacing as an
-opaque non-convergence.  The current check is the under-pinned mixer: near its
-``recovery = 1`` limit the mixer adds no flow resistance of its own (like the
-splitter), so each inflow must be pinned by the network; two total-pressure sources reaching it
+opaque non-convergence.  The current check is the under-pinned junction: near its
+``recovery = 1`` limit a junction on the geometry-free recovery closure adds no flow resistance
+of its own, so each inflow must be pinned by the network; two total-pressure sources reaching it
 through no resistance leave the division of flow among the inflows undetermined.
 
-Exports: ``diagnose_mixers``.
+Exports: ``diagnose_junctions``.
 """
 
 from typing import List
@@ -18,19 +18,19 @@ from ..elements.ids import (
     FLAME_EQUILIBRIUM,
     FLAME_HEAT_RELEASE,
     ISEN_AREA_CHANGE,
+    JUNCTION,
     LINEAR_RESISTANCE,
     LOSS,
     MASS_FLOW_INLET,
     MASS_FLOW_OUTLET,
     MASS_SOURCE,
-    MIXER,
     PIPE,
     PT_INLET,
     SUDDEN_AREA_CHANGE,
     TRANSFER_MATRIX,
 )
 
-# At or above this recovery the mixer's self-supplied dump resistance is too weak to pin
+# At or above this recovery the junction's self-supplied dump resistance is too weak to pin
 # the flow split on its own, so an inflow reaching a fixed total pressure through no resistance
 # leaves the merge ill-conditioned (and, at recovery = 1 exactly, with no unique steady flow).
 # Below it the dump term conditions the split on any wiring, so the warning would be spurious.
@@ -101,13 +101,14 @@ def _branch_reaches_unpinned_source(net, manifold: int, edge: int) -> bool:
         return False
 
 
-def diagnose_mixers(net) -> List[str]:
-    """Warning messages for mixers whose flow split is left under-determined.
+def diagnose_junctions(net) -> List[str]:
+    """Warning messages for junctions whose flow split is left under-determined.
 
-    A mixer at ``recovery`` above :data:`SIGMA_PIN_WARN` imposes only total-pressure
-    equalities, so the network must pin every inflow's rate.  When two or more of its branches
-    reach a total-pressure inlet through no resistance, the split among those inflows is
-    undetermined and the solve is unlikely to converge.
+    A junction on the geometry-free recovery closure at ``recovery`` above :data:`SIGMA_PIN_WARN`
+    imposes only total-pressure equalities, so the network must pin every inflow's rate.  When two
+    or more of its branches reach a total-pressure inlet through no resistance, the split among
+    those inflows is undetermined and the solve is unlikely to converge.  A junction on the
+    per-branch loss-coefficient closure carries its own branch resistance and is exempt.
 
     Parameters
     ----------
@@ -117,13 +118,16 @@ def diagnose_mixers(net) -> List[str]:
     Returns
     -------
     list of str
-        One message per under-pinned mixer (empty when none is found).
+        One message per under-pinned junction (empty when none is found).
     """
     messages: List[str] = []
     for node, spec in enumerate(net._elements):
-        if _rid(net, node) != MIXER:
+        if _rid(net, node) != JUNCTION:
             continue
-        sigma = float(spec.fparams[0])
+        if len(spec.fparams) > 2:
+            # per-branch loss-coefficient closure: the branch losses pin the split
+            continue
+        sigma = float(spec.fparams[1])
         if sigma < SIGMA_PIN_WARN:
             continue
         unpinned = [e for e in net.edges_of(node) if _branch_reaches_unpinned_source(net, node, e)]
@@ -135,9 +139,9 @@ def diagnose_mixers(net) -> List[str]:
             other = h if t == node else t
             feeds.append(net._elements[other].name)
         messages.append(
-            f"mixer '{spec.name}' has recovery={sigma:g}, but {len(unpinned)} of its "
+            f"junction '{spec.name}' has recovery={sigma:g}, but {len(unpinned)} of its "
             f"inflow branches reach a fixed total-pressure inlet ({', '.join(sorted(feeds))}) with "
-            f"no flow resistance in between. Near recovery = 1 the mixer adds no flow "
+            f"no flow resistance in between. Near recovery = 1 the junction adds no flow "
             f"resistance of its own, so the division of flow among these inflows is not pinned: the "
             f"solve is ill-conditioned approaching recovery = 1 and has no unique steady flow at "
             f"recovery = 1. Prescribe each inflow's rate with a mass-flow inlet, add a resistance in "

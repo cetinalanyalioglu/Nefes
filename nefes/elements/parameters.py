@@ -38,11 +38,9 @@ from .ids import (
     MASS_FLOW_INLET,
     MASS_FLOW_OUTLET,
     MASS_SOURCE,
-    MIXER,
     P_OUTLET,
     PIPE,
     PT_INLET,
-    SPLITTER,
     SUDDEN_AREA_CHANGE,
     TRANSFER_MATRIX,
     WALL,
@@ -487,19 +485,19 @@ ELEMENT_PARAMS: Dict[int, Tuple[ParamDescriptor, ...]] = {
         ParamDescriptor(
             "volume", unit="m^3", lo=0.0, slot=0, doc="plenum chamber volume (0 = no compliance)", layer="perturbation"
         ),
-    ),
-    SPLITTER: (
-        ParamDescriptor(
-            "volume", unit="m^3", lo=0.0, slot=0, doc="plenum chamber volume (0 = no compliance)", layer="perturbation"
-        ),
-    ),
-    MIXER: (
         ParamDescriptor(
             "recovery",
             lo=0.0,
             hi=1.0,
-            slot=0,
-            doc="dynamic-head recovery (0 = full dump loss / plenum, 1 = least-dissipative ideal)",
+            slot=1,
+            doc="geometry-free dynamic-head recovery (0 = full dump, 1 = least-dissipative ideal; used when K unset)",
+        ),
+        ParamDescriptor(
+            "K",
+            lo=0.0,
+            kind="vector",
+            optional=True,
+            doc="per-branch loss coefficients on each branch's own dynamic head (empty = recovery closure)",
         ),
     ),
     FORCED_SPLITTER: (
@@ -633,14 +631,20 @@ def pack_fparams(rid: int, values: Dict[str, object]):
     -------
     list of float
     """
-    slots = [d for d in ELEMENT_PARAMS.get(rid, ()) if d.slot is not None]
-    vector = [d for d in ELEMENT_PARAMS.get(rid, ()) if d.kind == "vector"]
-    if vector:
-        return [float(v) for v in values[vector[0].name]]
+    descs = ELEMENT_PARAMS.get(rid, ())
+    slots = [d for d in descs if d.slot is not None]
+    vector = [d for d in descs if d.kind == "vector"]
     out = [0.0] * len(slots)
     for d in slots:
         value = d.encode(values[d.name]) if d.encode is not None else values[d.name]
         out[d.slot] = float(value)
+    # A vector parameter occupies the tail past the fixed slots: the whole list when there are
+    # no slots (the forced splitter), or the per-branch coefficients after them (the junction).
+    for d in vector:
+        vec = values.get(d.name)
+        if vec is None:
+            continue
+        out.extend(float(v) for v in vec)
     return out
 
 

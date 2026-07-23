@@ -105,7 +105,7 @@ When only one endpoint is known, walk the topology instead of hand-counting: `ed
 Both take a name or a node index, and the ids they return index the same edge table as `connect`, so they read straight off a solution (`sol.edge(e)`, `sol.field(name)[e]`).
 
 ```python
-outs = net.edges_of("split", "out")     # edge ids leaving a splitter (it is the tail)
+outs = net.edges_of("split", "out")     # edge ids leaving a junction (it is the tail)
 ins  = net.edges_of("split", "in")      # edge ids entering it (it is the head); "both" is the default
 t, h = net.nodes_of(outs[0])            # the (tail, head) elements an edge connects
 net.element_name(t), net.element_name(h)
@@ -155,9 +155,7 @@ Internal (2-port and manifolds):
 | `linear_resistance(R, ...)` | linear loss `R * mdot` (survives zero mean flow) |
 | `duct(length=0.0, name="duct")` | lossless constant-area duct (acoustic phase) |
 | `pipe(length, diameter, friction_factor, formulation="darcy-weisbach", ...)` | length-bearing pipe; low-Mach Darcy head by default, compressible segment momentum when requested |
-| `junction(name="junction", volume=0.0)` | static-pressure manifold (optional plenum); low-Mach ports only |
-| `splitter(volume=0.0)` | total-pressure manifold |
-| `mixer(recovery=1.0, ...)` | second-law merge for non-slow ports (never manufactures total pressure); default = least-dissipative ideal, pin each inflow or lower `recovery` |
+| `junction(recovery=1.0, K=None, volume=0.0, ...)` | variable-port merge/distribute manifold (second law, any port Mach); default = least-dissipative ideal (pin each inflow or lower `recovery`); pass `K` for tabulated per-branch losses, `K=0` for the exact lossless limit; optional plenum `volume` |
 | `forced_splitter(fractions, ...)` | one inflow split at prescribed mass fractions |
 | `cavity(volume, ...)` | lumped volume: wall to mean flow, compliance to acoustics |
 
@@ -182,6 +180,22 @@ Composites (present as one element, expand to a sub-graph at build time):
 | `transfer_matrix_element(tm=None, ...)` | 2-port with a user-supplied acoustic transfer matrix |
 
 Sizing helper: `cat.segments_for_frequency(length, sound_speed, f_max, points_per_wavelength=12) -> int`.
+
+### Choosing a junction closure
+
+Wherever streams meet or split, use one `junction`; the `recovery` / `K` / `static_pressure` options pick how it closes its pressure equations. The common cases:
+
+| You want to model | Use | Why |
+| :-- | :-- | :-- |
+| **Lossless branching** of one stream into several (a lossless plenum distributing air) | `junction(K=0.0)` | exact common total pressure, no smoothing floor; the faithful lossless split. `junction()` (recovery = 1) is near-lossless but keeps a ~0.25% floor. |
+| **Merging** streams, least-loss ideal | `junction()` (recovery = 1, default) | second-law-safe merge; **pin each inflow** with a prescribed rate or a branch resistance (a bare pair of total-pressure feeds is under-determined). |
+| **Merging** streams, robust on any wiring | `junction(recovery=0.0)` | full-dump plenum; self-pins the split, converges anywhere, over-dissipates the dynamic head (negligible at low Mach). |
+| A **tee / wye of known geometry** | `junction(K=[k0, k1, ...])` | one tabulated loss coefficient per branch (Idelchik), on the branch's own dynamic head; convert a combined-referenced handbook value by the squared velocity (area) ratio. |
+| A **low-Mach header** (classic incompressible pipe-network node) | `junction(static_pressure=True)` or `junction(recovery=0.0)` | common static pressure; the first is exact (and matches other network tools), the second is the low-Mach limit of the recovery closure. |
+| A **resonator / capped side branch** (a dead leg) | `junction()` (any closure) | the dead-leg flow envelope handles a stagnant branch automatically; nothing special to do. Use `K=0.0` if you want the branch point exactly lossless. |
+| **Cross-comparison** with an incompressible pipe-network tool | `junction(static_pressure=True)` | reproduces the common-static-pressure node those tools implement. |
+
+Two standing rules for junctions: at `recovery = 1` (and with `K`) the manifold adds no resistance of its own, so **the flow split must be pinned by the network** (a `mass_flow_inlet` or a branch `loss` / `orifice` / `pipe`); and a **loop** of resistance-free manifolds has no unique steady flow, so every passage carrying flow around a loop needs a real resistance (see the loops guidance in the [modeling guide](reference/modeling-guide.md)).
 
 ---
 

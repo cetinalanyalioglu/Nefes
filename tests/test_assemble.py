@@ -45,7 +45,7 @@ def _branch():
     cfg = perfect_gas(R_AIR, GAMMA)
     elements = [
         cat.mass_flow_inlet(30.0, 300.0),
-        cat.splitter(),
+        cat.junction(),
         cat.loss(1.5),
         cat.loss(3.0),
         cat.junction(),

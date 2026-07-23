@@ -285,12 +285,17 @@ def _element_label(el) -> str:
 # --------------------------------------------------------------------------- #
 # Reads
 # --------------------------------------------------------------------------- #
+def _vector_offset(el) -> int:
+    """Index at which an element's tail vector parameter begins (past its fixed slots)."""
+    return sum(1 for dd in descriptors_for(el) if dd.slot is not None)
+
+
 def _read(el, d: ParamDescriptor):
     """Read one declared parameter off an element spec."""
     if is_composite(el):
         return el.params.get(d.name)
     if d.kind == "vector":
-        return list(el.fparams)
+        return list(el.fparams[_vector_offset(el) :])
     if d.slot is not None:
         v = el.fparams[d.slot]
         if d.decode is not None:
@@ -466,12 +471,14 @@ def set_params(net, target, params: Dict[str, object]) -> int:
         net._elements[n] = rebuild_composite(el, composite_updates)
     for d, v in field_writes:
         if d.kind == "vector":
-            if len(v) != len(el.fparams):
+            offset = _vector_offset(el)
+            tail_len = len(el.fparams) - offset
+            if len(v) != tail_len:
                 raise ValueError(
-                    f"{d.name} on {where} must keep its length {len(el.fparams)} (the port count is topology); "
+                    f"{d.name} on {where} must keep its length {tail_len} (the port count is topology); "
                     f"got {len(v)} values"
                 )
-            el.fparams[:] = [float(x) for x in v]
+            el.fparams[offset:] = [float(x) for x in v]
         elif d.slot is not None:
             stored = d.encode(v) if d.encode is not None else v
             el.fparams[d.slot] = float(stored) if d.kind != "int" else float(int(stored))

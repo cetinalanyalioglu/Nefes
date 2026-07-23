@@ -25,7 +25,7 @@ def _branched_net():
     """inlet -> splitter -> two ducts -> junction -> outlet."""
     net = Network(gas=CFG)
     i = net.add(cat.mass_flow_inlet(2.0, 300.0))
-    s = net.add(cat.splitter())
+    s = net.add(cat.junction())
     d1 = net.add(cat.duct(0.5))
     d2 = net.add(cat.duct(0.5))
     j = net.add(cat.junction())

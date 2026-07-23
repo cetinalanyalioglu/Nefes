@@ -98,7 +98,7 @@ def test_synthesized_manifold_roundtrip_resolves(tmp_path):
     assert sol.converged
     net2, doc = _reload(net, sol, str(tmp_path))
     # Junction carries the UI dynamic-port counts (2 in, 1 out).
-    jct = next(n for n in doc["model"]["nodes"] if n["type"] == "JunctionStaticP")
+    jct = next(n for n in doc["model"]["nodes"] if n["type"] == "Junction")
     assert jct["attributes"]["leftPorts"] == 2
     assert jct["attributes"]["rightPorts"] == 1
     sol2 = net2.solve()
@@ -149,10 +149,10 @@ def test_storage_elements_roundtrip(tmp_path):
     net2, doc = _reload(net, sol, str(tmp_path))
 
     types = {n["type"] for n in doc["model"]["nodes"]}
-    assert {"Cavity", "LinearResistance", "JunctionStaticP", "IsentropicAreaChange"} <= types
+    assert {"Cavity", "LinearResistance", "Junction", "IsentropicAreaChange"} <= types
     by_type = {n["type"]: n["attributes"] for n in doc["model"]["nodes"]}
     assert by_type["Cavity"]["volume"] == pytest.approx(1.0e-3)
-    assert by_type["JunctionStaticP"]["volume"] == pytest.approx(2.0e-3)
+    assert by_type["Junction"]["volume"] == pytest.approx(2.0e-3)
     assert by_type["IsentropicAreaChange"]["lengthUpstream"] == pytest.approx(0.03)
     assert by_type["IsentropicAreaChange"]["endCorrection"] == pytest.approx(0.005)
     assert by_type["LinearResistance"]["resistance"] == pytest.approx(40.0)

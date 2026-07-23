@@ -60,7 +60,7 @@ under `reference/` and are cross-linked, not rewritten.
 | T3 | `state-and-recovery.qmd` | Unknown set (ṁ, p, hₜ), the implicit density/enthalpy recovery, derived state, why not (pₜ, Tₜ); figures embedded as executable Quarto cells. | theory §4 |
 | T4 | `equation-structure.md` | Square-system bookkeeping (per-port rows, per-edge transport), the fixed split, direction discovery. | theory §5 |
 | T5 | `transport.qmd` | Total-enthalpy transport, donor/upwind form, generalization to carried scalars, why mass is not one. Inline figure: smooth upwind weight vs. hard Heaviside + quadratic error decay. | theory §6 |
-| T6 | `elements.md` | Constitutive residual of each element class (area change, loss, junction/splitter, boundaries, stabilization term); the blackbox **transfer-matrix 2-port** — mean-flow-passive (an isentropic area change), acoustically a prescribed/measured matrix (its stamp lives in T11/T13). | theory §7 + code |
+| T6 | `elements.md` | Constitutive residual of each element class (area change, loss, junction, boundaries, stabilization term); the blackbox **transfer-matrix 2-port** — mean-flow-passive (an isentropic area change), acoustically a prescribed/measured matrix (its stamp lives in T11/T13). | theory §7 + code |
 | T7 | `well-posedness.md` | Why naive flux-form / hard-switch formulations fail; zero-flow stationarity. | theory §8 |
 | T8 | `characteristics.md` | 1-D Euler decomposition, exact maps to network variables, Newton-invariance. | theory §9 |
 | T9 | `choking.qmd` | Emergent choking via smoothed complementarity; the validated operating map; what stays non-emergent. Inline figure: solver-computed converging-nozzle operating map (back-pressure sweep). | theory §11 |

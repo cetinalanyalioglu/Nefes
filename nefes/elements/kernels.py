@@ -26,11 +26,9 @@ from .ids import (
     MASS_FLOW_INLET,
     MASS_FLOW_OUTLET,
     MASS_SOURCE,
-    MIXER,
     P_OUTLET,
     PIPE,
     PT_INLET,
-    SPLITTER,
     SUDDEN_AREA_CHANGE,
     TRANSFER_MATRIX,
     WALL,
@@ -259,75 +257,117 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, eps
         R[r0] = mdot_out - mdot_crit
         return
 
-    if rid == JUNCTION or rid == SPLITTER:
-        acc = est[ES_MDOT, col_edge[base]] * 0.0
+    if rid == JUNCTION:
+        # Variable-port manifold that merges and distributes without ever handing a branch more
+        # total pressure than the feeds carry (the second law).  Mass balance on row 0, then
+        # (deg - 1) rows tying each port's *effective* total pressure to port 0's.  fparams is
+        # [volume, recovery, *K]; its length (a build-time constant, never a function of the flow
+        # state, so branching on it is complex-step safe) selects the loss closure:
+        #   nfp == 2  geometry-free recovery: the inflow loss interpolates by sigma = fparams[pb+1]
+        #             in [0, 1] between the full dump (sigma = 0: the whole dynamic head p_t - p)
+        #             and the least-dissipative ideal (sigma = 1: only the excess over the weakest
+        #             inflow, p_t - pt_min).
+        #             A sentinel sigma < 0 (fparams[pb+1] = -1) instead selects the classical
+        #             common-static-pressure header, R = p_0 - p_i, the exactly-linear closure of
+        #             incompressible pipe-network practice (offered for cross-tool comparison).
+        #   nfp >= 3  per-branch loss coefficients (tabulated junction data): each branch is
+        #             charged a total-pressure loss K_e * (p_t,e - p_e) on its own dynamic head,
+        #             sign-symmetric in the flow direction so that both the combining (inflow) and
+        #             dividing (outflow) branches dissipate.  nfp == 3 broadcasts one K to every
+        #             branch; nfp == 2 + deg reads K_e from fparams[pb+2+e] in local port order.
+        # fparams[pb+0] is the chamber volume (perturbation compliance only; inert here).
+        nfp = npar_fptr[n + 1] - pb
+        e0 = col_edge[base]
+        s0 = orient[base]
+        acc = est[ES_MDOT, e0] * 0.0
         for i in range(deg):
             acc = acc + orient[base + i] * est[ES_MDOT, col_edge[base + i]]
-        R[r0] = acc
-        e0 = col_edge[base]
-        for i in range(1, deg):
-            ei = col_edge[base + i]
-            si = orient[base + i]
-            if rid == JUNCTION:
-                R[r0 + i] = est[ES_P, e0] - est[ES_P, ei] - kappa * (si * est[ES_MDOT, ei])
-            else:
-                R[r0 + i] = est[ES_PT, e0] - est[ES_PT, ei] - kappa * (si * est[ES_MDOT, ei])
-        return
+        R[r0] = acc  # net mass balance
 
-    if rid == MIXER:
-        # Merge manifold that obeys the second law by never handing an outflow more total
-        # pressure than the feeds possess.  Mass balance, then (deg - 1) rows tying each port's
-        # *effective* total pressure to port 0's.  A port's effective total pressure removes its
-        # inflow loss, interpolated by sigma = npar_f[pb+0] in [0, 1] between the full dump loss
-        # (sigma = 0: the whole dynamic head p_t - p) and the ideal loss (sigma = 1: only the
-        # excess over the weakest inflow, p_t - min_inflow p_t):
-        #   loss_k = chi_k * [ (1 - sigma)*(p_t,k - p_k) + sigma*(p_t,k - pt_min) ]
-        # with chi_k the smooth inflow indicator (1 in, 0 out) and pt_min the smooth minimum of
-        # the inflow total pressures.  So sigma = 1 recovers the lossless splitter when
-        # distributing (one inflow -> its own p_t, zero loss) and the minimum-entropy mixer when
-        # merging (the outlet leaves at the weakest feed's total pressure), sigma = 0 fully
-        # dissipates the dynamic head (a plenum), and at low Mach it collapses to the
-        # common-pressure junction for any sigma.
-        e0 = col_edge[base]
-        sigma = npar_f[pb + 0]
-        # A port total pressure sets the (relative) smoothing / seed scales; it is kept complex
-        # (not .real) because it depends on the flow state, so the complex-step derivative must
-        # carry it.
-        pt_ref = est[ES_PT, e0]
-        delta = MIX_MIN_SMOOTH * pt_ref
-        excl = MIX_MIN_SEED * pt_ref
-        # First pass: mass balance, and the smooth minimum of the inflow total pressures.  Each
-        # outflow is lifted clear of the minimum by excl (its inflow weight chi ~ 0), so the
-        # minimum is taken over the inflows only; smooth_min under-estimates, keeping the
-        # feasibility ceiling on the safe side (pt_min <= every clear inflow's p_t).
-        acc = est[ES_MDOT, e0] * 0.0
-        pt_min = acc
-        for i in range(deg):
-            ei = col_edge[base + i]
-            si = orient[base + i]
-            acc = acc + si * est[ES_MDOT, ei]
-            chi = smooth_step(-si * est[ES_MDOT, ei], eps)  # inflow indicator (1 in, 0 out)
-            q = est[ES_PT, ei] + (1.0 - chi) * excl  # an outflow (chi -> 0) sits at p_t + excl
-            pt_min = q if i == 0 else smooth_min(pt_min, q, delta)
-        R[r0] = acc
-        # Second pass: each port's effective total pressure, tied to port 0's.  smooth_pos floors
-        # the ideal-loss term at zero, so a transiently over-estimated pt_min can never make the
-        # inflow gain total pressure (which would pump the flow backward); at the converged state
-        # pt_min <= p_t and the floor is inactive.
-        s0 = orient[base]
+        if nfp < 3 and npar_f[pb + 1] < -0.5:
+            # ---- common-static-pressure header (the classical junction; exactly linear) ----
+            for i in range(1, deg):
+                ei = col_edge[base + i]
+                si = orient[base + i]
+                R[r0 + i] = est[ES_P, e0] - est[ES_P, ei] - kappa * (si * est[ES_MDOT, ei])
+            return
+
+        if nfp < 3:
+            # ---- geometry-free recovery closure ----
+            sigma = npar_f[pb + 1]
+            # A port total pressure sets the (relative) smoothing / seed scales; it is kept
+            # complex (not .real) because it depends on the flow state, so the complex-step
+            # derivative must carry it.
+            pt_ref = est[ES_PT, e0]
+            delta = MIX_MIN_SMOOTH * pt_ref
+            excl = MIX_MIN_SEED * pt_ref
+            # Smooth minimum of the inflow total pressures.  The inflow weight is the inflow
+            # indicator times the flow envelope w introduced below: a flowing inflow has weight ~1
+            # and enters the minimum, while an outflow (chi ~ 0) or a dead-leg branch (w ~ 0, a
+            # stagnant neck or capped bleed) is lifted clear by excl and taken out of it.
+            # Enveloping here as well keeps a stagnant branch -- which carries no stream and should
+            # not set the weakest-feed level -- out of the minimum, and removes its ~1/eps switch
+            # derivative from the linearization of pt_min.
+            pt_min = acc * 0.0
+            for i in range(deg):
+                ei = col_edge[base + i]
+                si = orient[base + i]
+                qi = est[ES_PT, ei] - est[ES_P, ei]  # dynamic head of this branch
+                w = smooth_step(-si * est[ES_MDOT, ei], eps) * (qi / (qi + delta))  # flowing-inflow weight
+                q = est[ES_PT, ei] + (1.0 - w) * excl  # an outflow or dead leg sits at p_t + excl
+                pt_min = q if i == 0 else smooth_min(pt_min, q, delta)
+            # Each port's effective total pressure, tied to port 0's.  smooth_pos floors the
+            # ideal-loss term at zero, so a transiently over-estimated pt_min can never make the
+            # inflow gain total pressure (which would pump the flow backward); at the converged
+            # state pt_min <= p_t and the floor is inactive.
+            #
+            # The inflow loss has two parts.  The dump term (1 - sigma)(p_t - p) is the branch's own
+            # dynamic head, which already vanishes as mdot -> 0, so gating it by the inflow indicator
+            # chi is clean at every operating point.  The ideal-loss term sigma * smooth_pos(p_t -
+            # p_t^min) is the excess over the weakest feed, a non-local quantity that does NOT vanish
+            # at a dead-leg branch (a resonator neck, a capped bleed sitting at mdot = 0); gating it
+            # by chi -- whose derivative is ~1/eps at mdot = 0 -- would inject a spurious O(1/eps)
+            # acoustic resistance into the perturbation linearization there.  The flow envelope
+            # w = q / (q + delta), with q = p_t - p the branch's own dynamic head, multiplies only
+            # that term: q vanishes as mdot -> 0 (with its own mdot-derivative), so w is 0 at a dead
+            # leg and the switch derivative there is multiplied by w = 0, killing the artifact and
+            # charging a stagnant branch no mixing loss.  The scale delta is a fixed fraction of the
+            # port total pressure, NOT the continuation smoothing eps: tying the envelope to eps
+            # would move its transition as the solve tightens eps, so a moderate-flow branch would
+            # switch its loss on between continuation stages and stall the final Newton solve.
+            q0 = est[ES_PT, e0] - est[ES_P, e0]
+            chi0 = smooth_step(-s0 * est[ES_MDOT, e0], eps)
+            loss0 = chi0 * (
+                (1.0 - sigma) * q0 + sigma * (q0 / (q0 + delta)) * smooth_pos(est[ES_PT, e0] - pt_min, delta)
+            )
+            pteff0 = est[ES_PT, e0] - loss0
+            for i in range(1, deg):
+                ei = col_edge[base + i]
+                si = orient[base + i]
+                qi = est[ES_PT, ei] - est[ES_P, ei]
+                chi = smooth_step(-si * est[ES_MDOT, ei], eps)
+                loss = chi * (
+                    (1.0 - sigma) * qi + sigma * (qi / (qi + delta)) * smooth_pos(est[ES_PT, ei] - pt_min, delta)
+                )
+                pteff = est[ES_PT, ei] - loss
+                R[r0 + i] = pteff0 - pteff - kappa * (si * est[ES_MDOT, ei])
+            return
+
+        # ---- per-branch loss-coefficient closure (Idelchik) ----
+        # A single coefficient (nfp == 3) is broadcast to every branch; otherwise K_e is read per
+        # port from fparams[pb+2+e].  The sign factor (2*chi - 1) charges an inflow -K*(p_t - p)
+        # (loses on entering) and an outflow +K*(p_t - p) (loses on leaving), so the node total
+        # pressure stays at or below every inflow's for any K_e >= 0.
+        broadcast = nfp < 4
         chi0 = smooth_step(-s0 * est[ES_MDOT, e0], eps)
-        loss0 = chi0 * (
-            (1.0 - sigma) * (est[ES_PT, e0] - est[ES_P, e0]) + sigma * smooth_pos(est[ES_PT, e0] - pt_min, delta)
-        )
-        pteff0 = est[ES_PT, e0] - loss0
+        k0 = npar_f[pb + 2]
+        pteff0 = est[ES_PT, e0] - (2.0 * chi0 - 1.0) * k0 * (est[ES_PT, e0] - est[ES_P, e0])
         for i in range(1, deg):
             ei = col_edge[base + i]
             si = orient[base + i]
             chi = smooth_step(-si * est[ES_MDOT, ei], eps)
-            loss = chi * (
-                (1.0 - sigma) * (est[ES_PT, ei] - est[ES_P, ei]) + sigma * smooth_pos(est[ES_PT, ei] - pt_min, delta)
-            )
-            pteff = est[ES_PT, ei] - loss
+            ki = npar_f[pb + 2] if broadcast else npar_f[pb + 2 + i]
+            pteff = est[ES_PT, ei] - (2.0 * chi - 1.0) * ki * (est[ES_PT, ei] - est[ES_P, ei])
             R[r0 + i] = pteff0 - pteff - kappa * (si * est[ES_MDOT, ei])
         return
 

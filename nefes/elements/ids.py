@@ -10,8 +10,7 @@ P_OUTLET = 2
 ISEN_AREA_CHANGE = 3
 SUDDEN_AREA_CHANGE = 4
 LOSS = 5
-JUNCTION = 6
-SPLITTER = 7
+JUNCTION = 6  # variable-port manifold: merges and distributes without manufacturing total pressure
 DUCT = 8
 SUPERSONIC_INLET = 9  # reserved (deferred)
 SUPERSONIC_OUTLET = 10  # reserved (deferred)
@@ -26,7 +25,6 @@ CAVITY = 18  # 1-port finite-volume cavity: mean flow is a wall (mdot = 0); acou
 FORCED_SPLITTER = 19  # flow-divider manifold: 1 inflow (port 0) + N outflows, (N-1) outflow rates forced to fractions
 PIPE = 20  # 2-port length-bearing pipe: friction pressure drop (selectable closure) + duct acoustic phase
 TRANSFER_MATRIX = 21  # 2-port element: mean flow == isentropic area change; perturbation uses a user transfer matrix
-MIXER = 22  # variable-port merge: dump-mixing manifold that never manufactures total pressure (second law)
 
 # The pipe's mean-flow closure, packed as a build-time constant in its fparams slot 3.  The
 # kernel branches on it; it never depends on the flow state, so the branch is complex-step safe.
@@ -178,7 +176,7 @@ def port_kinds(rid, deg):
     fixed = _PORT_KINDS_FIXED.get(rid)
     if fixed is not None:
         return list(fixed)
-    if rid in (JUNCTION, SPLITTER, MIXER):
+    if rid == JUNCTION:
         return [PORT_ANY] * deg
     if rid == FORCED_SPLITTER:
         return [PORT_TARGET] + [PORT_SOURCE] * (deg - 1)
@@ -200,9 +198,7 @@ ALLOWS_AREA_CHANGE = {
     CAVITY: True,  # single port: nothing to compare (its volume tag carries no area constraint)
     ISEN_AREA_CHANGE: True,
     SUDDEN_AREA_CHANGE: True,
-    JUNCTION: True,
-    SPLITTER: True,
-    MIXER: True,  # variable-port merge manifold; imposes no area-equality constraint
+    JUNCTION: True,  # variable-port manifold; imposes no area-equality constraint
     FORCED_SPLITTER: True,  # manifold (flow divider); imposes no area-equality constraint
     DUCT: False,
     PIPE: False,  # constant-area length-bearing pipe (like the duct, both ports share one area)
@@ -222,9 +218,7 @@ ELEMENT_TYPE_NAMES = {
     ISEN_AREA_CHANGE: "IsentropicAreaChange",
     SUDDEN_AREA_CHANGE: "SuddenAreaChange",
     LOSS: "LossElement",
-    JUNCTION: "JunctionStaticP",
-    SPLITTER: "LosslessSplitter",
-    MIXER: "Mixer",
+    JUNCTION: "Junction",
     FORCED_SPLITTER: "ForcedSplitter",
     DUCT: "Duct",
     SUPERSONIC_INLET: "SupersonicInlet",

@@ -42,6 +42,9 @@ The notation follows a small set of rules, applied uniformly:
 | $L$ | duct length; $L_{\text{eff}}$ its acoustic effective length (with end corrections) |
 | $q$ | dynamic head of a stream, $q = \tfrac{1}{2}\varrho u^2$ (a signed, smoothed form is used in loss residuals) |
 | $K_L$ | loss coefficient of a concentrated loss element, referenced to a dynamic head |
+| $K_k$ | per-branch loss coefficient of a junction branch $k$, referenced to the branch's own dynamic head |
+| $\sigma$ (junction) | junction dynamic-head recovery in $[0,1]$: $1$ is the least-dissipative ideal, $0$ the full dump; distinct from the growth rate $\sigma$ and the orientation $\sigma_{P,e}$ |
+| $w_k$ | junction flow envelope $q_k/(q_k+\delta)$ on the branch dynamic head $q_k = p_{t,k}-p_k$, switching a branch's ideal loss off as its flow vanishes (dead-leg cleanliness) |
 | $C_c$ | vena-contracta contraction coefficient of a sudden contraction ($C_c = 1$ is loss-free) |
 | $f_0$ | resonant frequency [Hz] |
 | $\mathbf{A}(\omega)$ | perturbation system matrix, $\mathbf A = \overline{\mathbf J} + \mathrm{i}\omega\mathbf M + \mathbf P(\omega) + \mathbf S(\omega)$ |

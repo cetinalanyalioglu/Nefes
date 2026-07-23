@@ -49,7 +49,7 @@ def test_domain_max_dp_uses_widest_pair():
     # one inlet, two outlets at different pressures -> span is max minus min.
     els = [
         cat.total_pressure_inlet(1.10e5, 300.0),
-        cat.splitter(),
+        cat.junction(),
         cat.pressure_outlet(1.05e5, 300.0),
         cat.pressure_outlet(0.98e5, 300.0),
     ]

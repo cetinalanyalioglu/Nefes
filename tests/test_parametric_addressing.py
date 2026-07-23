@@ -121,7 +121,7 @@ def test_perturbation_layer_rows_leave_the_mean_residual_invariant(flame_case):
         nodes=[
             cat.mass_flow_inlet(0.05, 300.0, perturbation_bc=nefes.PerturbationBC.hard_wall()),
             cat.duct(0.3),
-            cat.splitter(name="plenum"),
+            cat.junction(name="plenum"),
             cat.duct(0.3),
             cat.pressure_outlet(1.0e5),
         ],

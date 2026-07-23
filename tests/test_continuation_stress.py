@@ -81,7 +81,7 @@ def _parallel_branches(n_branch, area=0.20, mdot=15.0):
     """``inlet -> splitter -> [loss_i] * n_branch -> junction -> outlet`` with spread loss K."""
     cfg = perfect_gas(R_AIR, GAMMA)
     j = 2 + n_branch  # junction node index
-    elements = [cat.mass_flow_inlet(mdot, 300.0), cat.splitter()]
+    elements = [cat.mass_flow_inlet(mdot, 300.0), cat.junction()]
     Ks = [0.5 + 0.4 * i for i in range(n_branch)]  # strictly increasing loss
     elements += [cat.loss(K) for K in Ks]
     elements += [cat.junction(), cat.pressure_outlet(P_REF)]

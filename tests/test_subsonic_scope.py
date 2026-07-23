@@ -105,19 +105,20 @@ def _resistance_free_ring():
     """Two bare (resistance-free) parallel paths between the same pair of junctions.
 
     ``in -> j0``; then ``j0 -> j1 -> j2`` and ``j0 -> j3 -> j2`` with no loss on the ring
-    edges; then ``j2 -> out``.  The split between the two equal-pressure paths is a
-    circulation the mean-flow balances do not pin down, so a solve can grow it until the
-    tiny ring edges run supersonic -- the failure the can-annular interconnector ring hit
-    before its tubes were given real friction.  The backstop cannot recover it (there is no
-    resistance to damp the circulation), which is exactly the case that must not be accepted.
+    edges; then ``j2 -> out``.  The split between the two parallel paths is a circulation the
+    mean-flow balances do not pin down, so a solve can grow it until the tiny ring edges run
+    supersonic -- the failure the can-annular interconnector ring hit before its tubes were given
+    real friction.  The backstop cannot recover it, which is exactly the case that must not be
+    accepted.  The header nodes are junctions on the full-dump limit (``recovery = 0``), the
+    conditioning-robust closure that carries the solve onto the spurious supersonic root.
     """
     return nefes.Network(
         nodes=[
             cat.mass_flow_inlet(10.0, 300.0, name="in"),
-            cat.junction(name="j0"),
-            cat.junction(name="j1"),
-            cat.junction(name="j2"),
-            cat.junction(name="j3"),
+            cat.junction(recovery=0.0, name="j0"),
+            cat.junction(recovery=0.0, name="j1"),
+            cat.junction(recovery=0.0, name="j2"),
+            cat.junction(recovery=0.0, name="j3"),
             cat.pressure_outlet(1.0e5, 300.0, name="out"),
         ],
         edges=[(0, 1, 0.05), (1, 2, 0.001), (2, 3, 0.001), (1, 4, 0.001), (4, 3, 0.001), (3, 5, 0.05)],

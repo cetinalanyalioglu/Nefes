@@ -49,11 +49,9 @@ from nefes.elements.ids import (
     MASS_FLOW_INLET,
     MASS_FLOW_OUTLET,
     MASS_SOURCE,
-    MIXER,
     P_OUTLET,
     PIPE,
     PT_INLET,
-    SPLITTER,
     SUDDEN_AREA_CHANGE,
     SUPERSONIC_INLET,
     SUPERSONIC_OUTLET,
@@ -124,24 +122,24 @@ def _all_elements_network(inlet):
     elements = [
         inlet,  # 0
         cat.isentropic_area_change(),  # 1
-        cat.splitter(),  # 2
+        cat.junction(recovery=0.0),  # 2  distributing manifold (full-dump: robust at low drive)
         cat.loss(2.5),  # 3
         cat.duct(0.4),  # 4
         cat.sudden_area_change(cc=0.7),  # 5
-        cat.junction(),  # 6
+        cat.junction(),  # 6  collecting manifold
         cat.pressure_outlet(1.0e5),  # 7
         cat.wall(),  # 8
     ]
     edges = [
         (0, 1, A0),  # e0  inlet -> iac
-        (1, 2, A1),  # e1  iac -> splitter (area change A0 -> A1)
-        (2, 3, A1),  # e2  splitter -> loss
+        (1, 2, A1),  # e1  iac -> junction (area change A0 -> A1)
+        (2, 3, A1),  # e2  junction -> loss
         (3, 4, A1),  # e3  loss -> duct      (loss: constant area)
         (4, 6, A1),  # e4  duct -> junction  (duct: constant area)
-        (2, 5, A1),  # e5  splitter -> sac
+        (2, 5, A1),  # e5  junction -> sac
         (5, 6, A2),  # e6  sac -> junction   (area change A1 -> A2)
         (6, 7, A2),  # e7  junction -> outlet
-        (2, 8, A1),  # e8  splitter -> wall  (dead leg, mdot = 0)
+        (2, 8, A1),  # e8  junction -> wall  (dead leg, mdot = 0)
     ]
     return build_problem(cfg, elements, edges, mdot_ref=40.0, p_ref=101325.0, h_ref=CP * 300.0)
 
@@ -313,35 +311,46 @@ def _probe_pipe(formulation="darcy-weisbach"):
 
 
 def _probe_junction():
-    # two inflow legs merging (junction: shared static pressure)
+    # two inflow legs merging on the geometry-free recovery closure (recovery = 0.5 exercises
+    # both the full-dump term and the minimum-inflow term).  The inflow indicator smooth_step,
+    # the smooth minimum, and the smooth_pos floor of the loss must stay analytic through the
+    # forward / reverse / near-zero / near-choke sweep on every port.
     els = [
         cat.total_pressure_inlet(PT_BC, TT),
         cat.total_pressure_inlet(PT_BC, TT),
-        cat.junction(),
+        cat.junction(recovery=0.5),
         cat.pressure_outlet(P_OUT),
     ]
     edges = [(0, 2, PA), (1, 2, PA), (2, 3, PA)]
     return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
-def _probe_splitter():
-    # one inflow splitting into two legs (splitter: shared total pressure)
-    els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.pressure_outlet(P_OUT)]
-    edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
+def _probe_junction_static_p():
+    # the common-static-pressure header closure (R = p_0 - p_i): exactly linear in the flow state,
+    # so the complex-step Jacobian is exact across the forward / reverse / near-zero / near-choke
+    # sweep with no smoothing.
+    els = [
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.junction(static_pressure=True),
+        cat.pressure_outlet(P_OUT),
+    ]
+    edges = [(0, 2, PA), (1, 2, PA), (2, 3, PA)]
     return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
-def _probe_mixer():
-    # two inflow legs merging (mixer: shared effective total pressure).  The
-    # inflow indicator smooth_step and the dynamic-head term (p_t - p) must stay analytic
+def _probe_junction_loss_coeffs():
+    # a 3-port junction on the per-branch loss-coefficient closure, a distinct K on each branch.
+    # The sign factor (2*chi - 1) flips the loss between the combining and dividing directions as
+    # a branch reverses, so the smooth_step and the dynamic head (p_t - p) must stay analytic
     # through the forward / reverse / near-zero / near-choke sweep on every port.
     els = [
         cat.total_pressure_inlet(PT_BC, TT),
-        cat.total_pressure_inlet(PT_BC, TT),
-        cat.mixer(0.5),  # exercise both the dump and the minimum-inflow loss terms
+        cat.junction(K=[0.2, 0.7, 0.4]),
+        cat.pressure_outlet(P_OUT),
         cat.pressure_outlet(P_OUT),
     ]
-    edges = [(0, 2, PA), (1, 2, PA), (2, 3, PA)]
+    edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
     return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
@@ -361,16 +370,16 @@ def _probe_forced_splitter():
 
 
 def _probe_wall():
-    # wall on a dead leg off a splitter (mdot = 0 at the wall edge)
-    els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.wall()]
+    # wall on a dead leg off a junction (mdot = 0 at the wall edge)
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.junction(), cat.pressure_outlet(P_OUT), cat.wall()]
     edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
     return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
 def _probe_cavity():
-    # finite-volume cavity on a dead leg off a splitter (mdot = 0 at the cavity edge):
+    # finite-volume cavity on a dead leg off a junction (mdot = 0 at the cavity edge):
     # its mean residual is the wall's, so the complex-step sweep covers the same kernel.
-    els = [cat.total_pressure_inlet(PT_BC, TT), cat.splitter(), cat.pressure_outlet(P_OUT), cat.cavity(2.0e-3)]
+    els = [cat.total_pressure_inlet(PT_BC, TT), cat.junction(), cat.pressure_outlet(P_OUT), cat.cavity(2.0e-3)]
     edges = [(0, 1, PA), (1, 2, PA), (1, 3, PA)]
     return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
@@ -423,8 +432,6 @@ PROBES = {
     PIPE: _probe_pipe,
     DUCT: _probe_duct,
     JUNCTION: _probe_junction,
-    SPLITTER: _probe_splitter,
-    MIXER: _probe_mixer,
     FORCED_SPLITTER: _probe_forced_splitter,
     WALL: _probe_wall,
     CAVITY: _probe_cavity,
@@ -511,6 +518,17 @@ def test_momentum_pipe_kernel_complex_step_safe_across_regimes():
     # The pipe carries two closures behind one residual id, so the roll-call sweep above
     # (keyed on the id) reaches only the default one; the momentum branch is swept here.
     _assert_complex_step_matches_fd(_probe_pipe("momentum"), "Pipe (momentum)")
+
+
+def test_junction_loss_coeff_kernel_complex_step_safe_across_regimes():
+    # The junction carries three closures behind one residual id; the roll-call sweep (keyed on the
+    # id) reaches the recovery closure, so the per-branch loss-coefficient closure is swept here.
+    _assert_complex_step_matches_fd(_probe_junction_loss_coeffs(), "Junction (loss coefficients)")
+
+
+def test_junction_static_p_kernel_complex_step_safe_across_regimes():
+    # The common-static-pressure header closure, the junction's third closure, swept here.
+    _assert_complex_step_matches_fd(_probe_junction_static_p(), "Junction (static pressure)")
 
 
 # --------------------------------------------------------------------------

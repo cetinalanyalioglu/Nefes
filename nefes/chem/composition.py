@@ -3,7 +3,7 @@ mixture fractions** ``xi``.
 
 The reacting network transports one conserved band-1 scalar per **feed stream**
 (each distinct injected composition: an oxidizer, a diluent, a fuel, ...).  A feed
-stream's mass is conserved through every mixer, mass source and flame
+stream's mass is conserved through every junction, mass source and flame
 (combustion conserves elemental -- hence stream-origin -- mass), so its transport
 is source-free and acoustically neutral.  The mixture fractions ``xi`` reconstruct
 the unburnt speciation exactly by a forward blend ``Y = sum_k xi_k Y_k``, so an

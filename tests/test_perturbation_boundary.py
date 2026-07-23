@@ -358,7 +358,11 @@ def test_wall_blocks_mean_flow_dead_end():
     assert sol.converged
     main, dead = sol.edge(1), sol.edge(2)
     assert abs(dead["mdot"]) < 1e-9  # no mass crosses the wall
-    assert dead["p"] == pytest.approx(main["p"], rel=1e-6)  # junction common static pressure
+    # The junction ties a common effective total pressure; the dead leg carries no flow, so its
+    # gas is at rest and its static pressure equals that node total pressure (it fills to the
+    # junction stagnation, above the flowing main's static pressure).
+    assert dead["p_t"] == pytest.approx(main["p_t"], rel=1e-6)  # common node total pressure
+    assert dead["p"] == pytest.approx(dead["p_t"], rel=1e-6)  # stagnant: static = total
     assert dead["h_t"] == pytest.approx(main["h_t"], rel=1e-6)  # enthalpy-transparent donor
 
 
@@ -586,7 +590,7 @@ def _branched_terminations_case():
                     impedanceMagnitude=1.0,
                     impedancePhase=0.0,
                 ),
-                node("tee", "JunctionStaticP", index=1, label="tee"),
+                node("tee", "Junction", index=1, label="tee"),
                 node("main", "Duct", index=2, label="main-duct", length=0.60),
                 node(
                     "liner",

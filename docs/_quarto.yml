@@ -155,7 +155,6 @@ quartodoc:
         - elements.catalog.duct
         - elements.catalog.pipe
         - elements.catalog.junction
-        - elements.catalog.splitter
         - elements.catalog.forced_splitter
         - elements.catalog.wall
         - elements.catalog.cavity

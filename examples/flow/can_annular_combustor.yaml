@@ -17,8 +17,9 @@ model:
     referenceMassFlow: 0
   nodes:
   - id: LosslessSplitter1-1ly
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-1
       index: 0
       rightPorts: 2
@@ -91,8 +92,9 @@ model:
       height: 52
       index: 23
   - id: JunctionStaticP1-69w
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-1
       index: 7
       leftPorts: 2
@@ -107,8 +109,9 @@ model:
       index: 4
       length: 0.03
   - id: LosslessSplitter2-tsy
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-1
       index: 6
       rightPorts: 2
@@ -140,16 +143,18 @@ model:
       index: 24
       throatArea: 0.002
   - id: JunctionStaticP2-mp3
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-1
       index: 42
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter3-2ms
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-2
       index: 13
       rightPorts: 2
@@ -163,8 +168,9 @@ model:
       index: 58
       length: 0.18
   - id: JunctionStaticP3-ryk
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-1
       index: 61
       leftPorts: 2
@@ -215,8 +221,9 @@ model:
       index: 59
       length: 0.05
   - id: LosslessSplitter4-35g
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-2
       index: 44
       rightPorts: 2
@@ -289,8 +296,9 @@ model:
       height: 52
       index: 124
   - id: JunctionStaticP4-8wu
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-2
       index: 122
       leftPorts: 2
@@ -305,8 +313,9 @@ model:
       index: 93
       length: 0.03
   - id: LosslessSplitter5-t4s
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-3
       index: 15
       rightPorts: 2
@@ -338,16 +347,18 @@ model:
       index: 64
       throatArea: 0.002
   - id: JunctionStaticP5-zjw
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-2
       index: 95
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter6-psb
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-4
       index: 45
       rightPorts: 2
@@ -361,8 +372,9 @@ model:
       index: 125
       length: 0.18
   - id: JunctionStaticP6-4jp
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-2
       index: 127
       leftPorts: 2
@@ -413,8 +425,9 @@ model:
       index: 126
       length: 0.05
   - id: LosslessSplitter7-pt7
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-3
       index: 46
       rightPorts: 2
@@ -487,8 +500,9 @@ model:
       height: 52
       index: 130
   - id: JunctionStaticP7-f5z
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-3
       index: 128
       leftPorts: 2
@@ -503,8 +517,9 @@ model:
       index: 97
       length: 0.03
   - id: LosslessSplitter8-vnb
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-5
       index: 16
       rightPorts: 2
@@ -536,16 +551,18 @@ model:
       index: 68
       throatArea: 0.002
   - id: JunctionStaticP8-p3z
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-3
       index: 99
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter9-osh
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-6
       index: 47
       rightPorts: 2
@@ -559,8 +576,9 @@ model:
       index: 131
       length: 0.18
   - id: JunctionStaticP9-cr6
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-3
       index: 134
       leftPorts: 2
@@ -611,8 +629,9 @@ model:
       index: 132
       length: 0.05
   - id: LosslessSplitter10-jqr
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-4
       index: 48
       rightPorts: 2
@@ -685,8 +704,9 @@ model:
       height: 52
       index: 137
   - id: JunctionStaticP10-x3k
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-4
       index: 135
       leftPorts: 2
@@ -701,8 +721,9 @@ model:
       index: 101
       length: 0.03
   - id: LosslessSplitter11-pnx
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-7
       index: 18
       rightPorts: 2
@@ -734,16 +755,18 @@ model:
       index: 72
       throatArea: 0.002
   - id: JunctionStaticP11-d9p
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-4
       index: 103
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter12-cyq
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-8
       index: 49
       rightPorts: 2
@@ -757,8 +780,9 @@ model:
       index: 138
       length: 0.18
   - id: JunctionStaticP12-nsk
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-4
       index: 141
       leftPorts: 2
@@ -809,8 +833,9 @@ model:
       index: 139
       length: 0.05
   - id: LosslessSplitter13-4id
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-5
       index: 50
       rightPorts: 2
@@ -883,8 +908,9 @@ model:
       height: 52
       index: 144
   - id: JunctionStaticP13-pmk
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-5
       index: 142
       leftPorts: 2
@@ -899,8 +925,9 @@ model:
       index: 105
       length: 0.03
   - id: LosslessSplitter14-2ob
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-9
       index: 19
       rightPorts: 2
@@ -932,16 +959,18 @@ model:
       index: 76
       throatArea: 0.002
   - id: JunctionStaticP14-bg3
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-5
       index: 107
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter15-sb8
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-10
       index: 51
       rightPorts: 2
@@ -955,8 +984,9 @@ model:
       index: 145
       length: 0.18
   - id: JunctionStaticP15-ztt
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-5
       index: 148
       leftPorts: 2
@@ -1007,8 +1037,9 @@ model:
       index: 146
       length: 0.05
   - id: LosslessSplitter16-ngm
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-6
       index: 52
       rightPorts: 2
@@ -1081,8 +1112,9 @@ model:
       height: 52
       index: 151
   - id: JunctionStaticP16-6fd
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-6
       index: 149
       leftPorts: 2
@@ -1097,8 +1129,9 @@ model:
       index: 109
       length: 0.03
   - id: LosslessSplitter17-ljj
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-11
       index: 20
       rightPorts: 2
@@ -1130,16 +1163,18 @@ model:
       index: 80
       throatArea: 0.002
   - id: JunctionStaticP17-cxi
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-6
       index: 111
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter18-ek4
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-12
       index: 53
       rightPorts: 2
@@ -1153,8 +1188,9 @@ model:
       index: 152
       length: 0.18
   - id: JunctionStaticP18-ord
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-6
       index: 155
       leftPorts: 2
@@ -1205,8 +1241,9 @@ model:
       index: 153
       length: 0.05
   - id: LosslessSplitter19-p2i
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-7
       index: 54
       rightPorts: 2
@@ -1279,8 +1316,9 @@ model:
       height: 52
       index: 158
   - id: JunctionStaticP19-5n7
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-7
       index: 156
       leftPorts: 2
@@ -1295,8 +1333,9 @@ model:
       index: 113
       length: 0.03
   - id: LosslessSplitter20-w5b
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-13
       index: 21
       rightPorts: 2
@@ -1328,16 +1367,18 @@ model:
       index: 84
       throatArea: 0.002
   - id: JunctionStaticP20-1bv
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-7
       index: 115
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter21-qw8
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-14
       index: 55
       rightPorts: 2
@@ -1351,8 +1392,9 @@ model:
       index: 159
       length: 0.18
   - id: JunctionStaticP21-uv4
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-7
       index: 162
       leftPorts: 2
@@ -1403,8 +1445,9 @@ model:
       index: 160
       length: 0.05
   - id: LosslessSplitter22-2x5
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: sw-split-8
       index: 56
       rightPorts: 2
@@ -1477,8 +1520,9 @@ model:
       height: 52
       index: 165
   - id: JunctionStaticP22-vlb
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dome-cooling-8
       index: 163
       leftPorts: 2
@@ -1493,8 +1537,9 @@ model:
       index: 117
       length: 0.03
   - id: LosslessSplitter23-hbl
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-15
       index: 22
       rightPorts: 2
@@ -1526,16 +1571,18 @@ model:
       index: 88
       throatArea: 0.002
   - id: JunctionStaticP23-5e5
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: pz-cool-8
       index: 119
       leftPorts: 3
       rightPorts: 2
       volume: 0
   - id: LosslessSplitter24-vye
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: dome-split-16
       index: 57
       rightPorts: 2
@@ -1549,8 +1596,9 @@ model:
       index: 166
       length: 0.18
   - id: JunctionStaticP24-krn
-    type: JunctionStaticP
+    type: Junction
     attributes:
+      recovery: 0.0
       label: dil-8
       index: 168
       leftPorts: 2
@@ -1601,7 +1649,7 @@ model:
       index: 91
       length: 0.05
   - id: Mixer1-c1h
-    type: Mixer
+    type: Junction
     attributes:
       label: ngv-collector
       index: 121
@@ -1635,8 +1683,9 @@ model:
       impedanceMagnitude: 1
       impedancePhase: 0
   - id: LosslessSplitter25-9jl
-    type: LosslessSplitter
+    type: Junction
     attributes:
+      K: 0.0
       label: plenum
       index: 10
       rightPorts: 9
@@ -5073,8 +5122,7 @@ uiState:
       HelmholtzResonator: 0
       FannoPipe: 0
       TaperedDuct: 0
-      JunctionStaticP: 25
-      LosslessSplitter: 25
+      Junction: 50
       ForcedSplitter: 0
     totalNodeCounters:
       MassFlowInlet: 2
@@ -5100,6 +5148,5 @@ uiState:
       HelmholtzResonator: 0
       FannoPipe: 0
       TaperedDuct: 0
-      JunctionStaticP: 25
-      LosslessSplitter: 25
+      Junction: 50
       ForcedSplitter: 0

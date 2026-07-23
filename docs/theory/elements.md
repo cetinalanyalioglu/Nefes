@@ -143,31 +143,13 @@ where the absolute value is the same analytic regularization used by the loss fa
 Together with constant mass flow and total enthalpy, refinement of this formulation converges to the classical perfect-gas Fanno relations; the `fanno_pipe` composite uses it by default.
 Both formulations become the ordinary Darcy pressure drop at low Mach number, but they are not interchangeable near a sonic state.
 
-## Junctions and splitters {#sec-elements-junctions-splitters}
+## The junction {#sec-elements-junctions-splitters}
 
-A multi-port node that merges or distributes streams supplies one mass balance and $n - 1$ pressure couplings of its remaining ports against port $0$.
-Two couplings are available, given as:
+A junction is a multi-port node that merges and distributes streams while conserving mass, energy, and species and never manufacturing total pressure.
+A single element serves both roles at any port Mach number: the special cases historically drawn as a distinct static-pressure header, a lossless splitter, and a mixer are recovered as limits of its two closures, discussed below.
+It accepts any number of ports ($n \ge 2$) with the flow direction at each port discovered by the solve, and it supplies one mass balance together with $n-1$ pressure couplings of its remaining ports against port $0$.
 
-$$
-\text{static-pressure junction:}\quad R_{1+i} = p_0 - p_i,
-\qquad
-\text{lossless splitter:}\quad R_{1+i} = p_{t,0} - p_{t,i},
-\qquad i = 1,\dots,n-1,
-$$
-
-where the junction ties all ports to a common *static* pressure and the splitter to a common *total* pressure (each row also carrying its $\kappa$-term).
-The static-pressure junction is the classical header or manifold node, appropriate where every port runs at low Mach number so that the kinetic terms it ignores are negligible; enthalpy mixing of several inflows is automatic through the donor mechanism of [transport](transport.qmd#sec-transport-donor-enthalpy).
-The lossless splitter is an isentropic distribution plenum: with $h_t$ delivered by the edge transport and $p_t$ common, entropy is continuous into every outflow branch, reproducing the classical lossless splitter of mass, energy, and constant entropy.
-
-**A selection rule that is not cosmetic.**
-The static-pressure junction must be used *only* where every port runs at low Mach number.
-At a fast port, equal static pressure plus the port's velocity head hands the branch a total pressure $p_t \approx p + \tfrac{1}{2}\varrho u^2$ — more total pressure than the feed possesses — which is free energy and a second-law violation.
-It should be noted that the consequence is not merely a small error: the surplus must be destroyed somewhere downstream, and if no element can do so the network has *no steady solution at all* and the solver can only stall.
-The rule of thumb is therefore that a plenum feeding fast branches takes a splitter (common $p_t$), while a low-speed header collecting comparable streams takes a static-pressure junction (common $p$); a merge with a port that is not slow takes the mixer below, which lifts the low-Mach restriction by charging the mixing loss instead of ignoring it.
-
-**Mixer.**
-The mixer is the general merge that respects the second law at any port Mach number.
-It ties every port to a common *effective* total pressure,
+The couplings tie every port to a common *effective* total pressure, given as:
 
 $$
 R_{1+i} = p_{t,i}^{\mathrm{eff}} - p_{t,0}^{\mathrm{eff}} - \kappa\text{-term},
@@ -176,34 +158,82 @@ p_{t,k}^{\mathrm{eff}} = p_{t,k} - \ell_k,
 \qquad i = 1,\dots,n-1,
 $$
 
-where the inflow loss interpolates between two limits set by the recovery $\sigma \in [0,1]$:
+where $p_{t,k}$ is the total pressure at port $k$, $\ell_k$ is the total-pressure loss charged to that branch, and the $\kappa$-term is the continuation resistance of [assembly](../design/assembly.md).
+Total enthalpy and composition are mass-averaged onto every outflow by the edge donor of [transport](transport.qmd#sec-transport-donor-enthalpy), so mass, energy, and species are conserved exactly and independently of how the branch loss is modeled.
+Two closures set that loss $\ell_k$, and they are mutually exclusive: a geometry-free closure parameterized by a single recovery, and a per-branch closure that reads a tabulated loss coefficient on each branch.
+
+**The geometry-free recovery closure.**
+When no per-branch data is supplied, the inflow loss interpolates between two limits set by the recovery $\sigma \in [0,1]$, given as:
 
 $$
-\ell_k = \chi_k\Big[(1-\sigma)\,\underbrace{(p_{t,k}-p_k)}_{\text{dynamic head}} + \sigma\,\underbrace{(p_{t,k}-p_t^{\min})}_{\text{excess over weakest feed}}\Big],
+\ell_k = \chi_k\Big[(1-\sigma)\,\underbrace{(p_{t,k}-p_k)}_{\text{dynamic head}} + \sigma\,w_k\,\underbrace{\mathrm{pos}(p_{t,k}-p_t^{\min})}_{\text{excess over weakest feed}}\Big],
 \qquad
 p_t^{\min} = \min_{j\,\in\,\text{inflows}} p_{t,j},
 $$
 
-with $\chi_k$ the smooth inflow indicator (one on an inflow port, zero on an outflow) and $p_t^{\min}$ the smooth minimum over the inflow total pressures.
-The two limits are the worst and best merges the state allows.
+where $p_k$ is the static pressure at port $k$, $\chi_k$ is the smooth inflow indicator (one on an inflow port, zero on an outflow), $p_t^{\min}$ is the smooth minimum of the total pressures over the inflow ports, $\mathrm{pos}(\cdot)$ is the regularized positive part, and $w_k$ is the flow envelope introduced below.
+The two limits are the worst and best merges the state admits.
 At $\sigma = 0$ each inflow surrenders its whole dynamic head $p_{t,k}-p_k$, the full dump loss of a plenum: the most dissipative merge, and the best conditioned because the loss is a private per-port quantity.
 At $\sigma = 1$ each inflow surrenders only its excess over the weakest feed $p_{t,k}-p_t^{\min}$, so every port leaves at the minimum inflow total pressure, the least dissipation the second law permits for the given streams.
 An outflow ($\chi_k \to 0$) takes no loss and leaves at the common node total pressure.
 For any $\sigma$ the couplings hold the node total pressure at or below every inflow's, $p_t^{\mathrm{node}} \le p_{t,i}$, so no branch ever gains total pressure.
-With the total enthalpy and composition mass-averaged by the same donor as the junction, and specific entropy decreasing in total pressure (at fixed enthalpy and composition) and concave in enthalpy, the mass-averaged outflow entropy is at or above the feed mean: the entropy production $\dot S_{\mathrm{gen}} = \dot m\, s^{\mathrm{node}} - \sum_{\text{in}} \dot m_i\, s_i \ge 0$ by construction, whatever the port Mach numbers.
+With the total enthalpy and composition mass-averaged by the donor, and specific entropy decreasing in total pressure (at fixed enthalpy and composition) and concave in enthalpy, the mass-averaged outflow entropy is at or above the feed mean: the entropy production $\dot S_{\mathrm{gen}} = \dot m\, s^{\mathrm{node}} - \sum_{\text{in}} \dot m_i\, s_i \ge 0$ by construction, whatever the port Mach numbers.
 
-At the recovery limit $\sigma = 1$ the dump term vanishes and the couplings become pure total-pressure equalities, $p_{t,k} - \ell_k = p_t^{\mathrm{node}}$ with $p_t^{\mathrm{node}} = p_t^{\min}$, carrying no relation between a port's mass flow and its pressure drop.
-The element then adds no flow resistance of its own, exactly as the splitter adds none, so the flow split is left to the rest of the network.
-Distributing a single inflow, that is automatic: the minimum runs over the one feed, its loss vanishes, and every outflow leaves at the inflow's own total pressure, which is exactly the lossless (isentropic) splitter.
-Merging several streams, $\sigma = 1$ is the least-dissipative limit, and it is well posed precisely when the network pins each inflow's rate independently of the manifold, through a prescribed inflow (a mass-flow inlet) or a real resistance in its branch (a loss, an orifice, a pipe).
-Two total-pressure reservoirs attached directly to the node do not meet that condition: the weakest feed then sees no pressure drop and its flow rate is undetermined, so the merge has no unique steady state, exactly the requirement the splitter already carries and not a property of the element.
-For $\sigma < 1$ the dump term $(1-\sigma)(p_{t,k}-p_k)$ rises with each inflow's own dynamic head, a self-supplied resistance that pins the split without help from the network, so lower recovery converges on any topology; the conditioning degrades smoothly as $\sigma \to 1$ and that self-resistance fades.
-The default is $\sigma = 1$, the least-dissipative ideal, which asks that each inflow be pinned by the network; the solve carries a topological check that warns when a mixer near this limit is reached by two or more total-pressure inlets through no resistance, the under-pinned merge above.
-Lowering $\sigma$ toward $0$ gives the robust full dump, well posed for any wiring, which at low Mach reduces to the static-pressure junction.
-Because it charges a fast inflow its mixing loss instead of manufacturing free energy, the mixer is the general merge element, converging on merges of unequal total pressure that the lossless splitter cannot represent.
+The recovery therefore trades dissipation for conditioning.
+At $\sigma = 1$ the dump term vanishes and the couplings become pure total-pressure equalities, $p_{t,k}^{\mathrm{eff}} = p_t^{\mathrm{node}} = p_t^{\min}$, carrying no relation between a port's mass flow and its pressure drop; the element then adds no flow resistance of its own and the flow split is left to the rest of the network.
+Distributing a single inflow, that is automatic: the minimum runs over the one feed, its loss vanishes, and every outflow leaves at the inflow's own total pressure, an isentropic split.
+Merging several streams, $\sigma = 1$ is well posed precisely when the network pins each inflow's rate independently of the manifold, through a prescribed inflow (a mass-flow inlet) or a real resistance in its branch (a loss, an orifice, a pipe); two total-pressure reservoirs attached directly to the node leave the weakest feed's rate undetermined, so the merge has no unique steady state.
+For $\sigma < 1$ the dump term rises with each inflow's own dynamic head, a self-supplied resistance that pins the split without help from the network, so lower recovery converges on any topology; the solve carries a topological check that warns when a junction near $\sigma = 1$ is reached by two or more total-pressure inlets through no resistance.
+The default is $\sigma = 1$, the least-dissipative ideal.
+Lowering $\sigma$ toward $0$ gives the robust full dump, which at low Mach number reduces to a common-static-pressure header (a fast port's dynamic head then being negligible), the classical junction of incompressible pipe-network practice, to $\mathcal{O}(M^2)$.
+
+**The flow envelope, and why it is not cosmetic.**
+The factor $w_k$ multiplying the ideal-loss term is a *flow envelope* built from the branch's own dynamic head, given as:
+
+$$
+w_k = \frac{q_k}{q_k + \delta},
+\qquad
+q_k = p_{t,k} - p_k,
+$$
+
+where $q_k$ is the dynamic head at port $k$ and $\delta$ is a small fixed fraction of the port total pressure.
+The dynamic head vanishes as $\dot m_k \to 0$ (quadratically, $q_k = \tfrac12\varrho_k u_k^2$), so $w_k$ is unity for a flowing branch ($q_k \gg \delta$), leaving the mean loss unchanged there, and it vanishes at $\dot m_k = 0$ together with its $\dot m_k$-derivative.
+Its purpose is to keep the closure well behaved at a *dead-leg branch* — a resonator neck or a capped bleed carrying no mean flow, so that its operating point sits at $\dot m_k = 0$.
+The dump term already vanishes there (the dynamic head is zero at rest) and so needs no envelope, but the excess-over-weakest term does not: $p_{t,k}-p_t^{\min}$ stays finite at a stagnant branch.
+Gating a term that does not vanish by the inflow indicator $\chi_k$, whose derivative at $\dot m_k = 0$ is $\mathcal{O}(1/\varepsilon)$, would leave the linearization of the loss with an $\mathcal{O}(1/\varepsilon)$ sensitivity to $\dot m_k'$ — an acoustic resistance proportional to the smoothing scale rather than to any physical loss, which spuriously damps a side-branch resonance in the perturbation network.
+The envelope removes it: since $w_k$ and its $\dot m_k$-derivative are zero at $\dot m_k = 0$, the ideal loss and the weakest-feed minimum are both switched off at a stagnant branch, charging it no mixing loss, which is the physically correct limit and leaves the perturbation linearization free of the artifact.
+An important remark is that the envelope scale $\delta$ is a fixed fraction of the total pressure and, in particular, is *not* the continuation smoothing scale $\varepsilon$: were $w_k$ tied to $\varepsilon$, its transition would move as the solve tightens $\varepsilon$ through the continuation, so a moderate-flow branch could switch its loss on between stages and stall the final Newton solve.
+The mean flow of any network in which every branch carries flow is unaffected.
+
+**The per-branch loss-coefficient closure.**
+Where the flow branches, the momentum balance discards the internal geometry, and a general closure returns it as a coefficient read from tabulated junction data [@idelchik2007handbook].
+Each branch is then charged a total-pressure loss on its own dynamic head, sign-symmetric in the flow direction, given as:
+
+$$
+\ell_k = (2\chi_k - 1)\,K_k\,(p_{t,k}-p_k),
+$$
+
+where $K_k \ge 0$ is the loss coefficient of branch $k$ and the sign factor $2\chi_k - 1$ is $+1$ on an inflow and $-1$ on an outflow.
+An inflow (combining branch) thus loses $K_k(p_{t,k}-p_k)$ on entering the mix and an outflow (dividing branch) loses $K_k(p_{t,k}-p_k)$ on leaving it, so both directions dissipate and, for any $K_k \ge 0$, the node total pressure again stays at or below every inflow's.
+Because the loss is referenced to each branch's *own* dynamic head, which vanishes as $\dot m_k \to 0$, this closure needs no envelope and is clean at a dead leg without further construction.
+An important remark on units: a handbook coefficient is most often tabulated against the combined-branch velocity head, whereas the closure charges it on the branch's own head; the supplied $K_k$ must therefore be the value referenced to the branch's own head, obtained from the tabulated one by the squared velocity (equivalently, area) ratio.
+The coefficient $K_k = 0$ recovers exact total-pressure continuity on that branch, the lossless splitter, with no smoothing floor.
+
+**The common-static-pressure header.**
+A third closure, selected by ``static_pressure``, ties every branch to a common *static* pressure rather than an effective total pressure, given as:
+
+$$
+R_{1+i} = p_0 - p_i - \kappa\text{-term},
+\qquad
+i = 1,\dots,n-1,
+$$
+
+the classical header of incompressible pipe-network practice, and exactly linear in the flow state.
+It is offered chiefly for cross-comparison with such tools.
+It should be noted that it is not second-law-consistent at a fast port: equal static pressure plus a port's velocity head hands that branch a total pressure $p + \tfrac12\varrho u^2$ exceeding the feed's, a manufacture of free energy the second law forbids, so it must be restricted to configurations where every port runs at low Mach number.
 
 **Forced splitter.**
-A flow divider whose split is imposed rather than discovered is a variant of the splitter: with one inflow at port $0$, the first $n - 2$ outflow ports each carry a fixed fraction $\beta_i$ of the inflow rate, and the last outflow port carries the remainder while keeping total-pressure continuity with the inflow.
+A flow divider whose split is imposed rather than discovered is a variant of the junction: with one inflow at port $0$, the first $n - 2$ outflow ports each carry a fixed fraction $\beta_i$ of the inflow rate, and the last outflow port carries the remainder while keeping total-pressure continuity with the inflow.
 Because reverse flow is disallowed, no upwind switch is needed and every row is linear in the flow state, so the complex-step Jacobian is exact without smoothing.
 
 ## Boundary elements {#sec-elements-boundary}

@@ -77,12 +77,10 @@ from ..elements.ids import (
     MASS_FLOW_INLET,
     MASS_FLOW_OUTLET,
     MASS_SOURCE,
-    MIXER,
     P_OUTLET,
     PIPE,
     PIPE_FORMULATION_NAMES,
     PT_INLET,
-    SPLITTER,
     STREAM_INTRODUCING,
     SUDDEN_AREA_CHANGE,
     TRANSFER_MATRIX,
@@ -1143,13 +1141,22 @@ def _length_attrs(fp, off):
 
 
 def _manifold_attrs(fp):
-    """UI manifold attributes: the chamber ``volume`` (emitted only when non-zero).
+    """UI junction attributes: chamber ``volume``, ``recovery``, and per-branch ``K``.
 
-    ``fparams = [volume]``; a plain (volume-less) manifold serializes bare.
+    ``fparams = [volume, recovery, *K]``.  Attributes are emitted only when they differ from the
+    default (volume 0, recovery 1, no ``K``), so a plain manifold serializes bare.  A single
+    trailing coefficient serializes ``K`` as a scalar (broadcast); several serialize it as a list.
     """
     out = {}
-    if fp and float(fp[0]) != 0.0:
+    if len(fp) > 0 and float(fp[0]) != 0.0:
         out["volume"] = float(fp[0])
+    ks = [float(k) for k in fp[2:]]
+    if ks:
+        out["K"] = ks[0] if len(ks) == 1 else ks
+    elif len(fp) > 1 and float(fp[1]) < -0.5:
+        out["staticPressure"] = True  # the common-static-pressure header (recovery sentinel)
+    elif len(fp) > 1 and float(fp[1]) != 1.0:
+        out["recovery"] = float(fp[1])
     return out
 
 
@@ -1236,11 +1243,7 @@ def _spec_to_ui(spec):
     if rid == LINEAR_RESISTANCE:
         return "LinearResistance", {"resistance": float(fp[0]), **_length_attrs(fp, 1)}
     if rid == JUNCTION:
-        return "JunctionStaticP", _manifold_attrs(fp)
-    if rid == SPLITTER:
-        return "LosslessSplitter", _manifold_attrs(fp)
-    if rid == MIXER:
-        return "Mixer", {"recovery": float(fp[0])}
+        return "Junction", _manifold_attrs(fp)
     if rid == FORCED_SPLITTER:
         # fparams are the N-1 controlled outflow betas, in port order
         return "ForcedSplitter", {"fractions": ", ".join(f"{float(b):g}" for b in fp)}
@@ -1344,7 +1347,7 @@ def _assign_ports(network):
             src_ord[ei] = len(inc) + k
         if rid == JUNCTION:
             port_attrs[nd] = {"leftPorts": len(inc), "rightPorts": len(out)}
-        elif rid in (SPLITTER, FORCED_SPLITTER):
+        elif rid == FORCED_SPLITTER:
             port_attrs[nd] = {"rightPorts": len(out)}
     return src_ord, tgt_ord, port_attrs
 

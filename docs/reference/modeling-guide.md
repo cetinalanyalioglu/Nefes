@@ -32,21 +32,21 @@ An abrupt area change is the **sudden area change**, lossy in expansion by the B
 A converging nozzle discharging to a back pressure is modeled with a pressure outlet, which chokes at the critical pressure ratio on its own; a component known only by its throat area and assumed to run choked is the compact **choked-nozzle outlet**, which pins the outflow to the critical mass flux.
 For acoustic work a length-bearing passage should be given its length, since the length sets the propagation phase even when it is inert to the mean flow (see [perturbation network](../theory/perturbation-network.md#sec-perturb-propagation-block)).
 
-## Junctions, and the selection rule
+## Junctions, and choosing the loss closure
 
-Where several streams meet or split, the choice between a **static-pressure junction** and a **lossless splitter** is not cosmetic and is governed by a firm rule: use the static-pressure junction only where every port runs at low Mach number, and the splitter wherever a plenum feeds a fast branch.
-A static-pressure junction feeding a fast port hands that branch more total pressure than the feed possesses — free energy that the network cannot dissipate, leaving it with no steady solution — so a plenum distributing to high-speed branches must be a splitter, while a low-speed header merging comparable streams may be a junction (see [elements](../theory/elements.md#sec-elements-junctions-splitters)).
-Where streams *merge* and a port is not slow, use the **mixer**: it ties the ports to a common effective total pressure, charging each inflow a mixing loss, so it never manufactures total pressure and generates entropy at any port Mach number.
-Its `recovery` sets that loss between the best and worst merges the streams allow: at $1$ (the default) it removes only each inflow's excess over the weakest feed, so the outlet leaves at the minimum inflow total pressure, the least the second law permits; at $0$ each inflow gives up its whole dynamic head, the full dump loss of a plenum, the most dissipative and best-conditioned.
-At the default $\sigma = 1$ the element adds no flow resistance of its own (pressure equalities only, like the splitter), so the flow split must be pinned by the network: distributing one inflow this is the lossless splitter; merging, it is well posed only when every inflow's rate is pinned by a mass-flow inlet or a branch resistance, and two bare total-pressure feeds on the node leave the split under-determined (the splitter's own requirement, which the solve warns about).
-Lower `recovery` toward $0$ for the robust dump when the feeds are not otherwise pinned: each inflow's dump term is then a self-supplied resistance, so it converges on any wiring and reduces to the junction at low Mach.
-Unlike the splitter it converges on merges of unequal total pressure.
+Where several streams meet or split, use a **junction**: the single variable-port manifold that merges and distributes while respecting the second law at any port Mach number (see [elements](../theory/elements.md#sec-elements-junctions-splitters)).
+It ties the ports to a common effective total pressure, charging each branch a loss so the node total pressure never rises above the feeds and entropy production is non-negative whatever the port Mach numbers.
+The loss is set one of two ways.
+With no per-branch data, `recovery` sets a geometry-free loss between the best and worst merges the streams allow: at $1$ (the default) it removes only each inflow's excess over the weakest feed, so the outlet leaves at the minimum inflow total pressure, the least the second law permits (an isentropic split when distributing a single inflow); at $0$ each inflow gives up its whole dynamic head, the full dump loss of a plenum, the most dissipative and best-conditioned, which at low Mach ties a common static pressure — the classical header.
+At the default $\sigma = 1$ the element adds no flow resistance of its own, so the flow split must be pinned by the network: merging is well posed only when every inflow's rate is pinned by a mass-flow inlet or a branch resistance, and two bare total-pressure feeds on the node leave the split under-determined (the solve warns about this).
+Lower `recovery` toward $0$ for the robust dump when the feeds are not otherwise pinned: each inflow's dump term is then a self-supplied resistance, so it converges on any wiring.
+When the junction geometry is known, pass tabulated loss coefficients through `K` instead: each branch is then charged $K_k\,\tfrac12\varrho_k u_k^2$ on its own dynamic head, sign-symmetric so both the combining and dividing branches dissipate ($K = 0$ is the exact lossless limit).
 A divider whose split is imposed rather than discovered is the **forced splitter**, which fixes the branch fractions and keeps total-pressure continuity on the one free branch.
 
 ## Loops need resistance
 
 When the topology closes a loop, every connection carrying flow around that loop must have a real resistance, a pipe or a loss, not a bare lossless link.
-A ring of junctions (or splitters) tied to one another by resistance-free connections has no unique steady flow: a circulation can run around the loop without changing any node's pressure or upsetting any mass balance, so the mean-flow equations leave the size of that circulation undetermined.
+A ring of junctions tied to one another by resistance-free connections has no unique steady flow: a circulation can run around the loop without changing any node's pressure or upsetting any mass balance, so the mean-flow equations leave the size of that circulation undetermined.
 The solver has nothing to pin it to, and can grow the circulation until the connecting passages run far past the speed of sound, a non-physical result that is a symptom of the missing resistance rather than a solver fault.
 The remedy is to model the loop the way the hardware is built: an interconnector tube between combustor cans, a balance pipe between manifolds, or a bypass line is a **pipe** (friction and length) or at least a **loss**, so the flow around the loop is set by the small pressure differences that actually drive it.
 A physical loop always carries resistance; leaving it out is the modeling error, and giving the connectors their resistance both restores a unique solution and keeps it comfortably subsonic.
@@ -61,6 +61,6 @@ Fuel injectors and the coupling between a component's loss and its downstream du
 
 The mapping from a catalogue datum to a network element reduces to a short recipe.
 First, identify what the datum characterizes — a loss coefficient, a discharge coefficient, a flow factor, or a geometry — and which pressures it relates.
-Second, choose the element whose residual matches that characterization: a loss element for a coefficient-based restriction, an area-change element for a geometric one, a boundary element for a termination, a junction or splitter for a meeting of streams.
+Second, choose the element whose residual matches that characterization: a loss element for a coefficient-based restriction, an area-change element for a geometric one, a boundary element for a termination, a junction for a meeting of streams.
 Third, translate the datum into the element's parameter, converting a discharge coefficient or flow factor into the loss coefficient the element expects, and supply a length if the acoustics will use the component.
 Finally, let the solver discover the flow directions, the choke points, and the operating state, checking the converged result against the component's expected behaviour rather than prescribing it — the discovery-over-prescription stance that the whole framework is built to support (see [the design philosophy](../design/philosophy.md)).

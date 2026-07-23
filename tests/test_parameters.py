@@ -69,8 +69,8 @@ ATOMIC_SAMPLES = [
         dict(mdot=0.01, T=300.0, composition={"CH4": 1.0}, u_inj=25.0),
         dict(mdot=0.01, u_inj=25.0, T=300.0),
     ),
-    (cat.junction, dict(volume=2e-3), dict(volume=2e-3)),
-    (cat.splitter, dict(volume=0.0), dict(volume=0.0)),
+    (cat.junction, dict(volume=2e-3, recovery=0.7), dict(volume=2e-3, recovery=0.7)),
+    (cat.junction, dict(K=[0.2, 0.5, 0.3]), dict(volume=0.0, recovery=1.0, K=[0.2, 0.5, 0.3])),
     (cat.forced_splitter, dict(fractions=[0.3, 0.2]), dict(fractions=[0.3, 0.2])),
     (cat.duct, dict(length=0.7), dict(length=0.7)),
     (

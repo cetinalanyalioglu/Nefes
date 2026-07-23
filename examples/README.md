@@ -36,8 +36,8 @@ Each notebook opens with its network topology drawn by the **Nemo** UI, then bui
   **multiport scattering** perturbation layer with per-terminal source attribution.
 - **`can_annular_combustor.ipynb`** (+ **`can_annular_combustor.yaml`**) — the **reacting
   showcase**: a whole can-annular combustor **loaded from a saved case** and solved as one
-  reacting network. One plenum (a lossless **splitter**) distributes compressor-discharge air in
-  two stages, through per-can **distributor** splitters, to a **ring of eight reacting Jet-A(L)
+  reacting network. One plenum (a lossless **junction**, `K=0`) distributes compressor-discharge air in
+  two stages, through per-can **distributor** junctions, to a **ring of eight reacting Jet-A(L)
   cans** (dome swirl air, plus liner-cooling and dilution air metered through the annulus and
   liner holes by **flow splitting**) and a turbine-cooling **bypass**; the delivery, feed, bypass,
   and **interconnector** lines are **pipes** (Darcy friction), and the cans are cross-linked by
@@ -105,7 +105,7 @@ Each notebook opens with its network topology drawn by the **Nemo** UI, then bui
   **Helmholtz resonator** from primitives and reproduces the analytic transmission-loss peak
   at `f₀ = c√(Aₙ/(V·l))/2π`.
 - **`inertance_storage.ipynb`** — generalizes the storage block `M` to the **jump elements**:
-  the **inertance** and the **manifold compliance** (`volume` on `junction`/`splitter`).
+  the **inertance** and the **manifold compliance** (`volume` on a `junction`).
 - **`mode_shape_animation.ipynb`** — Nefes's **spatially-resolved mode shapes**: the
   continuous perturbation field *inside* the ducts, animated over one oscillation cycle
   (the duct's own analytic phase relation, not an approximation).
@@ -299,10 +299,10 @@ model:
 **Ports matter and are preserved.** Each edge's `sourceHandle`/`targetHandle`
 ends in `-port-<ordinal>`; the loader keeps those ordinals and densifies each
 element's incident ports to `0..d-1`, so port-0 conventions (the LossElement
-reference area, the junction/splitter reference port) match the canvas. Element
+reference area, the junction reference port) match the canvas. Element
 `type` names map to the Nefes catalog: `MassFlowInlet`, `TotalPressureInlet`,
 `PressureOutlet`, `Wall`, `IsentropicAreaChange`, `SuddenAreaChange`, `LossElement`,
-`Duct`, `JunctionStaticP`, `LosslessSplitter`. Supersonic boundaries are deferred
+`Duct`, `Junction`. Supersonic boundaries are deferred
 in v1 and raise a clear error.
 
 ## Perturbation boundary conditions

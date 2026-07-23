@@ -13,6 +13,8 @@
 
 ## To verify
 
+- [ ] Re-run the example notebooks end-to-end after the junction consolidation (acoustics/combustion/flow): the code and saved cases load and solve, but the plots and acoustic sweeps are unverified. The combustor saved-case YAMLs (`rql_combustor`, `can_annular_combustor`, `gas_turbine_large`) still carry node-ID *labels* from the old element names (functional but inconsistent); regenerating them from their notebooks would clean that up.
+
 ## To brainstorm
 
 - [ ] We reject BC's when there is no absolute pressure reference from any of them. For such cases, would it work if we had an absolute pressure reference at some arbitrary edge state in the domain? If so, we could let the user enforce absolute pressure at exactly one edge.

@@ -187,7 +187,7 @@ Wherever streams meet or split, use one `junction`; the `recovery` / `K` / `stat
 
 | You want to model | Use | Why |
 | :-- | :-- | :-- |
-| **Lossless branching** of one stream into several (a lossless plenum distributing air) | `junction(K=0.0)` | exact common total pressure, no smoothing floor; the faithful lossless split. `junction()` (recovery = 1) is near-lossless but keeps a ~0.25% floor. |
+| **Lossless branching** of one stream into several (a lossless plenum distributing air) | `junction(K=0.0)` | exact common total pressure, isentropic, with no smoothing floor: the faithful lossless split. `junction()` (recovery = 1) is only *near*-lossless — the smoothed positive part leaves a small residual loss that grows with the inflow's dynamic head (a few 0.01 % of $p_t$ at low Mach, approaching 0.25 % at a fast inflow). |
 | **Merging** streams, least-loss ideal | `junction()` (recovery = 1, default) | second-law-safe merge; **pin each inflow** with a prescribed rate or a branch resistance (a bare pair of total-pressure feeds is under-determined). |
 | **Merging** streams, robust on any wiring | `junction(recovery=0.0)` | full-dump plenum; self-pins the split, converges anywhere, over-dissipates the dynamic head (negligible at low Mach). |
 | A **tee / wye of known geometry** | `junction(K=[k0, k1, ...])` | one tabulated loss coefficient per branch (Idelchik), on the branch's own dynamic head; convert a combined-referenced handbook value by the squared velocity (area) ratio. |

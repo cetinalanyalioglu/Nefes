@@ -1143,20 +1143,24 @@ def _length_attrs(fp, off):
 def _manifold_attrs(fp):
     """UI junction attributes: chamber ``volume``, ``recovery``, and per-branch ``K``.
 
-    ``fparams = [volume, recovery, *K]``.  Attributes are emitted only when they differ from the
+    ``fparams = [volume, recovery, *tail]``.  Attributes are emitted only when they differ from the
     default (volume 0, recovery 1, no ``K``), so a plain manifold serializes bare.  A single
     trailing coefficient serializes ``K`` as a scalar (broadcast); several serialize it as a list.
+    Per-branch recovery serializes ``recovery`` as a list, one factor per port.
     """
     out = {}
     if len(fp) > 0 and float(fp[0]) != 0.0:
         out["volume"] = float(fp[0])
-    ks = [float(k) for k in fp[2:]]
-    if ks:
-        out["K"] = ks[0] if len(ks) == 1 else ks
-    elif len(fp) > 1 and float(fp[1]) < -0.5:
+    sel = float(fp[1]) if len(fp) > 1 else 1.0
+    tail = [float(v) for v in fp[2:]]
+    if sel < -2.5:
+        out["recovery"] = tail  # per-branch recovery factors (tail marker)
+    elif sel < -0.5:
         out["staticPressure"] = True  # the common-static-pressure header (recovery sentinel)
-    elif len(fp) > 1 and float(fp[1]) != 1.0:
-        out["recovery"] = float(fp[1])
+    elif tail:
+        out["K"] = tail[0] if len(tail) == 1 else tail
+    elif sel != 1.0:
+        out["recovery"] = sel
     return out
 
 

@@ -124,13 +124,22 @@ def diagnose_junctions(net) -> List[str]:
     for node, spec in enumerate(net._elements):
         if _rid(net, node) != JUNCTION:
             continue
-        if len(spec.fparams) > 2:
-            # per-branch loss-coefficient closure: the branch losses pin the split
+        sel = float(spec.fparams[1])
+        edges = net.edges_of(node)
+        if sel < -2.5:
+            # per-branch recovery: only the branches whose own factor is near 1 go unpinned
+            sigmas = [float(s) for s in spec.fparams[2:]]
+            candidates = [e for e, s in zip(edges, sigmas) if s >= SIGMA_PIN_WARN]
+            shown = "recovery=[" + ", ".join(f"{s:g}" for s in sigmas) + "]"
+        elif sel < -0.5 or len(spec.fparams) > 2:
+            # the common-static-pressure header, or the loss coefficients that pin the split
             continue
-        sigma = float(spec.fparams[1])
-        if sigma < SIGMA_PIN_WARN:
-            continue
-        unpinned = [e for e in net.edges_of(node) if _branch_reaches_unpinned_source(net, node, e)]
+        else:
+            if sel < SIGMA_PIN_WARN:
+                continue
+            candidates = edges
+            shown = f"recovery={sel:g}"
+        unpinned = [e for e in candidates if _branch_reaches_unpinned_source(net, node, e)]
         if len(unpinned) < 2:
             continue
         feeds = []
@@ -139,7 +148,7 @@ def diagnose_junctions(net) -> List[str]:
             other = h if t == node else t
             feeds.append(net._elements[other].name)
         messages.append(
-            f"junction '{spec.name}' has recovery={sigma:g}, but {len(unpinned)} of its "
+            f"junction '{spec.name}' has {shown}, but {len(unpinned)} of its "
             f"inflow branches reach a fixed total-pressure inlet ({', '.join(sorted(feeds))}) with "
             f"no flow resistance in between. Near recovery = 1 the junction adds no flow "
             f"resistance of its own, so the division of flow among these inflows is not pinned: the "

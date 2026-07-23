@@ -217,6 +217,123 @@ def test_default_recovery_is_the_least_dissipative_ideal():
     assert cat.junction().fparams[1] == 1.0
 
 
+def test_branch_recovery_broadcast_reproduces_the_scalar():
+    """One factor per branch, all equal, is the same closure as the single broadcast factor.
+
+    The per-branch form must be a strict generalization: repeating a factor across every port
+    reproduces the scalar solve, so nothing about the closure changes when the vector form is used.
+    """
+    for sigma in (0.0, 0.5, 1.0):
+        scalar = _pinned_merge_network(cat.junction(recovery=sigma)).solve()
+        vector = _pinned_merge_network(cat.junction(recovery=[sigma] * 3)).solve()
+        assert scalar.converged and vector.converged, sigma
+        for field in ("mdot", "p", "p_t", "T"):
+            assert np.allclose(scalar.field(field), vector.field(field), rtol=1e-10, atol=0.0), (sigma, field)
+
+
+def test_branch_recovery_charges_the_branch_it_is_given_to():
+    """Each factor acts on its own branch, in the order the branches are wired.
+
+    Two streams that are identical apart from their recovery factor must lose differently: the
+    branch on the full dump gives up its whole dynamic head, while the branch on the ideal gives up
+    only its excess over the weakest feed.  Swapping the two factors swaps which stream is charged,
+    which pins both the per-branch action and the port ordering of the vector.
+    """
+    equal = dict(mdot_hi=4.0, mdot_lo=4.0, tt_hi=300.0, tt_lo=300.0)
+    first = _pinned_merge_network(cat.junction(recovery=[0.0, 1.0, 1.0]), **equal).solve()
+    second = _pinned_merge_network(cat.junction(recovery=[1.0, 0.0, 1.0]), **equal).solve()
+    assert first.converged and second.converged
+
+    # the dumped branch arrives with a higher total pressure: it has to, since it is charged its
+    # whole dynamic head to reach the same node
+    pt_first, pt_second = first.field("p_t"), second.field("p_t")
+    assert pt_first[0] > pt_first[1]
+    assert pt_second[1] > pt_second[0]
+    # the two solves are mirror images of each other (identical streams, swapped factors), to the
+    # solver's convergence tolerance
+    assert np.isclose(pt_first[0], pt_second[1], rtol=1e-6)
+    assert np.isclose(pt_first[1], pt_second[0], rtol=1e-6)
+    assert np.isclose(pt_first[2], pt_second[2], rtol=1e-6)
+
+
+def test_branch_recovery_respects_the_second_law():
+    """A mixed set of factors still produces entropy and never manufactures total pressure.
+
+    The guarantee follows from each branch's loss being non-negative, whatever sets it, so mixing
+    the factors across ports cannot break it.
+    """
+    sol = _pinned_merge_network(cat.junction(recovery=[0.0, 1.0, 0.3])).solve()
+    assert sol.converged, (sol.residual_norm, sol.print_residuals())
+    assert sol.verify() == []
+    assert np.abs(sol.field("M")).max() < 1.0
+
+    pt = sol.field("p_t")
+    assert pt[2] <= min(pt[0], pt[1]) * (1.0 + 1e-6)  # node at or below the weakest feed
+    assert _node_entropy_production(sol, in_edges=(0, 1), out_edges=(2,)) > 0.0
+
+    # mixing in a dumped branch dissipates more than putting every branch on the ideal
+    ideal = _pinned_merge_network(cat.junction(recovery=1.0)).solve()
+    assert _node_entropy_production(sol, in_edges=(0, 1), out_edges=(2,)) > _node_entropy_production(
+        ideal, in_edges=(0, 1), out_edges=(2,)
+    )
+
+
+def test_branch_recovery_is_inert_on_a_dividing_branch():
+    """A factor acts only while its branch feeds the node.
+
+    Under this closure a dividing branch carries no mixing loss, so its recovery factor has nothing
+    to act on: changing the factors of the two outflows of a distribution leaves the mean flow
+    untouched, while changing the single inflow's factor moves it.
+    """
+    base = _distribution_network(cat.junction(recovery=[1.0, 1.0, 1.0])).solve()
+    outflows_changed = _distribution_network(cat.junction(recovery=[1.0, 0.0, 0.0])).solve()
+    inflow_changed = _distribution_network(cat.junction(recovery=[0.0, 1.0, 1.0])).solve()
+    assert base.converged and outflows_changed.converged and inflow_changed.converged
+
+    assert np.allclose(base.field("mdot"), outflows_changed.field("mdot"), rtol=1e-9)
+    assert not np.allclose(base.field("p_t"), inflow_changed.field("p_t"), rtol=1e-3)
+
+
+def test_branch_recovery_validation():
+    """The vector form is validated: range, port count, and exclusivity with ``K``."""
+    with pytest.raises(ValueError, match=r"\[0, 1\]"):
+        cat.junction(recovery=[0.5, 1.2])
+    with pytest.raises(ValueError, match="one entry per port"):
+        cat.junction(recovery=[0.5])
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        cat.junction(recovery=[0.5, 0.5], K=0.3)
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        cat.junction(recovery=[0.5, 0.5], static_pressure=True)
+    # the list length is topology, so a mismatch against the wired port count is caught at build
+    with pytest.raises(ValueError, match="one factor per port"):
+        _merge_network(cat.junction(recovery=[0.5, 0.5])).solve()
+
+
+def test_branch_recovery_parameter_addressing_and_roundtrip(tmp_path):
+    """Per-branch recovery is a named vector parameter and survives a YAML round-trip."""
+    net = _pinned_merge_network(cat.junction(recovery=[0.2, 0.6, 1.0], name="jn"))
+    assert net.get("jn.recovery") == [0.2, 0.6, 1.0]
+    assert "jn.K" not in net.parameters()  # the two closures are mutually exclusive
+
+    tuned = net.with_params({"jn.recovery": [0.3, 0.3, 0.3]})
+    assert tuned.get("jn.recovery") == [0.3, 0.3, 0.3]
+    assert net.get("jn.recovery") == [0.2, 0.6, 1.0]  # base network is untouched
+
+    path = str(tmp_path / "branch-recovery.yaml")
+    net.save(path)
+    back = nefes.load_case(path)
+    assert back.get("jn.recovery") == [0.2, 0.6, 1.0]
+    assert back.solve().converged
+
+
+def test_diagnostic_reads_each_branch_own_recovery():
+    """The under-pinned warning counts only the branches whose own factor is near the ideal."""
+    # both feeds on the ideal and neither pinned by the network: under-determined
+    assert len(diagnose_junctions(_merge_network(cat.junction(recovery=[1.0, 1.0, 1.0], name="jn")))) == 1
+    # the second feed dumps its head, which pins it, leaving only one unpinned branch
+    assert diagnose_junctions(_merge_network(cat.junction(recovery=[1.0, 0.0, 1.0]))) == []
+
+
 def test_diagnostic_flags_underpinned_high_recovery_merge():
     """A high-recovery merge with unpinned total-pressure feeds is flagged before it fails.
 

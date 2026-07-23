@@ -306,8 +306,8 @@ enthalpy and composition are mass-averaged by the edge donor, so mass, energy, a
 conserved exactly.
 
 With `K` unset, the loss is the **geometry-free recovery** closure
-$\ell_k = \chi_k\big[(1-\sigma)(p_{t,k}-p_k) + \sigma\,w_k\,\mathrm{pos}(p_{t,k}-p_t^{\min})\big]$,
-where $\chi_k$ is the smooth inflow indicator, $\sigma$ is `recovery`, $p_t^{\min}$ is the smooth
+$\ell_k = \chi_k\big[(1-\sigma_k)(p_{t,k}-p_k) + \sigma_k\,w_k\,\mathrm{pos}(p_{t,k}-p_t^{\min})\big]$,
+where $\chi_k$ is the smooth inflow indicator, $\sigma_k$ is `recovery`, $p_t^{\min}$ is the smooth
 minimum of the inflow total pressures, and $w_k = q_k/(q_k+\delta)$ (on the branch dynamic head
 $q_k = p_{t,k}-p_k$) is the flow envelope that switches the ideal loss off at a stagnant (dead-leg)
 branch so it stays clean in the perturbation network. `recovery` sets the loss between two limits: $1$ (the default) removes only
@@ -319,7 +319,12 @@ the classical header. At $\sigma = 1$ the element adds no flow resistance of its
 split must be pinned by the network (a `mass_flow_inlet` or a branch resistance); two bare
 `total_pressure_inlet` feeds on the node leave the split under-determined, and the solve warns when
 it detects this. Lower `recovery` toward $0$ for the robust dump when the feeds are not otherwise
-pinned.
+pinned. A scalar `recovery` applies one factor to every branch; pass a list (one entry per port, in
+wired order) to give each branch its own, which describes a manifold whose feeds do not enter alike
+— a sharp-edged side injection ($\sigma_k = 0$) beside a smoothly aligned main feed ($\sigma_k=1$).
+The guarantees survive because the bound $p_t^{\text{node}} \le p_{t,i}$ follows from $\ell_k \ge 0$
+on each branch separately, whatever sets it. Since $\sigma_k$ enters only through $\chi_k$, a
+branch's factor acts only while that branch feeds the node.
 
 With `K` given, the loss is the **per-branch coefficient** closure
 $\ell_k = (2\chi_k-1)\,K_k\,(p_{t,k}-p_k)$, charging each branch a total-pressure loss on its own
@@ -337,7 +342,7 @@ inertance is **not** a manifold parameter — model it as an explicit neck `duct
 
 | Argument | Symbol | Meaning | Units | Default / constraint |
 | --- | --- | --- | --- | --- |
-| `recovery` | $\sigma$ | dynamic-head recovery: $1$ = least-dissipative ideal, $0$ = full dump loss | — | `1.0`, $\in[0,1]$ |
+| `recovery` | $\sigma_k$ | dynamic-head recovery: $1$ = least-dissipative ideal, $0$ = full dump loss (scalar broadcast, or one per port) | — | `1.0`, each $\in[0,1]$ |
 | `K` | $K_k$ | per-branch loss coefficient(s) on the own dynamic head (scalar broadcast, or one per port) | — | `None`, each $\ge 0$ |
 | `static_pressure` | — | tie a common static pressure (mutually exclusive with `recovery` / `K`; low-Mach only) | — | `False` |
 | `volume` | $V$ | chamber volume (plenum compliance) | m³ | `0.0`, $\ge 0$ |

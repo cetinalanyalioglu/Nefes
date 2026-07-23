@@ -285,8 +285,14 @@ def _element_label(el) -> str:
 # --------------------------------------------------------------------------- #
 # Reads
 # --------------------------------------------------------------------------- #
-def _vector_offset(el) -> int:
-    """Index at which an element's tail vector parameter begins (past its fixed slots)."""
+def _vector_offset(el, d: ParamDescriptor) -> int:
+    """Index at which an element's tail vector parameter begins.
+
+    A descriptor may name the index itself (where the schema leaves a slot unnamed); otherwise the
+    tail starts past the element's slot-bearing descriptors.
+    """
+    if d.vector_offset is not None:
+        return d.vector_offset
     return sum(1 for dd in descriptors_for(el) if dd.slot is not None)
 
 
@@ -295,7 +301,7 @@ def _read(el, d: ParamDescriptor):
     if is_composite(el):
         return el.params.get(d.name)
     if d.kind == "vector":
-        return list(el.fparams[_vector_offset(el) :])
+        return list(el.fparams[_vector_offset(el, d) :])
     if d.slot is not None:
         v = el.fparams[d.slot]
         if d.decode is not None:
@@ -471,7 +477,7 @@ def set_params(net, target, params: Dict[str, object]) -> int:
         net._elements[n] = rebuild_composite(el, composite_updates)
     for d, v in field_writes:
         if d.kind == "vector":
-            offset = _vector_offset(el)
+            offset = _vector_offset(el, d)
             tail_len = len(el.fparams) - offset
             if len(v) != tail_len:
                 raise ValueError(

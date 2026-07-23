@@ -128,7 +128,7 @@ _UI_NODE_BUILDERS = {
         cat.junction(static_pressure=True, volume=a.get("volume", 0.0) or 0.0)
         if a.get("staticPressure")
         else cat.junction(
-            recovery=a.get("recovery") if a.get("recovery") is not None else 1.0,
+            recovery=(a.get("recovery") if a.get("recovery") not in (None, "", []) else 1.0),
             K=(a.get("K") if a.get("K") not in (None, "", []) else None),
             volume=a.get("volume", 0.0) or 0.0,
         )

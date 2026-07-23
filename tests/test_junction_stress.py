@@ -37,15 +37,26 @@ def _entropy(T, p):
 
 
 # --------------------------------------------------------------------------- #
-# The closures under test, as constructors of a manifold node.
+# The closures under test, as constructors of a manifold node.  Each takes the port count, which
+# only the per-branch forms need (their parameter list is one entry per port).
 # --------------------------------------------------------------------------- #
+def _alternating_recovery(deg):
+    """Recovery factors alternating the ideal and the full dump across the ports.
+
+    The most mixed setting the closure admits: neighbouring branches sit at opposite ends of the
+    dump-to-ideal range, so both loss terms act at once on different branches of the same node.
+    """
+    return [1.0 if i % 2 == 0 else 0.0 for i in range(deg)]
+
+
 CLOSURES = {
-    "recovery=1": lambda: cat.junction(recovery=1.0),
-    "recovery=0.5": lambda: cat.junction(recovery=0.5),
-    "recovery=0": lambda: cat.junction(recovery=0.0),
-    "K=0 (lossless)": lambda: cat.junction(K=0.0),
-    "K=0.5 (broadcast)": lambda: cat.junction(K=0.5),
-    "static_pressure": lambda: cat.junction(static_pressure=True),
+    "recovery=1": lambda deg: cat.junction(recovery=1.0),
+    "recovery=0.5": lambda deg: cat.junction(recovery=0.5),
+    "recovery=0": lambda deg: cat.junction(recovery=0.0),
+    "recovery alternating 1/0": lambda deg: cat.junction(recovery=_alternating_recovery(deg)),
+    "K=0 (lossless)": lambda deg: cat.junction(K=0.0),
+    "K=0.5 (broadcast)": lambda deg: cat.junction(K=0.5),
+    "static_pressure": lambda deg: cat.junction(static_pressure=True),
 }
 # Closures that tie an effective total pressure (so "node p_t <= min inflow p_t" applies); the
 # static-p header does not, and is checked separately.
@@ -120,7 +131,7 @@ def _assert_manifold_invariants(net, sol, m_idx, total_pressure=True):
 @pytest.mark.parametrize("n_feeds", [2, 3, 5])
 def test_merge_conserves_mass_and_respects_invariants(closure, n_feeds):
     feeds = [(2.0e5 + 1.0e4 * i, 300.0 + 40.0 * i) for i in range(n_feeds)]
-    net, m_idx, _ = _pinned_merge(CLOSURES[closure](), feeds)
+    net, m_idx, _ = _pinned_merge(CLOSURES[closure](n_feeds + 1), feeds)
     sol = net.solve()
     _assert_manifold_invariants(net, sol, m_idx, total_pressure=(closure in TOTAL_P_CLOSURES))
 
@@ -138,7 +149,7 @@ def test_fuzz_no_manufactured_total_pressure_or_negative_entropy(closure):
         feeds = [(rng.uniform(1.8e5, 2.6e5), rng.uniform(300.0, 500.0)) for _ in range(n)]
         p_out = float(rng.uniform(1.2e5, 1.6e5))
         loss_K = float(rng.uniform(4.0, 20.0))
-        net, m_idx, out_idx = _pinned_merge(CLOSURES[closure](), feeds, p_out=p_out, loss_K=loss_K)
+        net, m_idx, out_idx = _pinned_merge(CLOSURES[closure](n + 1), feeds, p_out=p_out, loss_K=loss_K)
         sol = net.solve()
         if not sol.converged or np.abs(sol.field("M")).max() >= 1.0:
             continue  # skip an occasional ill-conditioned or transonic draw
@@ -163,7 +174,7 @@ def test_fuzz_no_manufactured_total_pressure_or_negative_entropy(closure):
 @pytest.mark.parametrize("closure", list(CLOSURES))
 def test_eight_port_merge_converges(closure):
     feeds = [(2.0e5 + 5.0e3 * i, 300.0 + 20.0 * i) for i in range(8)]
-    net, m_idx, _ = _pinned_merge(CLOSURES[closure](), feeds)
+    net, m_idx, _ = _pinned_merge(CLOSURES[closure](9), feeds)
     sol = net.solve()
     _assert_manifold_invariants(net, sol, m_idx, total_pressure=(closure in TOTAL_P_CLOSURES))
 
@@ -173,7 +184,7 @@ def test_eight_way_distribution_converges(closure):
     # One feed distributed to 8 pressure outlets, each branch pinned by a loss.  The drive is
     # moderate and each branch carries a heavy loss so every closure -- including the low-loss
     # recovery = 1 / K = 0 limits, which flow fastest -- stays subsonic through the split.
-    nodes = [cat.total_pressure_inlet(1.3e5, 300.0), CLOSURES[closure]()]
+    nodes = [cat.total_pressure_inlet(1.3e5, 300.0), CLOSURES[closure](9)]
     for _ in range(8):
         nodes += [cat.loss(12.0), cat.pressure_outlet(1.0e5)]
     edges = [(0, 1, 0.05)]
@@ -235,7 +246,11 @@ def test_static_pressure_matches_incompressible_split():
 @pytest.mark.parametrize("closure", ["recovery=1", "recovery=0", "K=0.5 (broadcast)"])
 def test_dead_leg_wall_leaves_mean_flow_untouched(closure):
     def build(with_dead_leg):
-        nodes = [cat.total_pressure_inlet(1.3e5, 300.0), CLOSURES[closure](), cat.pressure_outlet(1.0e5)]
+        nodes = [
+            cat.total_pressure_inlet(1.3e5, 300.0),
+            CLOSURES[closure](3 if with_dead_leg else 2),
+            cat.pressure_outlet(1.0e5),
+        ]
         edges = [(0, 1, 0.05), (1, 2, 0.05)]
         if with_dead_leg:
             nodes.append(cat.wall())
@@ -302,7 +317,7 @@ def test_branch_reversal_preserves_mass_and_subsonic(closure):
     # reverses (backflow), which the manifold must handle.
     nodes = [
         cat.mass_flow_inlet(4.0, 300.0),
-        CLOSURES[closure](),
+        CLOSURES[closure](3),
         cat.pressure_outlet(1.0e5, Tt_backflow=300.0),
         cat.pressure_outlet(1.25e5, Tt_backflow=300.0),  # high back pressure -> this branch reverses
     ]
@@ -324,7 +339,7 @@ def test_high_drive_merge_survives_continuation(closure):
     # eps) across continuation stages without the loss switching state between them; the outlet
     # area matches the total inflow so the merged stream stays subsonic across closures.
     feeds = [(1.8e5, 400.0), (1.6e5, 350.0), (1.5e5, 300.0)]
-    net, m_idx, _ = _pinned_merge(CLOSURES[closure](), feeds, p_out=1.0e5, loss_K=3.0)
+    net, m_idx, _ = _pinned_merge(CLOSURES[closure](4), feeds, p_out=1.0e5, loss_K=3.0)
     sol = net.solve()
     assert sol.converged
     assert np.abs(sol.field("M")).max() < 1.0

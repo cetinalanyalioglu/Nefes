@@ -691,42 +691,67 @@ def mass_source(mdot, T, composition=None, u_inj=0.0, basis="mole", name="source
     )
 
 
-# Sentinel stored in the junction's recovery slot to select the common-static-pressure header.
-# recovery is otherwise validated to [0, 1], so a negative value is an unambiguous marker.
+# Sentinels stored in the junction's recovery slot to select a closure the slot itself cannot
+# express.  recovery is otherwise validated to [0, 1], so negative values are unambiguous markers:
+# -1 selects the common-static-pressure header, and -3 announces that the trailing values are the
+# per-branch recovery factors rather than loss coefficients.
 _STATIC_P_MARKER = -1.0
+_RECOVERY_VECTOR_MARKER = -3.0
+
+
+def _check_recovery(name, sigma, given):
+    """Return ``sigma`` as a float, rejecting anything outside ``[0, 1]``."""
+    s = float(sigma)
+    if not (0.0 <= s <= 1.0):
+        raise ValueError(
+            f"{name}: recovery must lie in [0, 1] (1 = the least-dissipative ideal, 0 = full dump loss); "
+            f"got {given}"
+        )
+    return s
 
 
 def _manifold_block(name, recovery, K, volume, static_pressure):
     """Validate + pack a manifold's parameters into its float params.
 
-    Packs ``fparams = [volume, recovery, *K]``, whose length and the sign of ``recovery`` select
-    the closure the kernel applies:
+    Packs ``fparams = [volume, recovery, *tail]``, whose length and the value of the recovery slot
+    select the closure the kernel applies:
 
     * ``volume`` -- the plenum compliance [m^3] (0 -> no storage, a lengthless node).  Read by
       :func:`nefes.perturbation.operator.stamps._manifold_storage`, which turns a non-zero
       volume into the chamber compliance ``C = V / (rho c^2)``.  Inert in the mean flow.
     * ``recovery`` -- the geometry-free dynamic-head recovery ``sigma`` in ``[0, 1]``, used only
       when ``K is None`` (no trailing coefficients).  ``static_pressure`` stores the sentinel
-      ``-1`` here, selecting the classical common-static-pressure header instead.
-    * ``K`` -- the loss coefficient(s): absent (length 2, the recovery closure), one value
-      (length 3, broadcast to every branch), or one per port (length ``2 + deg``, local order).
+      ``-1`` here, selecting the classical common-static-pressure header instead, and a per-branch
+      recovery stores the sentinel ``-3`` with its factors in the tail.
+    * tail -- the per-branch values, one per port in local order: the loss coefficients ``K``
+      (absent for the recovery closure, or a single value broadcast to every branch), or the
+      recovery factors behind the ``-3`` marker.
     """
     V = float(volume)
     if V < 0.0:
         raise ValueError(f"{name}: volume must be non-negative (a chamber volume in m^3); got {volume}")
+    per_branch_recovery = hasattr(recovery, "__len__")
     if static_pressure:
-        if K is not None or float(recovery) != 1.0:
+        if K is not None or per_branch_recovery or float(recovery) != 1.0:
             raise ValueError(
                 f"{name}: static_pressure ties a common static pressure and is mutually exclusive with "
                 f"recovery and K; leave both at their defaults"
             )
         return [V, _STATIC_P_MARKER]
-    sigma = float(recovery)
-    if not (0.0 <= sigma <= 1.0):
-        raise ValueError(
-            f"{name}: recovery must lie in [0, 1] (1 = the least-dissipative ideal, 0 = full dump loss); "
-            f"got {recovery}"
-        )
+    if per_branch_recovery:
+        if K is not None:
+            raise ValueError(
+                f"{name}: recovery and K set the branch loss two different ways and are mutually "
+                f"exclusive; give one of them"
+            )
+        sigmas = [_check_recovery(name, s, list(recovery)) for s in recovery]
+        if len(sigmas) < 2:
+            raise ValueError(
+                f"{name}: a per-branch recovery list needs one entry per port (>= 2); got "
+                f"{len(sigmas)}. Pass a single float to broadcast one factor to every branch"
+            )
+        return [V, _RECOVERY_VECTOR_MARKER, *sigmas]
+    sigma = _check_recovery(name, recovery, recovery)
     if K is None:
         return [V, sigma]
     if hasattr(K, "__len__"):
@@ -766,7 +791,11 @@ def junction(recovery=1.0, K=None, volume=0.0, static_pressure=False, name="junc
       network** (each inflow branch carries a prescribed rate or a real resistance), exactly the
       well-posedness requirement of a lossless split.  ``recovery = 0`` gives up each inflow's
       whole dynamic head -- the plenum / full-dump limit, the most dissipative merge and the best
-      conditioned (it self-pins the split, so it converges on any wiring).
+      conditioned (it self-pins the split, so it converges on any wiring).  Pass a sequence (one
+      factor per port, in the order the branches are wired) to give each branch its own recovery,
+      which is how a manifold fed by a sharp entry and a smoothly aligned one is described.  A
+      branch's factor acts only while that branch feeds the node, since a dividing branch carries
+      no mixing loss under this closure.
     * ``K`` given -- per-branch loss coefficients from tabulated junction data.  Each branch is
       charged a total-pressure loss ``K_e * (p_t,e - p_e)`` on its own dynamic head, sign-symmetric
       in the flow direction so that both the combining and dividing branches dissipate.  Pass a
@@ -790,12 +819,15 @@ def junction(recovery=1.0, K=None, volume=0.0, static_pressure=False, name="junc
 
     Parameters
     ----------
-    recovery : float, optional
+    recovery : float or sequence of float, optional
         Geometry-free dynamic-head recovery in ``[0, 1]`` (default ``1.0``, the least-dissipative
-        ideal).  Ignored when ``K`` is given.  At ``recovery = 1`` a merge is well posed only if
-        the network pins every inflow's rate; lower it toward ``0`` (the robust full dump) when the
-        feeds are otherwise unpinned.  The endpoints are reached to the solver's smoothing
-        tolerance, not bit-exactly.
+        ideal).  A scalar applies one factor to every branch; a sequence gives one per port in
+        wired order (its length must equal the port count).  A scalar is ignored when ``K`` is
+        given; a sequence together with ``K`` is rejected, since the two then set the branch loss
+        two different ways.  At ``recovery = 1`` a merge is well posed only if the network pins
+        every inflow's rate; lower it toward ``0`` (the robust full dump) when the feeds are
+        otherwise unpinned.  The endpoints are reached to the solver's smoothing tolerance, not
+        bit-exactly.
     K : float or sequence of float, optional
         Per-branch loss coefficient(s) referenced to each branch's own dynamic head (default
         ``None``, the ``recovery`` closure).  A scalar broadcasts one coefficient to every branch;
@@ -823,6 +855,7 @@ def junction(recovery=1.0, K=None, volume=0.0, static_pressure=False, name="junc
     >>> node = cat.junction()  # least-dissipative merge / isentropic split; pin each inflow
     >>> plenum = cat.junction(recovery=0.0, volume=2.0e-3)  # robust full-dump plenum with compliance
     >>> tee = cat.junction(K=[0.1, 0.9, 0.4])  # a 3-port tee with tabulated branch losses
+    >>> feed = cat.junction(recovery=[1.0, 0.0, 1.0])  # port 1 enters sharply, the others aligned
     >>> header = cat.junction(static_pressure=True)  # classical common-static-pressure header
     """
     return ElementSpec(JUNCTION, _manifold_block("junction", recovery, K, volume, static_pressure), name)

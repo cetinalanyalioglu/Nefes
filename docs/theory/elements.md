@@ -166,12 +166,13 @@ Two closures set that loss $\ell_k$, and they are mutually exclusive: a geometry
 When no per-branch data is supplied, the inflow loss interpolates between two limits set by the recovery $\sigma \in [0,1]$, given as:
 
 $$
-\ell_k = \chi_k\Big[(1-\sigma)\,\underbrace{(p_{t,k}-p_k)}_{\text{dynamic head}} + \sigma\,w_k\,\underbrace{\mathrm{pos}(p_{t,k}-p_t^{\min})}_{\text{excess over weakest feed}}\Big],
+\ell_k = \chi_k\Big[(1-\sigma_k)\,\underbrace{(p_{t,k}-p_k)}_{\text{dynamic head}} + \sigma_k\,w_k\,\underbrace{\mathrm{pos}(p_{t,k}-p_t^{\min})}_{\text{excess over weakest feed}}\Big],
 \qquad
 p_t^{\min} = \min_{j\,\in\,\text{inflows}} p_{t,j},
 $$
 
 where $p_k$ is the static pressure at port $k$, $\chi_k$ is the smooth inflow indicator (one on an inflow port, zero on an outflow), $p_t^{\min}$ is the smooth minimum of the total pressures over the inflow ports, $\mathrm{pos}(\cdot)$ is the regularized positive part, and $w_k$ is the flow envelope introduced below.
+The recovery carries a port index because it may be set per branch; a single value given for the element is the case $\sigma_k = \sigma$ for every $k$, and the discussion below is written for that uniform case unless stated otherwise.
 The two limits are the worst and best merges the state admits.
 At $\sigma = 0$ each inflow surrenders its whole dynamic head $p_{t,k}-p_k$, the full dump loss of a plenum: the most dissipative merge, and the best conditioned because the loss is a private per-port quantity.
 At $\sigma = 1$ each inflow surrenders only its excess over the weakest feed $p_{t,k}-p_t^{\min}$, so every port leaves at the minimum inflow total pressure, the least dissipation the second law permits for the given streams.
@@ -186,6 +187,13 @@ Merging several streams, $\sigma = 1$ is well posed precisely when the network p
 For $\sigma < 1$ the dump term rises with each inflow's own dynamic head, a self-supplied resistance that pins the split without help from the network, so lower recovery converges on any topology; the solve carries a topological check that warns when a junction near $\sigma = 1$ is reached by two or more total-pressure inlets through no resistance.
 The default is $\sigma = 1$, the least-dissipative ideal.
 Lowering $\sigma$ toward $0$ gives the robust full dump, which at low Mach number reduces to a common-static-pressure header (a fast port's dynamic head then being negligible), the classical junction of incompressible pipe-network practice, to $\mathcal{O}(M^2)$.
+
+**Recovery set per branch.**
+Because $\sigma_k$ sits inside a per-branch expression, one factor may be given for each port instead of one for the element, in the order the branches are wired.
+This describes a manifold whose feeds do not enter alike: a sharp-edged side injection giving up its whole head ($\sigma_k = 0$) alongside a smoothly aligned main feed giving up only its excess ($\sigma_k = 1$).
+The guarantees are untouched, and for a reason worth stating plainly: the bound $p_t^{\mathrm{node}} \le p_{t,i}$ and the non-negative entropy production follow from $\ell_k \ge 0$ *on each branch separately*, and that argument never inspects how $\ell_k$ is parameterized.
+Any non-negative per-branch loss therefore preserves them, so mixing the factors across ports is safe by construction.
+An important remark is that $\sigma_k$ enters only through the inflow indicator $\chi_k$, so it acts on a branch only while that branch feeds the node; a dividing branch carries no mixing loss under this closure and its factor has nothing to act on.
 
 **The flow envelope, and why it is not cosmetic.**
 The factor $w_k$ multiplying the ideal-loss term is a *flow envelope* built from the branch's own dynamic head, given as:

@@ -100,6 +100,10 @@ class ParamDescriptor:
         residuals, so changing it reshapes the mean flow) or ``"perturbation"`` (enters
         only the acoustic/perturbation operator -- storage volumes, inertance lengths,
         boundary and source closures -- so the mean state is invariant to it).
+    vector_offset : int, optional
+        For ``kind="vector"``, the ``fparams`` index the tail starts at.  Unset means it
+        starts past the element's slot-bearing descriptors, which is the usual layout; set
+        it where the schema leaves a slot unnamed (a closure marker the user does not set).
     """
 
     name: str
@@ -111,6 +115,7 @@ class ParamDescriptor:
     slot: Optional[int] = None
     field: Optional[str] = None
     kind: str = "float"
+    vector_offset: Optional[int] = None
     optional: bool = False
     check: Optional[Callable] = None
     encode: Optional[Callable] = None
@@ -576,8 +581,33 @@ COMPOSITE_PARAMS: Dict[str, Tuple[ParamDescriptor, ...]] = {
 }
 
 
+# A junction given one recovery factor per branch stores them in the tail behind a marker, so the
+# tail is the recovery vector rather than the loss coefficients and the recovery slot holds no
+# user value.  The marker is negative and recovery is otherwise in [0, 1] (see
+# ``nefes.elements.catalog._RECOVERY_VECTOR_MARKER``).
+_RECOVERY_VECTOR_SELECT = -2.5
+
+JUNCTION_BRANCH_RECOVERY_PARAMS: Tuple[ParamDescriptor, ...] = (
+    ParamDescriptor(
+        "volume", unit="m^3", lo=0.0, slot=0, doc="plenum chamber volume (0 = no compliance)", layer="perturbation"
+    ),
+    ParamDescriptor(
+        "recovery",
+        lo=0.0,
+        hi=1.0,
+        kind="vector",
+        vector_offset=2,
+        doc="per-branch dynamic-head recovery (0 = full dump, 1 = least-dissipative ideal; port order)",
+    ),
+)
+
+
 def descriptors_for(el) -> Tuple[ParamDescriptor, ...]:
     """The parameter descriptors of an element spec (atomic or composite).
+
+    A junction carries one of two schemas depending on how its branch loss was set: the usual one
+    (a scalar ``recovery`` plus an optional ``K`` vector), or, when it was given one recovery
+    factor per branch, a ``recovery`` *vector* in place of both.
 
     Parameters
     ----------
@@ -599,7 +629,10 @@ def descriptors_for(el) -> Tuple[ParamDescriptor, ...]:
         if kind not in COMPOSITE_PARAMS:
             raise KeyError(f"composite kind {kind!r} has no parameter schema; known kinds: {sorted(COMPOSITE_PARAMS)}")
         return COMPOSITE_PARAMS[kind]
-    return ELEMENT_PARAMS.get(int(el.residual_id), ())
+    rid = int(el.residual_id)
+    if rid == JUNCTION and len(el.fparams) > 1 and float(el.fparams[1]) < _RECOVERY_VECTOR_SELECT:
+        return JUNCTION_BRANCH_RECOVERY_PARAMS
+    return ELEMENT_PARAMS.get(rid, ())
 
 
 def find_descriptor(el, name: str) -> ParamDescriptor:

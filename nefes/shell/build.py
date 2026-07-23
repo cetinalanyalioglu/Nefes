@@ -177,12 +177,20 @@ def validate_network(elements: List[ElementSpec], conn: Connectivity, area: np.n
         elif rid == JUNCTION:
             if deg < 2:
                 raise ValueError(f"{label} is a manifold and needs >= 2 ports but is connected to {deg} edge(s)")
-            # per-branch loss coefficients (fparams = [volume, recovery, *K]) list one K per port
-            n_k = len(el.fparams) - 2
-            if n_k >= 2 and n_k != deg:
+            # the tail of fparams = [volume, recovery, *tail] carries one value per port: the
+            # per-branch loss coefficients, or the recovery factors behind the tail marker
+            n_tail = len(el.fparams) - 2
+            per_sigma = len(el.fparams) > 1 and float(el.fparams[1]) < -2.5
+            if per_sigma and n_tail != deg:
+                raise ValueError(
+                    f"{label}: a junction with per-branch recovery needs one factor per port "
+                    f"({deg} ports) but {n_tail} were given -- pass a single float to broadcast one "
+                    f"factor to every branch"
+                )
+            if not per_sigma and n_tail >= 2 and n_tail != deg:
                 raise ValueError(
                     f"{label}: a junction with per-branch loss coefficients needs one K per port "
-                    f"({deg} ports) but {n_k} were given -- pass a single float to broadcast one "
+                    f"({deg} ports) but {n_tail} were given -- pass a single float to broadcast one "
                     f"coefficient to every branch"
                 )
         elif rid == FORCED_SPLITTER:

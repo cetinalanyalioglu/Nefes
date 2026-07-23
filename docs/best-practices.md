@@ -155,7 +155,7 @@ Internal (2-port and manifolds):
 | `linear_resistance(R, ...)` | linear loss `R * mdot` (survives zero mean flow) |
 | `duct(length=0.0, name="duct")` | lossless constant-area duct (acoustic phase) |
 | `pipe(length, diameter, friction_factor, formulation="darcy-weisbach", ...)` | length-bearing pipe; low-Mach Darcy head by default, compressible segment momentum when requested |
-| `junction(recovery=1.0, K=None, volume=0.0, ...)` | variable-port merge/distribute manifold (second law, any port Mach); default = least-dissipative ideal (pin each inflow or lower `recovery`); pass `K` for tabulated per-branch losses, `K=0` for the exact lossless limit; optional plenum `volume` |
+| `junction(recovery=1.0, K=None, volume=0.0, ...)` | variable-port merge/distribute manifold (second law, any port Mach); default = least-dissipative ideal (pin each inflow or lower `recovery`); `recovery` and `K` both take a scalar or one value per branch; pass `K` for tabulated per-branch losses, `K=0` for the exact lossless limit; optional plenum `volume` |
 | `forced_splitter(fractions, ...)` | one inflow split at prescribed mass fractions |
 | `cavity(volume, ...)` | lumped volume: wall to mean flow, compliance to acoustics |
 
@@ -191,6 +191,7 @@ Wherever streams meet or split, use one `junction`; the `recovery` / `K` / `stat
 | **Merging** streams, least-loss ideal | `junction()` (recovery = 1, default) | second-law-safe merge; **pin each inflow** with a prescribed rate or a branch resistance (a bare pair of total-pressure feeds is under-determined). |
 | **Merging** streams, robust on any wiring | `junction(recovery=0.0)` | full-dump plenum; self-pins the split, converges anywhere, over-dissipates the dynamic head (negligible at low Mach). |
 | A **tee / wye of known geometry** | `junction(K=[k0, k1, ...])` | one tabulated loss coefficient per branch (Idelchik), on the branch's own dynamic head; convert a combined-referenced handbook value by the squared velocity (area) ratio. |
+| **Feeds that enter differently** (a sharp side injection beside an aligned main feed) | `junction(recovery=[s0, s1, ...])` | one recovery per branch, in wired order: $0$ where the entry is sharp (that feed dumps its whole head), $1$ where it is smoothly aligned (it gives up only its excess over the weakest feed). Use this when you know *how* each stream enters but have no tabulated coefficient; use `K` when you have the coefficient. A branch's factor acts only while that branch feeds the node. |
 | A **low-Mach header** (classic incompressible pipe-network node) | `junction(static_pressure=True)` or `junction(recovery=0.0)` | common static pressure; the first is exact (and matches other network tools), the second is the low-Mach limit of the recovery closure. |
 | A **resonator / capped side branch** (a dead leg) | `junction()` (any closure) | the dead-leg flow envelope handles a stagnant branch automatically; nothing special to do. Use `K=0.0` if you want the branch point exactly lossless. |
 | **Cross-comparison** with an incompressible pipe-network tool | `junction(static_pressure=True)` | reproduces the common-static-pressure node those tools implement. |

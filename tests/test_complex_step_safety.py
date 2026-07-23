@@ -325,6 +325,22 @@ def _probe_junction():
     return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
 
 
+def _probe_junction_branch_recovery():
+    # the recovery closure with a distinct factor on each branch: one branch on the full dump
+    # (0), one on the least-dissipative ideal (1), one in between.  Each branch then blends its
+    # own dump and minimum-inflow terms, so the smooth_step, the smooth minimum, the flow
+    # envelope and the smooth_pos floor must stay analytic through the forward / reverse /
+    # near-zero / near-choke sweep with the factors mixed across ports.
+    els = [
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.total_pressure_inlet(PT_BC, TT),
+        cat.junction(recovery=[0.0, 1.0, 0.5]),
+        cat.pressure_outlet(P_OUT),
+    ]
+    edges = [(0, 2, PA), (1, 2, PA), (2, 3, PA)]
+    return build_problem(perfect_gas(R_AIR, GAMMA), els, edges, 30.0, PT_BC, H_REF)
+
+
 def _probe_junction_static_p():
     # the common-static-pressure header closure (R = p_0 - p_i): exactly linear in the flow state,
     # so the complex-step Jacobian is exact across the forward / reverse / near-zero / near-choke
@@ -524,6 +540,12 @@ def test_junction_loss_coeff_kernel_complex_step_safe_across_regimes():
     # The junction carries three closures behind one residual id; the roll-call sweep (keyed on the
     # id) reaches the recovery closure, so the per-branch loss-coefficient closure is swept here.
     _assert_complex_step_matches_fd(_probe_junction_loss_coeffs(), "Junction (loss coefficients)")
+
+
+def test_junction_branch_recovery_kernel_complex_step_safe_across_regimes():
+    # The roll-call sweep reaches the recovery closure with one broadcast factor; the per-branch
+    # form, which reads a distinct factor per port, is swept here.
+    _assert_complex_step_matches_fd(_probe_junction_branch_recovery(), "Junction (per-branch recovery)")
 
 
 def test_junction_static_p_kernel_complex_step_safe_across_regimes():

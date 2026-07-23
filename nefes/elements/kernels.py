@@ -261,15 +261,20 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, eps
         # Variable-port manifold that merges and distributes without ever handing a branch more
         # total pressure than the feeds carry (the second law).  Mass balance on row 0, then
         # (deg - 1) rows tying each port's *effective* total pressure to port 0's.  fparams is
-        # [volume, recovery, *K]; its length (a build-time constant, never a function of the flow
-        # state, so branching on it is complex-step safe) selects the loss closure:
+        # [volume, recovery, *tail]; its length and the value of the recovery slot (both build-time
+        # constants, never functions of the flow state, so branching on them is complex-step safe)
+        # select the loss closure:
         #   nfp == 2  geometry-free recovery: the inflow loss interpolates by sigma = fparams[pb+1]
         #             in [0, 1] between the full dump (sigma = 0: the whole dynamic head p_t - p)
         #             and the least-dissipative ideal (sigma = 1: only the excess over the weakest
-        #             inflow, p_t - pt_min).
-        #             A sentinel sigma < 0 (fparams[pb+1] = -1) instead selects the classical
-        #             common-static-pressure header, R = p_0 - p_i, the exactly-linear closure of
-        #             incompressible pipe-network practice (offered for cross-tool comparison).
+        #             inflow, p_t - pt_min).  One sigma is used on every branch.
+        #             A sentinel sigma = -1 instead selects the classical common-static-pressure
+        #             header, R = p_0 - p_i, the exactly-linear closure of incompressible
+        #             pipe-network practice (offered for cross-tool comparison).
+        #   sigma == -3  the same recovery closure with one factor per branch: sigma_e is read from
+        #             fparams[pb+2+e] in local port order.  Each branch then sets its own point
+        #             between the full dump and the ideal, which is how a manifold fed by a sharp
+        #             entry and a smoothly aligned one is described.
         #   nfp >= 3  per-branch loss coefficients (tabulated junction data): each branch is
         #             charged a total-pressure loss K_e * (p_t,e - p_e) on its own dynamic head,
         #             sign-symmetric in the flow direction so that both the combining (inflow) and
@@ -277,6 +282,8 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, eps
         #             branch; nfp == 2 + deg reads K_e from fparams[pb+2+e] in local port order.
         # fparams[pb+0] is the chamber volume (perturbation compliance only; inert here).
         nfp = npar_fptr[n + 1] - pb
+        # the recovery factors follow in the tail rather than one broadcast value in the slot
+        per_sigma = npar_f[pb + 1] < -2.5
         e0 = col_edge[base]
         s0 = orient[base]
         acc = est[ES_MDOT, e0] * 0.0
@@ -292,9 +299,8 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, eps
                 R[r0 + i] = est[ES_P, e0] - est[ES_P, ei] - kappa * (si * est[ES_MDOT, ei])
             return
 
-        if nfp < 3:
+        if nfp < 3 or per_sigma:
             # ---- geometry-free recovery closure ----
-            sigma = npar_f[pb + 1]
             # A port total pressure sets the (relative) smoothing / seed scales; it is kept
             # complex (not .real) because it depends on the flow state, so the complex-step
             # derivative must carry it.
@@ -335,15 +341,21 @@ def node_residual(n, rid, row_ptr, col_edge, orient, npar_f, npar_fptr, eps, eps
             # port total pressure, NOT the continuation smoothing eps: tying the envelope to eps
             # would move its transition as the solve tightens eps, so a moderate-flow branch would
             # switch its loss on between continuation stages and stall the final Newton solve.
+            #
+            # sigma is either the single slot value broadcast to every branch, or -- behind the
+            # tail marker -- one factor per branch read in local port order, so a manifold whose
+            # feeds enter differently (one sharp, one aligned) sets each branch's own recovery.
+            sigma0 = npar_f[pb + 2] if per_sigma else npar_f[pb + 1]
             q0 = est[ES_PT, e0] - est[ES_P, e0]
             chi0 = smooth_step(-s0 * est[ES_MDOT, e0], eps)
             loss0 = chi0 * (
-                (1.0 - sigma) * q0 + sigma * (q0 / (q0 + delta)) * smooth_pos(est[ES_PT, e0] - pt_min, delta)
+                (1.0 - sigma0) * q0 + sigma0 * (q0 / (q0 + delta)) * smooth_pos(est[ES_PT, e0] - pt_min, delta)
             )
             pteff0 = est[ES_PT, e0] - loss0
             for i in range(1, deg):
                 ei = col_edge[base + i]
                 si = orient[base + i]
+                sigma = npar_f[pb + 2 + i] if per_sigma else npar_f[pb + 1]
                 qi = est[ES_PT, ei] - est[ES_P, ei]
                 chi = smooth_step(-si * est[ES_MDOT, ei], eps)
                 loss = chi * (
